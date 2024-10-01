@@ -1,0 +1,219 @@
+{
+    "identifier":"onePage",
+    "name":"Store Interface 4",
+    "screenshots":"https://api.smartonlineorders.com/assets/images/interface-4.png",
+    "version":"1.0",
+    "description":"This Store Interface has been a favorite amongst many users. Category images are shown with increased visibility and offers ability to add descriptions for each item.",
+    "doc":"",
+    "settings":[
+        {
+            "id":"width",
+            "label":"Page width",
+            "type":"input_text",
+            "info":"Default page width recommendation is 1024px. <br /> You can make changes here",
+            "default":""
+        },
+        {
+            "id":"show_more_button",
+            "label":"Display 'Show More'",
+            "type":"onoff",
+            "info":"Display “Show More” underneath each category. <br /> Recommended to display “Show More” if you have a lot of items for faster page loading time",
+            "default":"on"
+        },
+        {
+            "id":"fontFamily",
+            "label":"Font family",
+            "type":"input_text",
+            "info":"Default font family is Oswald. To use other fonts make sure it is imported by your theme. You can also use custom css to import from Google fonts",
+            "default":"Oswald,sans-serif",
+            "css":[
+                {
+                    "cssSelector":".moo-nav-menu li a",
+                    "cssProperty":"font-family"
+                },
+                {
+                    "cssSelector":".moo-menu-category .moo-menu-category-title .moo-title",
+                    "cssProperty":"font-family"
+                }
+            ]
+        },
+        {
+            "id":"categoriesTopMargin",
+            "label":"Categories top margin",
+            "type":"input_text",
+            "info":"This will change the top margin of categories section  <br /> Recommended if you have a fixed header",
+            "default":"0"
+        },
+        {
+            "id":"phoneCategoriesTopMargin",
+            "label":"Categories top margin for mobile display size",
+            "type":"input_text",
+            "info":"This will change the top margin of categories section for mobile display size  <br /> Recommended if you have a fixed header",
+            "default":"0"
+        },
+        {
+            "id":"defaultColor",
+            "label":"Default Color",
+            "type":"color",
+            "info":"This will be used for backgrounds and primary buttons",
+            "default":"",
+            "css" :[
+                {
+                    "cssSelector":".moo-menu-category,.moo-nav-menu::-webkit-scrollbar-thumb",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":".moo-bg-dark",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":".moo-new-icon,#moo-onlineStore-items .moo-btn-primary",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":".moo-new-icon,.moo-menu-category-content button.moo-btn-sm,#moo-onlineStore-items .moo-btn-primary",
+                    "cssProperty":"border-color"
+                },
+                {
+                    "cssSelector":"#moo-search-bar-container .osh-btn",
+                    "cssProperty":"border-color"
+                },
+                {
+                    "cssSelector":"#moo-search-bar-container .osh-btn",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":"#moo-onlineStore-categories .moo-mobile-fixed .moo-choose-category",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":".swal2-popup .swal2-styled.swal2-confirm",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":".moo-menu-category .moo-menu-category-title",
+                    "cssProperty":"background-color"
+                },
+                {
+                    "cssSelector":"button.moo-btn-sm",
+                    "cssProperty":"border-color"
+                },
+                {
+                    "cssSelector":".moo-hvr-sweep-to-top:before",
+                    "cssProperty":"background"
+                }
+            ]
+        },
+        {
+            "id":"secondaryColor",
+            "label":"Secondary color",
+            "type":"color",
+            "info":"The secondary color will be used for texts",
+            "default":"",
+            "css":[
+                {
+                    "cssSelector":".moo-hvr-sweep-to-top:hover, .moo-hvr-sweep-to-top:focus, .moo-hvr-sweep-to-top:active",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".moo-nav-menu li a,.moo-hvr-sweep-to-top:focus",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".swal2-popup .swal2-styled.swal2-confirm",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".moo-menu-category .moo-menu-category-title .moo-title",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".moo-new-icon,#moo-onlineStore-items .moo-btn-primary",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".moo-new-icon__cart-panier",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":".moo-new-icon__group",
+                    "cssProperty":"fill"
+                },
+                {
+                    "cssSelector":"#moo-onlineStore-categories .moo-mobile-fixed .moo-choose-category",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":"#moo_OnlineStoreContainer #moo-onlineStore-items .moo-menu-category .moo-menu-category-title .moo-title",
+                    "cssProperty":"color"
+                },
+                {
+                    "cssSelector":"#moo-search-bar-container .osh-btn",
+                    "cssProperty":"color"
+                }
+            ]
+        },
+        {
+            "id":"descriptiontextFontSize",
+            "label":"Font size of descriptions",
+            "type":"input_text",
+            "info":"This will change font size for descriptions under items names <br/> default value is 15px",
+            "default":"15px",
+            "css" :[
+                {
+                    "cssSelector":".moo-text-sm",
+                    "cssProperty":"font-size"
+                }
+            ]
+        },
+        {
+            "id":"categoryDescriptionFontSize",
+            "label":"Font size of descriptions under categories",
+            "type":"input_text",
+            "info":"This will change font size for descriptions under categories names <br/> default value is 16px",
+            "default":"16px",
+            "css" :[
+                {
+                    "cssSelector":"#moo_OnlineStoreContainer #moo-onlineStore-items .moo-menu-category .moo-menu-category-title .moo-category-description",
+                    "cssProperty":"font-size"
+                }
+            ]
+        },
+        {
+            "id":"allowspecialinstructionforitems",
+            "label":"Special instructions for individual items",
+            "type":"onoff",
+            "info":"Allow customers to leave special instructions for individual items",
+            "default":"on"
+        },
+        {
+            "id":"askforspecialinstruction",
+            "label":"Show Special instructions Pop Up window after adding any item to cart",
+            "type":"onoff",
+            "info":"After item/modifier is added to cart, immediately show pop-up to allow customer to add special instructions to that item",
+            "default":"on"
+        },
+        {
+            "id":"messageforspecialinstruction",
+            "label":"Custom Text to appear in special instructions",
+            "type":"textaerea",
+            "info":" Custom Text to appear in special instructions after item is added to cart. This default message will appear to customers for special instructions -per line item, not the special instructions on the checkout page.",
+            "default":"Type your instructions here, additional charges may apply and not all changes are possible"
+        },
+        {
+            "id":"qtyWindow",
+            "label":"Show Quantity Pop Up window after adding any item to cart",
+            "type":"onoff",
+            "info":"This will show the Quantity selection window when selecting 'add to cart' button. The customer can still change the quantity later in the checkout process",
+            "default":"on"
+        },
+        {
+            "id":"qtyWindowForModifiers",
+            "label":"Show Quantity Pop Up window for items with modifiers",
+            "type":"onoff",
+            "info":"This will show the Quantity selection window for items with modifiers when selecting 'Choose Qty & Options' The customer can still change the Quantity later in the checkout processs. Note : this doesn't affect modifier Qty selection",
+            "default":"on"
+        }
+    ]
+
+}

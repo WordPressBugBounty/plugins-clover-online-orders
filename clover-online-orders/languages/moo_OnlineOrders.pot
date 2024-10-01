@@ -1,0 +1,1091 @@
+# Copyright (C) 2022 Zaytech
+# This file is distributed under the Clover app.
+msgid ""
+msgstr ""
+"Project-Id-Version: Smart Online Order for Clover 1.5.1\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/smart-online-order-wordpress\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2022-09-26T09:22:23+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.6.0\n"
+"X-Domain: moo_OnlineOrders\n"
+
+#. Plugin Name of the plugin
+msgid "Smart Online Order for Clover"
+msgstr ""
+
+#. Plugin URI of the plugin
+#. Author URI of the plugin
+msgid "https://www.zaytech.com"
+msgstr ""
+
+#. Description of the plugin
+msgid "Start taking orders from your Wordpress website and have them sent to your Clover Station"
+msgstr ""
+
+#. Author of the plugin
+msgid "Zaytech"
+msgstr ""
+
+#: admin/moo-OnlineOrders-admin.php:1112
+msgid "Checking your Api Key"
+msgstr ""
+
+#: admin/moo-OnlineOrders-admin.php:1121
+msgid "Your API KEY is valid"
+msgstr ""
+
+#: admin/moo-OnlineOrders-admin.php:1137
+msgid "Your Clover Registered Business Address"
+msgstr ""
+
+#: admin/moo-OnlineOrders-admin.php:2777
+msgid "Smart Online Order Latest Updates"
+msgstr ""
+
+#: admin/moo-OnlineOrders-admin.php:2782
+msgid "Smart Online Order Announcements"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1194
+#: includes/shortcodes/checkoutPage.php:262
+#: includes/shortcodes/checkoutPage.php:714
+msgid "Today's Online Ordering Hours"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1196
+#: includes/shortcodes/checkoutPage.php:264
+msgid "Online Ordering Currently Closed"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1199
+#: includes/shortcodes/checkoutPage.php:267
+msgid "You may schedule your order in advance"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1294
+#: includes/shortcodes/checkoutPage.php:78
+#: includes/shortcodes/checkoutPage.php:91
+msgid "We are currently closed and will open again soon"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1305
+#: includes/shortcodes/checkoutPage.php:1116
+#: public/moo-OnlineOrders-public.php:355
+msgid "Your cart is empty"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1305
+#: includes/shortcodes/checkoutPage.php:1118
+msgid "Back to Main Menu"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1327
+#: includes/shortcodes/checkoutPage.php:866
+msgid "Product"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1328
+#: includes/shortcodes/checkoutPage.php:867
+msgid "Price"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1329
+#: includes/shortcodes/checkoutPage.php:865
+#: public/moo-OnlineOrders-public.php:360
+msgid "Qty"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1330
+#: includes/moo-OnlineOrders-shortcodes.php:1401
+#: includes/shortcodes/checkoutPage.php:853
+msgid "Remove"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1331
+#: includes/moo-OnlineOrders-shortcodes.php:1429
+#: includes/shortcodes/checkoutPage.php:983
+#: public/moo-OnlineOrders-public.php:363
+msgid "Total"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1409
+msgid "Empty the cart"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1411
+#: includes/shortcodes/checkoutPage.php:923
+msgid "Subtotal"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1423
+#: includes/shortcodes/checkoutPage.php:937
+#: public/moo-OnlineOrders-public.php:362
+msgid "Tax"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1433
+#: public/moo-OnlineOrders-public.php:358
+msgid "Checkout"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1434
+#: includes/shortcodes/checkoutPage.php:1003
+#: public/moo-OnlineOrders-public.php:410
+msgid "Continue shopping"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1466
+#: includes/moo-OnlineOrders-shortcodes.php:1468
+#: includes/moo-OnlineOrders-shortcodes.php:1471
+#: includes/moo-OnlineOrders-shortcodes.php:1473
+msgid "Add To Cart"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1478
+msgid "Item Not Found"
+msgstr ""
+
+#: includes/moo-OnlineOrders-shortcodes.php:1695
+msgid "Search"
+msgstr ""
+
+#: includes/restapi/CheckoutRoutes.php:850
+#: includes/restapi/CheckoutRoutes.php:856
+msgid "An error has occurred please try again"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:281
+#: includes/shortcodes/checkoutPage.php:292
+msgid "Select a time"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:339
+#: public/moo-OnlineOrders-public.php:426
+msgid "Sorry, zone not supported. We do not deliver to this address at this time"
+msgstr ""
+
+#. translators: %s represent our link
+#: includes/shortcodes/checkoutPage.php:406
+msgid "Why create a <a href='%s' target='_blank'>Smart Online Order</a> account?"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:411
+msgid "Save your address"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:412
+msgid "Faster Checkout!"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:417
+msgid "View your past orders"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:418
+msgid "Get exclusive deals and coupons"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:428
+msgid "Sign in with your social account"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:430
+msgid "No posts on your behalf, promise!"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:439
+#: includes/shortcodes/checkoutPage.php:459
+#: includes/shortcodes/checkoutPage.php:470
+msgid "or"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:442
+#: includes/shortcodes/checkoutPage.php:454
+msgid "Continue As Guest"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:448
+msgid "Don't want an account?"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:450
+msgid "You can checkout without registering"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:462
+msgid "Create An Account"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:477
+#: includes/shortcodes/checkoutPage.php:502
+#: includes/shortcodes/checkoutPage.php:532
+#: includes/shortcodes/checkoutPage.php:637
+msgid "Email"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:481
+#: includes/shortcodes/checkoutPage.php:510
+msgid "Password"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:483
+msgid "Forgot password?"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:486
+#: public/moo-OnlineOrders-public.php:459
+msgid "Log In"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:488
+msgid "Don't have an account"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:488
+msgid "Sign-up"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:497
+#: includes/shortcodes/checkoutPage.php:631
+msgid "Full Name"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:506
+#: includes/shortcodes/checkoutPage.php:643
+msgid "Phone number"
+msgstr ""
+
+#. translators: %s represent our tos link
+#: includes/shortcodes/checkoutPage.php:516
+msgid "By clicking the button below you agree to our <a href=\"%s\" target=\"_blank\">Terms Of Service</a>"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:520
+#: includes/shortcodes/checkoutPage.php:769
+msgid "Submit"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:522
+msgid "Have an account already?"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:522
+#: includes/shortcodes/checkoutPage.php:607
+msgid "Click here"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:536
+#: public/moo-OnlineOrders-public.php:461
+msgid "Reset"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:539
+#: public/moo-OnlineOrders-public.php:367
+msgid "Cancel"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:550
+msgid "Add Another Address"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:553
+msgid "Click here if this Order is for Pick Up"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:561
+msgid "Add new Address to your account"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:566
+msgid "Address"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:570
+msgid "Suite / Apt #"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:574
+msgid "City"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:578
+msgid "State"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:582
+msgid "Zip code"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:586
+msgid "Next"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:591
+msgid "Loading the MAP..."
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:597
+#: public/moo-OnlineOrders-public.php:476
+msgid "Confirm and add address"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:600
+msgid "Change address"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:605
+msgid "If you want to skip this step and add your address later "
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:620
+msgid "contact"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:655
+msgid "ORDERING METHOD"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:682
+msgid "CHOOSE A TIME"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:724
+msgid "PAYMENT METHOD"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:741
+msgid "Your phone number has been verified"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:743
+msgid "Please finalize your order below"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:748
+msgid "Your Phone"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:751
+msgid "Verify via SMS"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:756
+msgid "We will send a verification code via SMS to number above"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:761
+msgid "Please enter the verification that was sent to your phone, if you didn't receive a code,"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:763
+msgid "click here to try again"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:802
+msgid "Special instructions"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:827
+msgid "Coupon code"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:839
+msgid "Apply"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:976
+msgid "Tip"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1000
+msgid "Update cart"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1077
+msgid "FINALIZE ORDER"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1085
+msgid "Logout"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1123
+msgid "tip"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1124
+msgid "Add a tip to this order"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1192
+msgid "Pay now with Credit Card"
+msgstr ""
+
+#: includes/shortcodes/checkoutPage.php:1204
+msgid "Pay at location"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:345
+msgid "Loading, please wait ..."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:346
+msgid "Loading Options"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:347
+msgid "Loading Your cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:348
+msgid "Choose a Category"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:349
+msgid "Add to cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:350
+msgid "Choose Options & Qty"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:351
+msgid "Choose Options"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:352
+msgid "Out Of Stock"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:353
+msgid "Not Available Yet"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:354
+msgid "View Cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:356
+msgid "Close"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:357
+msgid "Ok"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:359
+msgid "Item"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:361
+msgid "Sub-Total"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:364
+msgid "Edit"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:365
+msgid "Added to cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:366
+msgid "Item not added, try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:368
+msgid "Quantity can be updated during checkout"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:369
+msgid "Adding the items to your cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:370
+msgid "Show More"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:371
+msgid "Items"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:372
+msgid "There is no category available right now please try again later"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:373
+msgid "There is no items available right now in this category please try again later"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:374
+msgid "Custom Quantity"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:375
+msgid "Select the quantity"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:376
+msgid "Enter the quantity"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:377
+msgid "You need to write a number"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:378
+msgid "Check your internet connection or contact us"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:379
+msgid "We cannot Load the options for this item, please refresh the page or contact us"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:380
+msgid "Error in loading your cart, please refresh the page"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:381
+msgid "Are you sure you want to delete this item"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:382
+msgid "Yes, delete it!"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:383
+msgid "No Thanks"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:384
+msgid "No Cancel"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:385
+msgid "Deleted!"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:386
+msgid "Canceled!"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:387
+msgid "Item not deleted, try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:388
+msgid "Try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:389
+msgid "Add"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:390
+msgid "Added"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:391
+msgid "Not Added"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:392
+msgid "Update"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:393
+msgid "Updated"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:394
+msgid "Not Updated"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:395
+msgid "Add Special Instructions"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:396
+msgid "Update Your Special Instructions"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:397
+msgid "Special instructions not submitted try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:398
+msgid "Text too long, You cannot add more than 250 chars"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:399
+msgid "Please enter your name"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:400
+msgid "Please enter your password"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:401
+msgid "Please enter a valid email"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:402
+msgid "We need a valid email to contact you and send you the receipt"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:403
+msgid "Please enter your phone"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:404
+msgid "We need your phone to contact you if we have any questions about your order"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:405
+msgid "Please choose the ordering method"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:406
+msgid "How you want your order to be served ?"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:407
+msgid "You did not meet the minimum purchase requirement"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:408
+msgid "this ordering method requires a subtotal greater than $"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:409
+msgid "this ordering method requires a subtotal less than $"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:411
+msgid "Update Cart"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:412
+msgid "You reached the maximum purchase amount"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:413
+msgid "Please verify your address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:414
+msgid "We can't found this address on the map, please choose an other address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:415
+msgid "Please add the delivery address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:416
+msgid "You have chosen a delivery method, we need your address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:417
+msgid "Please choose a time"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:418
+msgid "Please choose your payment method"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:419
+msgid "Please verify your phone"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:420
+msgid "When you choose the cash payment you must verify your phone"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:421
+msgid "Please verify your card information"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:422
+msgid "Special instructions are required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:423
+msgid "The minimum order total for this selected zone is $"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:424
+msgid "Spend $"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:425
+msgid "to get free delivery"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:427
+msgid "Delivery amount"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:428
+msgid "Delivery to"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:429
+msgid "Edit address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:430
+msgid "Add/Edit address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:431
+msgid "No address selected"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:432
+msgid "Card Number is required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:433
+msgid "Card Date is required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:434
+msgid "Card CVV is required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:435
+msgid "Street Address is required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:436
+msgid "Zip Code is required"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:437
+msgid "Success! You have received a discount of $"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:438
+msgid "Success! You have received a discount of"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:439
+msgid "There is a coupon that can be applied to this order"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:440
+msgid "Verify your connection and try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:441
+msgid "Error"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:442
+msgid "Pay upon Delivery"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:443
+msgid "Pay at location"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:444
+msgid "Sending the verification code please wait .."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:445
+msgid "An error has occurred please try again or contact us"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:446
+msgid "Code invalid"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:447
+msgid "this code is invalid please try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:448
+msgid "Phone verified"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:449
+msgid "Please have your payment ready when picking up from the store and don't forget to finalize your order below"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:450
+msgid "Thank you for your order"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:451
+msgid "Your order is being prepared"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:452
+msgid "You can see your receipt"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:453
+msgid "here"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:454
+msgid "Our Address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:455
+msgid "We weren't able to send the entire order to the store, please try again or contact us"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:456
+msgid "Loading your addresses"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:457
+msgid "USE THIS ADDRESS"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:458
+msgid "Your session is expired"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:460
+msgid "Register"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:462
+msgid "Invalid Email or Password"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:463
+msgid "Invalid Email"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:464
+msgid "Please click on forgot password or Please register as new user."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:465
+msgid "You don't have an email on your Facebook account"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:466
+msgid "Could not reset your password"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:467
+msgid "If the e-mail you specified exists in our system, then you will receive an e-mail shortly to reset your password."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:468
+msgid "Please enter your address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:469
+msgid "Please enter your city"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:470
+msgid "Address missing"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:471
+msgid "City missing"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:472
+msgid "We weren't able to locate this address,try again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:473
+msgid "Please confirm your address on the map"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:474
+msgid "By confirming  your address on the map you will help the driver to deliver your order faster, and you will help us to calculate your delivery fee better"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:475
+msgid "Confirm"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:477
+msgid "Address not added to your account"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:478
+msgid "Are you sure?"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:479
+msgid "You will not be able to recover this address"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:480
+msgid "Please enter your coupon code"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:481
+msgid "Checking your coupon..."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:482
+msgid "Coupon applied"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:483
+msgid "Removing your coupon...."
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:484
+msgid "Success"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:485
+msgid " (required) "
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:486
+msgid "Must choose"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:487
+msgid "options"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:488
+msgid "Must choose between"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:489
+msgid "Must choose at least 1 option"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:490
+msgid "Must choose at least"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:491
+msgid "Select up to"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:492
+msgid "Select one option"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:493
+msgid " & "
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:494
+msgid "Choose Item Options"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:495
+msgid "You did not select all of the required options"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:496
+msgid "Please check again"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2841
+msgid "Transaction cannot be processed, please contact the merchant"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2842
+msgid "Transaction declined, please use a different card"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2843
+msgid "Transaction failed, incorrect card data"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2844
+msgid "Transaction as already been captured"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2845
+msgid "Transaction has already been refunded"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2846
+msgid "Email ID is invalid, enter valid email ID and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2847
+msgid "Card expired, enter valid card number and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2848
+msgid "CVV value is incorrect, enter correct CVV value and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2849
+msgid "Card number is invalid, enter valid card number and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2850
+msgid "Street address is not provided, enter valid street address and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2851
+msgid "Card brand is invalid or not supported, please use valid card and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2852
+msgid "Invalid transaction amount, please contact merchant"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2853
+msgid "Card is invalid, please retry with a new card"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2854
+msgid "Invalid tip amount, please correct and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2855
+msgid "Incorrect tax amount, please correct and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2856
+msgid "Unable to process transaction"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2857
+msgid "Order already paid"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2858
+msgid "Transaction could not be processed"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2859
+msgid "Transaction could not be processed, please contact the merchant"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2860
+msgid "Transaction could not be processed due to incorrect or invalid data"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2861
+msgid "Transaction could not be processed, please renter card details and retry"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2862
+msgid "Unauthorized, please contact the merchant"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2863
+msgid "Transaction failed, incorrect data provided"
+msgstr ""
+
+#: public/moo-OnlineOrders-public.php:2864
+msgid "Transaction could not be processed, please retry"
+msgstr ""

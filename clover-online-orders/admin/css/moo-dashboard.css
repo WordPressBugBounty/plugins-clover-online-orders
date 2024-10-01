@@ -1,0 +1,826 @@
+
+.moo_dashboard_logo {
+    float: right;
+    background: 0 0;
+    padding: 2px 20px 0;
+    text-align: center;
+}
+.moo_dashboard_logo_img {
+    height: 43px;
+}
+.moo_dashboard_logo_links {
+    line-height: 0;
+    font-size: 16px;
+    margin-top: -2px;
+    font-family: 'Eina','Questrial', sans-serif;
+}
+.moo_dashboard_logo_links>a {
+  text-decoration: none;
+}
+.moo_dashboard_header_version{
+    background: #1F3C71;
+    color: #FFF;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.moo_dashboard_title {
+    background: #FFF;
+    line-height: 60px!important;
+    padding: 0!important;
+    color: #1F3C71;
+    margin-bottom: 20px!important;
+    font-size: 27px;
+    font-weight: 400;
+    border-radius: 3px;
+    text-transform: uppercase;
+    font-family: 'Eina','Questrial', sans-serif;
+}
+.moo_dashboard_title_icon {
+    background: #1F3C71;
+    line-height: 52px!important;
+    margin: 0 5px 0 0;
+    padding: 5px 16px;
+    width: 60px;
+    text-align: center;
+    font-size: 30px!important;
+    color: #FFF;
+    border-radius: 3px 0 0 3px;
+
+}
+
+.moo_dashboard_wrapper{
+    margin-top: 20px;
+    font-family: 'Eina','Questrial', sans-serif;
+}
+.pull-left {
+    float: left;
+    margin-right: 10px;
+    margin-left: 0px;
+}
+.pull-right {
+    float: right;
+}
+.pull-left.noMargin, .pull-right.noMargin {
+    margin-left: 0px;
+    margin-right: 0px;
+}
+.moo_dashboard_nav_tabs {
+    width: 100%;
+    margin-bottom: 15px;
+    background: #1F3C71;
+    border-radius: 0px;
+}
+.moo_dashboard_nav_tab {
+    text-transform: uppercase;
+    font-size: 18px;
+    color: rgb(255, 255, 255);
+    cursor: pointer;
+    line-height: 26px;
+    text-align: center;
+    margin-bottom: -10px;
+    padding: 0.6em 1em 18px;
+    border-right: 0px solid rgb(204, 204, 204);
+}
+.moo_dashboard_nav_tab.active {
+    color: #1F3C71;
+    margin-top: -6px;
+    border-width: 2px;
+    border-style: solid;
+    border-color: #1F3C71;
+    border-image: initial;
+    background: rgb(255, 255, 255);
+    border-radius: 3px;
+}
+.moo_dashboard_tab_icon {
+    font-size: 25px !important;
+    transition: all 0.3s ease-in-out 0s;
+}
+.moo_dashboard_nav_tab:hover i {
+    transform:scale(1.2) rotate(360deg)
+}
+#mooDashbboardTabContent2{
+    display: none;
+}
+.moo_dashboard_content_tabs{
+    padding: 10px;
+}
+.moo_dashboard_addon_box {
+    width: 320px;
+    background: #FFF;
+    margin: 0 10px 10px 0;
+    float: left;
+    min-height: 100px;
+    border: 2px solid #F1F1F1;
+}
+.moo_dashboard_addon_box_thumb {
+    overflow: hidden;
+    position: relative;
+    min-height: 160px;
+    max-height: 195px;
+    background: url(../../public/img/spinner.white.gif) center center no-repeat #FFF;
+}
+.moo_dashboard_addon_box_led, .moo_dashboard_addon_box_status {
+    top: 10px;
+    padding: 5px 10px;
+    z-index: 30;
+    color: #FFF;
+    font-weight: 700;
+}
+.moo_dashboard_addon_box_status {
+    position: absolute;
+    background: #222;
+    right: 10px;
+}
+.moo_dashboard_addon_box_led {
+    position: absolute;
+    background: #252525;
+    left: 10px;
+    text-transform: uppercase;
+}
+
+.moo_dashboard_addon_box_status.installed {
+    background: #222;
+}
+.moo_dashboard_addon_box_led.new {
+    background: #FDC500;
+}
+
+.moo_dashboard_addon_box_overlay {
+    position: absolute;
+    width: 100%;
+    background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAHklEQVQIW2NkQAL/gYARxgdzQAAkAOOA2IzIHJAAACAGEAFjDBirAAAAAElFTkSuQmCC) rgba(255,255,255,.6);
+    height: 100%;
+    z-index: 20;
+}
+.moo_dashboard_addon_box_excerpt, .moo_dashboard__addon_box_title, .moo_dashboard__dashboard_button {
+    font-family: 'Open Sans',Arial,sans-serif;
+}
+.moo_dashboard_addon_box_title {
+    font-size: 18px;
+    padding: 5px 20px;
+    font-weight: 700;
+    margin-top: 10px;
+    height: 37px;
+}
+.moo_dashboard_addon_box_excerpt {
+    padding: 0 20px;
+    color: #666;
+    height: 90px;
+    overflow: hidden;
+    position: relative;
+}
+.moo_dashboard_addon_box_excerpt_content {
+    margin: .5em 0;
+}
+.moo_dashboard_addon_box_links {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0 1.5em;
+    margin: 0;
+}
+.moo_dashboard_submit_button {
+    background: #1F3C71;
+    font-family: 'Eina','Open Sans',Arial,sans-serif;
+    font-size: 14px;
+    border: none;
+    border-radius: 0;
+    line-height: 40px;
+    height: 40px;
+    text-transform: uppercase;
+    color: #FFF;
+    padding: 0 15px;
+    margin: 5px 0;
+}
+.moo_dashboard_addon_box_button {
+    width: 100%;
+    margin-bottom: 0;
+    margin-top: 10px;
+    display: block;
+   /* padding: 10px 0; */
+    text-align: center;
+    text-decoration: none;
+}
+.moo_dashboard_addon_box_button.moo_dashboard_addon_manage {
+    background: #1F3C71;
+    color : #ffffff;
+}
+.moo_dashboard_addon_box_thumb img {
+    width: 100%;
+    height: auto!important;
+}
+
+.moo_dashboard_option.on {
+    background: #FFF;
+    border: 2px solid #27A1CA;
+}
+.moo_dashboard_option {
+    padding: .5em 1em;
+    margin: .5em 0;
+    border: 2px solid #CCC;
+    background: #f9F9F9;
+    border-radius: 3px;
+}
+.moo_dashboard_option .moo_dashboard_input, .moo_dashboard_option .moo_dashboard_select, .moo_dashboard_option_select {
+    font-size: 20px!important;
+   /* line-height: 69px!important; */
+    height: 41px!important;
+    float: right;
+    padding: 0 .5em;
+    width: 99%;
+    border-radius: 3px;
+}
+.moo_dashboard_textaerea {
+    font-size: 18px!important;
+   /* line-height: 69px!important; */
+    height: 100px!important;
+    padding: 0 .5em;
+    width: 99%;
+    border-radius: 3px;
+    margin-top: 8px;
+}
+.moo_dashboard_input.small {
+    width: 55px!important;
+    text-align: center;
+}
+
+.moo_dashboard_option .moo_dashboard_option_button {
+    float: right;
+    padding: .5em;
+    min-width: 90px;
+}
+
+.moo_dashboard_option .moo_dashboard_option_title {
+    font-weight: 600;
+    font-size: 17px;
+}
+.moo_dashboard_option .moo_dashboard_option_desc {
+    margin: 5px 0 0;
+    color: #999;
+    font-size: 15px;
+    max-width: 70%;
+}
+.moo_dashboard_buttons_actions {
+    display: block;
+}
+.moo_dashboard_button {
+    background: #27A1CA;
+    border: none;
+    color: #FFF;
+    border-radius: 3px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 400;
+    padding: 8px 15px;
+    line-height: 20px;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.moo_dashboard_button_go_back {
+    background: #000000;
+    text-decoration: none;
+}
+.moo_dashboard_button_go_back:hover,.moo_dashboard_button_go_back:visited {
+    color: #FFF;
+}
+.moo_dashboard_button.moo_dashboard_medium {
+    line-height: 40px;
+    padding: 0 15px;
+    height: 40px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+.moo_dashboard_button i {
+    color: #FFF !important;
+    margin-right: 5px;
+}
+.moo_dashboard_button_icon {
+    font-size: 17px !important;
+    margin-right: 5px;
+    line-height: 18px !important;
+}
+.moo_dashboard_text_error {
+    padding: 100px;
+    text-align: center;
+    font-size: 50px;
+    font-family: 'Eina',monospace;
+    color: #1F3C71;
+    line-height: 50px;
+}
+/*
+ * Panel CSS
+ */
+#MooPanel>#MooPanel_sidebar>ul li {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+}
+#MooPanel>#MooPanel_sidebar>ul li.MooPanel_Selected {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: rgba(216, 220, 226, 0.29);
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-keyValid-section{
+    margin-top: 20px;
+
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-keyValid-section .moo-subSection {
+    background-color: #ffffff;
+    padding: 16px 0;
+    margin: 10px;
+    border: 0.5px solid rgba(228, 228, 228, 1);
+
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-keyValid-section .moo-subSection h3 {
+    color: #000000;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-keyValid-section .moo-subSection img {
+   margin-top: 8px;
+
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-error-section .moo-alert-icon img {
+   margin-top: 8px;
+   width: 222px;
+}
+#MooPanel #MooPanel_main #MooPanel_tabContent1 #moo-error-section .moo-errorSection-message {
+   margin-top: 8px;
+    font-size: 30px;
+}
+/* List of Orders */
+.orders .column-source {
+    text-align: center;
+}
+.orders #source {
+    width: 66px;
+}
+.sooOrderDetails .back-home {
+    width: 30px;
+    height: 30px;
+    display: inline-block;
+    text-align: center;
+    cursor: pointer;
+}
+.sooOrderDetails .back-home:hover {
+    background: #E9E9E9;
+    border-radius: 4px;
+}
+.sooOrderDetails .title1 {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 23px;
+    color: #000000;
+    margin-top: 10px;
+}
+.sooOrderDetails .card-label {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 18px;
+    margin-left: 10px;
+    color: #696969;
+}
+.sooOrderDetails .card-order {
+    background: #FFFFFF;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.06);
+    border-radius: 10px;
+    width: 100%;
+    height: auto;
+    margin-top: 8px;
+    min-height: 217px;
+    margin-bottom: 31px;
+    padding: 15px;
+}
+.sooOrderDetails .card-order .status-section {
+    border-bottom: 1px solid #D9D9D9;
+    padding-bottom: 8px;
+    margin-bottom: 5px;
+}
+.sooOrderDetails .card-order-payments {
+    background: #FFFFFF;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.06);
+    border-radius: 10px;
+    width: 100%;
+    height: auto;
+    margin-top: 8px;
+    padding: 10px 0px;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    overflow: hidden
+}
+
+.sooOrderDetails .card-order-payments .table-body>div {
+    border-top: 1px solid #D9D9D9;
+}
+.sooOrderDetails .label-crd {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 18px;
+    color: #000000;
+    opacity: 0.5;
+    margin: 13px 0px;
+}
+.sooOrderDetails .label-crd-black {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 18px;
+    color: #000000;
+    margin: 13px 0px;
+}
+.sooOrderDetails .pb-20 {
+    margin-bottom: 20px;
+    display: block;
+}
+.sooOrderDetails .pt-30 {
+    margin-top: 30px;
+}
+.sooOrderDetails .table-header, .sooOrderDetails .card-order-payments .table-header {
+    display: flex;
+    border-bottom: 1px solid #DADADA;
+    height: 40px;
+    margin: 0;
+}
+.sooOrderDetails .card-order .table-footer {
+    padding-bottom: 15px;
+    padding-top: 15px;
+}
+.sooOrderDetails .card-order .table-footer .moo-row {
+    margin: 0;
+    display: flex;
+    justify-content: end;
+}
+.sooOrderDetails .table-header div, .sooOrderDetails .card-order-payments .table-header div {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    letter-spacing: 0.1px;
+    color: #000000;
+    flex: 1;
+    align-items: center;
+    display: flex;
+}
+.sooOrderDetails .card-order-payments .table-body div>div {
+    flex: 1;
+    min-height: 50px;
+    align-items: center;
+    justify-content: center;
+}
+.sooOrderDetails .table-body div {
+    display: flex;
+    margin: 0;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    color: #000000;
+}
+.sooOrderDetails .card-order .lineItem>div {
+    display: flex;
+}
+.sooOrderDetails .table-body div>.lineItemName {
+    font-size: 17px;
+    display: flex;
+    flex-direction: column;
+}
+.sooOrderDetails .table-body div>.lineItemName .itemNote {
+    border: 0;
+    padding-top: 10px;
+    padding-left: 5px;
+}
+.sooOrderDetails .table-body div>.lineItemName,
+.sooOrderDetails .table-body div>.lineItemUnitPrice,
+.sooOrderDetails .table-body div>.lineItemQty,
+.sooOrderDetails .table-body div>.lineItemPrice
+{
+    padding-top: 25px;
+    padding-bottom: 25px;
+    flex: 1;
+}
+.sooOrderDetails .modifiers-list {
+    margin-top: 10px;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 24px;
+    color: #929292;
+}
+.sooOrderDetails .modifiers-list li {
+    padding-left: 10px;
+    font-size: 14px;
+}
+.sooOrderDetails .bg-stripped-gray div {
+    background: #F9FAFF !important;
+    border-bottom: 1px solid #D9D9D9;
+}
+.sooOrderDetails .bg-stripped-white div {
+    background: white;
+    border-bottom: 1px solid #D9D9D9;
+}
+.sooOrderDetails .status-payment-paid {
+    margin-left: 43px;
+    padding: 4px 28px;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 18px;
+    color: #008259;
+    background: #EAF8E9;
+    border-radius: 15.5px;
+}
+.sooOrderDetails .status-payment-open {
+    margin-left: 43px;
+    padding: 4px 28px;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 18px;
+    color: #E49C0E;
+    background: rgba(228,156,14,0.26);
+    border-radius: 15.5px;
+}
+.sooOrderDetails .status-payment-refunded,.sooOrderDetails .status-payment-partially-refunded {
+    margin-left: 43px;
+    padding: 4px 28px;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 18px;
+    color: #FF0000;
+    background: rgba(247,90,90,0.26);
+    border-radius: 15.5px;
+}
+.sooOrderDetails .status-payment-partially-paid {
+    margin-left: 43px;
+    padding: 4px 28px;
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 18px;
+    color: #1327bd;
+    background: rgba(95,154,203,0.26);
+    border-radius: 15.5px;
+}
+.sooOrderDetails .table-pricing {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 25px;
+    letter-spacing: 0.2px;
+    color: #898989;
+    display: block;
+}
+.sooOrderDetails .total-price {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 25px;
+    letter-spacing: 0.2px;
+    color: #000000;
+}
+.sooOrderDetails .total-price-tag {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: 500;
+    font-size: 18px;
+    line-height: 25px;
+    text-align: right;
+    letter-spacing: 0.2px;
+    color: #000000;
+}
+.sooOrderDetails .special-insructions {
+    font-family: 'Questrial', sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    font-size: 14px;
+    line-height: 18px;
+    color: #9C9C9C;
+    padding: 10px;
+    height: auto;
+}
+/* ------------------------------- */
+/*   CSS Export Import Inventory   */
+/* ------------------------------- */
+
+#MooPanel_tabContent11 .moo_exportImport_inventory {
+    width: 775px;
+    margin: 0 auto;
+}
+#MooPanel_tabContent11 .moo_exportImport_inventory h2 {
+    margin: 30px 0;
+}
+#MooPanel_tabContent11 .tabs_ExIm {
+    display: table;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.1);
+    margin-top: 25px;
+}
+#MooPanel_tabContent11 .tab_ExIm {
+    display: table-cell;
+    width: 50%;
+    padding: 20px;
+    background: #F2F2F2;
+    font-size: 16px;
+    color: rgba(0,0,0,0.5);
+    text-align: center;
+    cursor: pointer;
+}
+#MooPanel_tabContent11 .btn_active {
+    color: #193466 !important;
+    background-color: #FFFFFF !important;
+    border-top: 2px solid;
+}
+#MooPanel_tabContent11 .mooContent_ExIm .MooPanelItem {
+    margin: 0 !important;
+    padding: 50px 70px !important;
+    border: 0px !important;
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.1) !important;
+    border-radius: 0px 0px 10px 10px;
+}
+#MooPanel_tabContent11 .checkbox_ExIM_options {
+    margin: 20px 0px;
+}
+#MooPanel_tabContent11 .checkbox_ExIM_options .checkbox_choose {
+    padding: 5px 0;
+}
+#MooPanel_tabContent11 .checkbox_ExIM_options .checkbox_choose label {
+    font-size: 14px;
+    color: #000;
+}
+#MooPanel_tabContent11 .btn_export_data {
+    text-align: end;
+}
+#MooPanel_tabContent11 .btn_export_data p {
+    font-size: 15px;
+}
+#MooPanel_tabContent11 .moo_bt_ImportItems #moo-drag-area {
+    text-align: center;
+    padding: 50px 0px;
+    border-radius: 22px;
+    border: dashed 2px #979797;
+    cursor: pointer;
+}
+#MooPanel_tabContent11 .text-upload {
+    padding-top: 20px;
+}
+#MooPanel_tabContent11 #upload_document {
+    position: absolute;
+    width: 100%;
+    height: 70%;
+    left: 10px;
+    top: 80px;
+    opacity: 0;
+}
+#MooPanel_tabContent11 #browse_input {
+    position: absolute;
+    top: 81%;
+    bottom: 8%;
+    right: 42%;
+    left: 42%;
+    opacity: 0;
+    z-index: 999;
+    cursor: pointer;
+}
+#MooPanel_tabContent11 .browse_file_inventory {
+    text-align: center;
+}
+#MooPanel_tabContent11 .browse_file_inventory .button-browse {
+    cursor: pointer;
+}
+#MooPanel_tabContent11 #moo-drag-area.hover {
+    border: 2px dashed #00C789 !important;
+}
+#MooPanel_tabContent11 .loadingVisibil {
+    display: block;
+    margin: 0 auto;
+}
+#MooPanel_tabContent11 .loadingHidden {
+    display: none;
+}
+#MooPanel_tabContent11 #file_upload_inventory {
+    position: absolute;
+    left: 66px;
+    top: 45px;
+    bottom: 130px;
+    opacity: 0;
+    width: 100%;
+}
+#MooPanel_tabContent11 .browse_file_inventory #btn_browse_inventory, #MooPanel_tabContent11 .button-export {
+    font-size: 16px;
+    padding: 14px 35px;
+    color: #fff;
+    background: #193466;
+    border-radius: 5px;
+}
+#MooPanel_tabContent11 .bar-progress {
+    width: 500px;
+    height: 4px;
+    background: rgba(25,52,102,0.1);
+    border-radius: 2px;
+    margin: 15px 0px auto;
+    margin-bottom: 0;
+}
+#MooPanel_tabContent11 .bar-in-progress {
+    background: #193466;
+    height: 4px;
+}
+
+#MooPanel_tabContent11 .bar-progress {
+    height: 10px;
+    background: rgba(25,52,102,0.1);
+    border-radius: 2px;
+    margin: 15px 0px auto;
+    width: 100%;
+}
+#MooPanel_tabContent11 .bar-in-progress {
+    background: #193466;
+    height: 10px;
+    border-radius: 2px;
+    background-image: linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent);
+    background-size: 1rem 1rem;
+}
+.mooRowImport{
+    margin-bottom: 15px;
+}
+.importResultSection {
+    margin-bottom: 20px;
+}
+.content-details-progress {
+    background-color: #eee;
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 2px;
+    overflow-y: scroll;
+    height: 100px;
+    transition: 0.5s;
+}
+.header-details-progress{
+    display: contents;
+    margin: 10px;
+}
+.title-progress-bar, .show-more-details-progress{
+    display: inline;
+}
+.show-more-progress-bt{
+    float: right;
+    cursor: pointer;
+}
+
+
+/* ------------------------------- */
+/* --- End CSS Export Import  ---- */
+/* ------------------------------- *
+/*
+    Mobile CSS
+ */
+@media screen and (max-width: 600px) {
+    .moo_dashboard_addon_box {
+        width: 96%;
+    }
+    .moo_dashboard_logo {
+        display: none;
+    }
+    .moo_dashboard_text_error {
+        padding: 10px;
+        text-align: center;
+        font-size: 20px;
+        font-family: 'Eina',monospace;
+        color: #1F3C71;
+        line-height: 30px;
+    }
+    .moo_dashboard_nav_tab {
+        width: 100%;
+        padding: 0;
+        margin-bottom: 0;
+        line-height: 45px;
+    }
+    .sooOrderDetails .table-body div>.lineItemName,
+    .sooOrderDetails .table-body div>.lineItemUnitPrice,
+    .sooOrderDetails .table-body div>.lineItemQty,
+    .sooOrderDetails .table-body div>.lineItemPrice
+    {
+        padding: 10px;
+        flex: 1;
+    }
+}
+
+
