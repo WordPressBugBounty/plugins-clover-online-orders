@@ -1,15 +1,20 @@
 <?php
 require_once 'class-wp-list-table-moo.php';
 class Coupons_List_Moo extends WP_List_Table_MOO {
+    /**
+     * @var mixed
+     */
+    private $couponPageUrl;
+
     /** Class constructor */
     public function __construct() {
-              parent::__construct( array(
-            'singular' => __( 'Order'), //singular name of the listed records
-            'plural'   => __( 'Orders'), //plural name of the listed records
+        $this->couponPageUrl = admin_url('admin.php?page=moo_coupons');
+        parent::__construct( array(
+            'singular' => __( 'Coupon',"moo_OnlineOrders"), //singular name of the listed records
+            'plural'   => __( 'Coupons',"moo_OnlineOrders"), //plural name of the listed records
             'ajax'     => false //should this table support ajax?
 
         ) );
-        //var_dump('creating an Object');
         /** Process bulk action */
         $this->process_bulk_action();
 
@@ -22,7 +27,7 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
      *
      * @return mixed
      */
-    public static function get_items( $per_page = 20, $page_number = 1 ) {
+    public function get_items( $per_page = 20, $page_number = 1 ) {
         global $wpdb;
         require_once plugin_dir_path( dirname(__FILE__) )."../includes/moo-OnlineOrders-sooapi.php";
         $api = new Moo_OnlineOrders_SooApi();
@@ -36,7 +41,7 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
     }
     /** Text displayed when no customer data is available */
     public function no_items() {
-        _e( 'No Coupon available.');
+        _e( 'No Coupon available.',"moo_OnlineOrders");
     }
 
     /** Delete Order */
@@ -60,7 +65,7 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
      *
      * @return null|string
      */
-    public static function record_count() {
+    public function record_count() {
         require_once plugin_dir_path( dirname(__FILE__) )."../includes/moo-OnlineOrders-sooapi.php";
         $api = new Moo_OnlineOrders_SooApi();
         $res = json_decode($api->getNbCoupons());
@@ -128,14 +133,14 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
     function get_columns() {
         $columns = array(
             'cb'      => '<input type="checkbox" />',
-            'name'    => __( 'Coupon Name'),
-            'code' => __( 'Code'),
-            'value'    => __( 'Value'),
-            'type'    => __( 'Type'),
-            'minAmount'    => __( 'Min Amount'),
-            'uses' => __( 'Number of uses'),
-            'isEnabled' => __( 'Is enabled ?'),
-            'expirationdate'    => __( 'Expiry date')
+            'name'    => __( 'Coupon Name',"moo_OnlineOrders"),
+            'code' => __( 'Code',"moo_OnlineOrders"),
+            'value'    => __( 'Value',"moo_OnlineOrders"),
+            'type'    => __( 'Type',"moo_OnlineOrders"),
+            'minAmount'    => __( 'Min Amount',"moo_OnlineOrders"),
+            'uses' => __( 'Number of uses',"moo_OnlineOrders"),
+            'isEnabled' => __( 'Is enabled ?',"moo_OnlineOrders"),
+            'expirationdate'    => __( 'Expiry date',"moo_OnlineOrders")
         );
 
         return $columns;
@@ -182,7 +187,7 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
 
         $per_page     = $this->get_items_per_page( 'moo_items_per_page', 10 );
         $current_page = $this->get_pagenum();
-        $total_items  = self::record_count();
+        $total_items  = $this->record_count();
 
         $this->set_pagination_args( array(
             'total_items' => $total_items, //WE have to calculate the total number of items
@@ -190,7 +195,7 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
         ) );
 
 
-        $this->items = self::get_items( $per_page, $current_page );
+        $this->items = $this::get_items( $per_page, $current_page );
     }
     public function process_bulk_action() {
         //Detect when a bulk action is being triggered...
@@ -200,21 +205,24 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
             if ( ! wp_verify_nonce( $nonce, 'moo_delete_coupon' ) ) {
                 die( 'You are not permitted to perform this action' );
             } else {
-                $res = self::delete_coupon(sanitize_text_field($_GET['coupon']));
-                wp_redirect( add_query_arg(array("deleted"=>$res),remove_query_arg( array('coupon', 'action'))));
+                $res = $this->delete_coupon(sanitize_text_field($_GET['coupon']));
+                $redirect_url = add_query_arg(array("deleted"=>$res), $this->couponPageUrl);
+                wp_safe_redirect( $redirect_url );
                 exit;
             }
 
         }
         if ( 'enable' === $this->current_action() ) {
-            $res = self::enable_coupon(sanitize_text_field($_GET['coupon']),"1");
-            wp_redirect( add_query_arg(array("enabled"=>$res),remove_query_arg( array('coupon', 'action'))));
+            $res = $this->enable_coupon(sanitize_text_field($_GET['coupon']),"1");
+            $redirect_url = add_query_arg(array("enabled"=>$res), $this->couponPageUrl);
+            wp_safe_redirect( $redirect_url );
             exit;
         }
 
         if ( 'disable' === $this->current_action() ) {
-            $res = self::enable_coupon(sanitize_text_field($_GET['coupon']),"0");
-            wp_redirect( add_query_arg(array("disabled"=>$res),remove_query_arg( array('coupon', 'action'))));
+            $res = $this->enable_coupon(sanitize_text_field($_GET['coupon']),"0");
+            $redirect_url = add_query_arg(array("disabled"=>$res), $this->couponPageUrl);
+            wp_safe_redirect( $redirect_url );
             exit;
         }
 
@@ -223,9 +231,10 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
             $codes = esc_sql( $_POST['bulk-coupon'] );
             // loop over the array of record IDs and delete them
             foreach ( $codes as $code ) {
-                $res = self::delete_coupon( $code );
+                $res = $this->delete_coupon( $code );
             }
-            wp_redirect( add_query_arg(array("deleted"=>$res),remove_query_arg( array('coupon', 'action'))));
+            $redirect_url = add_query_arg(array("deleted"=>$res), $this->couponPageUrl);
+            wp_safe_redirect( $redirect_url );
             exit;
         }
 
@@ -233,9 +242,10 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
             $codes = esc_sql( $_POST['bulk-coupon'] );
             // loop over the array of record IDs and delete them
             foreach ( $codes as $code ) {
-                $res = self::enable_coupon( $code, "1" );
+                $res = $this->enable_coupon( $code, "1" );
             }
-            wp_redirect( add_query_arg(array("enabled"=>$res),remove_query_arg( array('coupon', 'action'))));
+            $redirect_url = add_query_arg(array("enabled"=>$res), $this->couponPageUrl);
+            wp_safe_redirect( $redirect_url );
             exit;
         }
 
@@ -244,9 +254,10 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
             $codes = esc_sql( $_POST['bulk-coupon'] );
             // loop over the array of record IDs and delete them
             foreach ( $codes as $code ) {
-                $res = self::enable_coupon( $code, "0" );
+                $res = $this->enable_coupon( $code, "0" );
             }
-            wp_redirect( add_query_arg(array("disabled"=>$res),remove_query_arg( array('coupon', 'action'))));
+            $redirect_url = add_query_arg(array("disabled"=>$res), $this->couponPageUrl);
+            wp_safe_redirect( $redirect_url );
             exit;
         }
     }

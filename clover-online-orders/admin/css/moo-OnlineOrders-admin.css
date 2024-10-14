@@ -400,13 +400,13 @@
     padding: 25px 0 0 3px;
 }
 
-#price,#price_type,#unit_name,#sku,#available
+#price,#price_type,#unit_name,#sku,#available,#visible
 {
     width: 102px;
 }
 #name
 {
-    width: 200px;
+    width: 150px;
 }
 #outofstock,#custom_hours
 {
@@ -1190,6 +1190,12 @@ div#MooPanel_tabContent5 div.MooPanelItem div#bloc_moo_ptions_item div.Moo_optio
 }
 .moo_hidden {
     display: none !important;
+}
+.soo-display-none {
+    display: none;
+}
+.soo-display-block{
+    display: block;
 }
 /* --- table category --- */
 

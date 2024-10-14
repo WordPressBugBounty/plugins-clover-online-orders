@@ -485,40 +485,40 @@ class Moo_OnlineOrders_Activator {
                 'post_content'   => '[moo_my_account]'
             )
         );
-        $defaultOptions = (array)get_option( 'moo_settings' );
+        $currentOptions = (array)get_option( 'moo_settings' );
 
-        if(!isset($defaultOptions['store_page']) || $defaultOptions['store_page'] == "" )
+        if(!isset($currentOptions['store_page']) || $currentOptions['store_page'] == "" )
         {
             $store_page_id =  wp_insert_post( $pages['store'], false );
-            $defaultOptions['store_page'] = $store_page_id ;
+            $currentOptions['store_page'] = $store_page_id ;
         }
-        if(!isset($defaultOptions['checkout_page']) || $defaultOptions['checkout_page'] == "")
+        if(!isset($currentOptions['checkout_page']) || $currentOptions['checkout_page'] == "")
         {
             $checkout_page_id =  wp_insert_post( $pages['checkout'], false );
-            $defaultOptions['checkout_page'] =  $checkout_page_id;
+            $currentOptions['checkout_page'] =  $checkout_page_id;
         }
-        if(!isset($defaultOptions['cart_page']) || $defaultOptions['cart_page'] == "")
+        if(!isset($currentOptions['cart_page']) || $currentOptions['cart_page'] == "")
         {
             $cart_page_id  =  wp_insert_post( $pages['cart'], false );
-            $defaultOptions['cart_page'] = $cart_page_id ;
+            $currentOptions['cart_page'] = $cart_page_id ;
         }
-        if(!isset($defaultOptions['my_account_page']) || $defaultOptions['my_account_page'] == "")
+        if(!isset($currentOptions['my_account_page']) || $currentOptions['my_account_page'] == "")
         {
             $login_page_id  =  wp_insert_post( $pages['my_account_page'], false );
-            $defaultOptions['my_account_page'] = $login_page_id ;
+            $currentOptions['my_account_page'] = $login_page_id ;
         }
 
         // Save the version of the plugin in the Database
          update_option('moo_onlineOrders_version', '157');
 
         // Enable the new checkout
-        update_option("moo_new_checkout_enabled",'yes');
+        update_option("moo_old_checkout_enabled",'no');
 
-        $defaultOptions = self::applyDefaultOptions($defaultOptions);
+        //Apply default options
+        Moo_OnlineOrders_Helpers::applyDefaultOptions($currentOptions);
 
-        update_option('moo_settings', $defaultOptions );
 	}
-	public static function applyDefaultOptions($MooOptions) {
+	public static function applyDefaultOptionsOld($MooOptions) {
         $default_options = array(
             array("name"=>"api_key","value"=>""),
             array("name"=>"lat","value"=>""),
@@ -536,7 +536,7 @@ class Moo_OnlineOrders_Activator {
             array("name"=>"custom_sa_content","value"=>""),
             array("name"=>"custom_sa_title","value"=>""),
             array("name"=>"custom_sa_onCheckoutPage","value"=>"off"),
-            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.5.7">Smart Online Order</a>'),
+            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.5.8">Smart Online Order</a>'),
             array("name"=>"default_style","value"=>"onePage"),
             array("name"=>"track_stock","value"=>""),
             array("name"=>"track_stock_hide_items","value"=>"off"),
@@ -544,8 +544,11 @@ class Moo_OnlineOrders_Activator {
             array("name"=>"tips","value"=>"enabled"),
             array("name"=>"payment_creditcard","value"=>"off"),
             array("name"=>"clover_payment_form","value"=>"on"),
-            array("name"=>"payment_cash","value"=>"on"),
-            array("name"=>"payment_cash_delivery","value"=>"on"),
+            array("name"=>"clover_googlepay","value"=>"on"),
+            array("name"=>"clover_applepay","value"=>"on"),
+            array("name"=>"clover_giftcards","value"=>"off"),
+            array("name"=>"payment_cash","value"=>"off"),
+            array("name"=>"payment_cash_delivery","value"=>"off"),
             array("name"=>"scp","value"=>"off"),
             array("name"=>"merchant_phone","value"=>""),
             array("name"=>"order_later","value"=>"on"),

@@ -86,8 +86,7 @@ class moo_OnlineOrders_Admin {
         $products = new Products_List_Moo();
         $products->prepare_items();
         $model = $this->model;
-        if(isset($_GET['action']) && $_GET['action'] == 'update_item')  {
-            if(isset($_GET['item_uuid']) && $_GET['item_uuid'] != '') {
+        if(isset($_GET['action']) && $_GET['action'] == 'update_item'  && !empty($_GET['item_uuid']))  {
                 $item_uuid = esc_attr($_GET['item_uuid']);
                 $item = $model->getItem($item_uuid);
 
@@ -98,13 +97,16 @@ class moo_OnlineOrders_Admin {
 
                 $customHours = $this->api->getMerchantCustomHours("categories");
 
-                if(isset($_GET['paged']) && $_GET['paged'] != ''){
-                    $goBackLink = 'admin.php?page=moo_items&paged='.intval($_GET['paged']);
+                if(!empty($_GET['paged'])){
+                    $goBackLink = 'admin.php?page=moo_items&paged='.esc_attr($_GET['paged']);
                 } else {
                     $goBackLink = 'admin.php?page=moo_items';
                 }
-                if(isset($_GET['category']) && $_GET['category'] != ''){
-                    $goBackLink = $goBackLink . '&category='. sanitize_text_field($_GET['category']);
+                if(!empty($_GET['category'])){
+                    $goBackLink = $goBackLink . '&category='. esc_attr($_GET['category']);
+                }
+                if(!empty($_GET['filter'])){
+                    $goBackLink = $goBackLink . '&filter='. esc_attr($_GET['filter']);
                 }
 
                 ?>
@@ -167,7 +169,7 @@ class moo_OnlineOrders_Admin {
                 </script>
 
                 <?php
-            }
+
         } else {
             ?>
             <div class="wrap">
@@ -474,7 +476,9 @@ class moo_OnlineOrders_Admin {
             <div class="wrap">
                 <?php if($message!="") echo $message; ?>
                 <h1 style="float: left;">List of coupons</h1>
-                <a href="<?php echo add_query_arg(array("action"=>"add_coupon"),remove_query_arg( array('coupon', 'paged'))); ?>" class="page-title-action" style="float: left;top: 11px;margin-left: 18px;">Add Coupon</a>
+                <a href="<?php
+                echo add_query_arg(array("action"=>"add_coupon"),admin_url('admin.php?page=moo_coupons'));
+                ?>" class="page-title-action" style="float: left;top: 11px;margin-left: 18px;">Add Coupon</a>
                 <div id="poststuff">
                     <div id="post-body" class="metabox-holder">
                         <div id="post-body-content">
@@ -939,7 +943,7 @@ class moo_OnlineOrders_Admin {
                                 <h3><?php _e("Your Clover Registered Business Address","moo_OnlineOrders"); ?></h3>
                                 <p class="moo-merchant-address"></p>
                                 <?php
-                                    $link = esc_url(add_query_arg('moo_section', 'update_address',(admin_url('admin.php?page=moo_index'))));
+                                    $link = esc_url(add_query_arg(array('moo_section'=>'update_address'),admin_url('admin.php?page=moo_index')));
                                     if($mooOptions['lat'] === null || $mooOptions['lng'] === null){
                                         echo '<a href="'.$link.'">Click here to localize the address on map to calulcate delivery fees correctly</a>';
                                     } else {
@@ -991,27 +995,6 @@ class moo_OnlineOrders_Admin {
                                     </div>
                                 </div>
                         <?php } ?>
-                        <div class="moo-row moo-subSection">
-                            <div class="moo-col-md-2 moo-centred">
-                                <img  width="80px" src="<?php echo plugin_dir_url(dirname(__FILE__))."admin/img/iconSooNew.svg";?>" alt=""/>
-                            </div>
-                            <div class="moo-col-md-8">
-                                <?php
-                                    $newCheckoutEnabled = get_option('moo_new_checkout_enabled') === 'yes';
-                                    echo "<h3>New (Beta) Checkout Page</h3>";
-                                    echo "<p>Will allow customers to earn Loyalty Points when Ordering from the Website. For even more convenience, we recommend getting the Branded App to give customers even more control.</p>";
-                                ?>
-                            </div>
-                            <div class="moo-col-md-2">
-                                <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right;margin-top: 38px;margin-right: 20px;">
-                                    <input type="checkbox" name="sooNewCheckoutPage" id="sooNewCheckoutPage" class="soo-onoffswitch-checkbox" onchange="enableOrDisableNewCheckout()" <?php  echo $newCheckoutEnabled?'checked':''; ?> >
-                                    <label class="soo-onoffswitch-label" for="sooNewCheckoutPage">
-                                        <span class="soo-onoffswitch-inner"></span>
-                                        <span class="soo-onoffswitch-switch"></span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
                         <div class="moo-row moo-subSection">
                             <div class="moo-col-md-12">
                                 <!--[if lte IE 8]>
@@ -1196,7 +1179,20 @@ class moo_OnlineOrders_Admin {
                             <div id="moo_progressbar_container"></div>
                             <div class="Moo_option-item">
                                 <div class="button_center">
-                                    <a href="#" onclick="MooPanel_CleanInventory(event)" class="button button-secondary"  style="margin: 0 auto">Clean Inventory</a>
+                                    <a href="#" onclick="MooPanel_CleanInventory(event)" class="button button-secondary moo-form-inline"  style="margin: 0 auto">Clean Inventory</a>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="MooPanelItem">
+                            <h3>Repair Database</h3>
+                            <p>
+                                If you encounter issues with importing your inventory or syncing, it may be due to upgrading from an older version without the database updating correctly. In this case, use the "Repair Database" button to resolve all database issues. If the problem persists, contact us at [ support@zaytech.com ] for further assistance.
+                            </p>
+                            <div id="moo_progressbar_container"></div>
+                            <div class="Moo_option-item">
+                                <div class="button_center">
+                                    <a href="#" onclick="sooRepairDatabase(event)" class="button button-secondary"  style="margin: 0 auto">Repair Database</a>
                                 </div>
 
                             </div>
@@ -1601,8 +1597,8 @@ class moo_OnlineOrders_Admin {
                                     <img src="<?php echo plugin_dir_url(dirname(__FILE__))."public/img/info-icon.png" ?>" alt="">
                                 </span>
                             </div>
-                            <div id="sooAdditionalPaymentMethods" style="display: <?php echo get_option('moo_new_checkout_enabled') === 'yes' ? 'block':'none'; ?>">
-                                <div class="Moo_option-item" style="display:<?php echo (!empty(SOO_ACCEPT_GIFTCARDS))?"block":"none"; ?>">
+                            <div  id="sooAdditionalPaymentMethods" class="<?php echo get_option('moo_old_checkout_enabled') === 'yes' ? 'soo-display-none':'soo-display-block'; ?>">
+                                <div class="Moo_option-item <?php echo (!empty(SOO_ACCEPT_GIFTCARDS))?"soo-display-block":"soo-display-none"; ?>" >
                                     <div style="margin-bottom: 14px;" class="label">Accept Clover Gift Cards</div>
                                     <div class="moo-onoffswitch"  title="Accept Clover Gift Cards">
                                         <input type="hidden" name="moo_settings[clover_giftcards]" value="off">
@@ -1869,7 +1865,9 @@ class moo_OnlineOrders_Admin {
                                         <div class="iwl_holder"><div class="iwl_label_holder">
                                                 <label id="MooTextUnderSI" >Your text</label>
                                             </div>
-                                            <div class="iwl_input_holder"><input name="moo_settings[text_under_special_instructions]" id="MooTextUnderSI" type="text" value="<?php echo $mooOptions['text_under_special_instructions']?>" /></div>
+                                            <div class="iwl_input_holder">
+                                                <textarea name="moo_settings[text_under_special_instructions]"  id="MooTextUnderSI" type="text"><?php echo $mooOptions['text_under_special_instructions']?></textarea>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="Moo_option-item">
@@ -1888,7 +1886,7 @@ class moo_OnlineOrders_Admin {
                             </div>
 
                         </div>
-                        <!-- Thank you  page -->
+                        <!-- Thank you page -->
                         <div class="MooPanelItem MooPanelItemExpanded">
                             <h3 onclick="expandSection(this)">Thank you page</h3>
                             <div class="Moo_option-item" >
@@ -1918,6 +1916,29 @@ class moo_OnlineOrders_Admin {
                             <div class="Moo_option-item">
                                 <div class="iwl_holder"><div class="iwl_label_holder"><label id="MooDefaultMerchantEmail" >Or Enter The Full URL</label></div>
                                     <div class="iwl_input_holder"><input name="moo_settings[thanks_page]" id="MooDefaultMerchantEmail" type="text" value="<?php echo $mooOptions['thanks_page']?>" placeholder="https://" /></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Enable old Checkout back in case if issues -->
+                        <div class="MooPanelItem MooPanelItemExpanded">
+                            <?php
+                            $oldCheckoutEnabled = get_option('moo_old_checkout_enabled') === 'yes';
+                            ?>
+                            <h3 onclick="expandSection(this)">Return to Previous Checkout</h3>
+                            <div class="Moo_option-item" >
+                                <div class="normal_text">
+                                    Reverting back to the previous version of checkout page, if you have experienced any issues please provide an image and description of the issue to support@zaytech.com. The previous version is available for a limited time.
+                                </div>
+                            </div>
+                            <div class="Moo_option-item" >
+                                <div class="normal_text">
+                                    <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right;margin-top: 38px;margin-right: 20px;">
+                                        <input type="checkbox" name="sooOldCheckoutPage" id="sooOldCheckoutPage" class="soo-onoffswitch-checkbox" onchange="enableOrDisableOldCheckout()" <?php  echo $oldCheckoutEnabled?'checked':''; ?> >
+                                        <label class="soo-onoffswitch-label" for="sooOldCheckoutPage">
+                                            <span class="soo-onoffswitch-inner"></span>
+                                            <span class="soo-onoffswitch-switch"></span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>

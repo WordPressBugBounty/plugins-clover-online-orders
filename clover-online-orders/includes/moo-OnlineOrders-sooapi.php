@@ -248,9 +248,6 @@ class Moo_OnlineOrders_SooApi
 
     }
     //Functions to call the API for make Orders and payments
-    public function getPayKey() {
-        return $this->callApi("paykey", $this->apiKey);
-    }
     public function getPakmsKey(){
         //Get it locally when it's not found get it from Clover
         $localKey =  get_option("moo_pakms_key");
@@ -345,8 +342,8 @@ class Moo_OnlineOrders_SooApi
                     foreach ($Theday["elements"]as $time) {
                         $startTime = ($time["start"] != 0) ? substr_replace(((strlen($time["start"]) == 4) ? $time["start"] : ((strlen($time["start"]) == 2) ? '00' . $time["start"] : '0' . $time["start"])), ':', 2, 0) : '00:00';
                         $endTime = ($time["end"] != 2400) ? substr_replace(((strlen($time["end"]) == 4) ? $time["end"] : ((strlen($time["end"]) == 2) ? '00' . $time["end"] : '0' . $time["end"])), ':', 2, 0) : '24:00';
-                        $string .= date('h:i a', strtotime($startTime)) . ' to ' . date('h:i a', strtotime($endTime)) . ' AND ';
-                        $result[ucfirst($days_name)][] = date('h:i a', strtotime($startTime)) . ' to ' . date('h:i a', strtotime($endTime));
+                        $string .= gmdate('h:i a', strtotime($startTime)) . ' to ' . gmdate('h:i a', strtotime($endTime)) . ' AND ';
+                        $result[ucfirst($days_name)][] = gmdate('h:i a', strtotime($startTime)) . ' to ' . gmdate('h:i a', strtotime($endTime));
                         //$result[ucfirst($days_name)] = substr($string, 0, -5);
                     }
                 } else {
@@ -1509,7 +1506,7 @@ class Moo_OnlineOrders_SooApi
             $result['coupon'] = $orderFromServer->coupon;
 
             if ($orderFromServer->order->date != "") {
-                $result['date_order'] = date('m/d/Y', $orderFromServer->order->date / 1000);
+                $result['date_order'] = gmdate('m/d/Y', $orderFromServer->order->date / 1000);
             }
             if ($orderFromServer->order->taxRemoved == "1") {
                 $result['taxRemoved'] = true;
@@ -1945,39 +1942,20 @@ class Moo_OnlineOrders_SooApi
     }
 
     private function callApi($url, $accesstoken) {
-
-        $headr = array();
-        $headr[] = 'Accept: application/json';
-        $headr[] = 'X-Authorization: ' . $accesstoken;
-        $url = $this->url_api . $url;
-        //cURL starts
-        $crl = curl_init();
-        curl_setopt($crl, CURLOPT_URL, $url);
-        curl_setopt($crl, CURLOPT_HTTPHEADER, $headr);
-        curl_setopt($crl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($crl, CURLOPT_HTTPGET, true);
-        curl_setopt($crl, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($crl, CURLOPT_SSL_VERIFYPEER, (get_option('soo_ssl_verify','true') === 'true'));
-        //curl_setopt($crl, CURLOPT_TIMEOUT, 1);
-        $reply = curl_exec($crl);
-        //error handling for cURL
-        if ($reply === false) {
-            if(curl_error($crl) === 'SSL certificate problem: certificate has expired'){
-                //Expired WordPress certificate
-                update_option('soo_ssl_verify','false');
+        $args = array(
+            "headers"=> array(
+                'X_CLIENT_IP' => $this->getClientIp(),
+                'Accept' => "application/json",
+                'X-Authorization' => $accesstoken
+            ),
+        );
+        $endpoint = $this->url_api . $url;
+        $response = $this->sendHttpRequest($endpoint,"GET",$args);
+        if($response && is_array($response)) {
+            if($response["httpCode"] === 200 || $response["httpCode"] === 404 ){
+                return $response["responseContent"];
             }
-            if ($this->debugMode){
-                print_r('Curl error: ' . curl_error($crl) . ' URL : '. $url);
-            }
-            return false;
         }
-        $info = curl_getinfo($crl);
-        curl_close($crl);
-        if ($this->debugMode) {
-            echo "GET :: " . $url . " <<";
-            echo ">> ";
-        }
-        if ($info['http_code'] == 200) return $reply;
         return false;
     }
     private function callApi_Post($url, $accesstoken, $fields_string) {

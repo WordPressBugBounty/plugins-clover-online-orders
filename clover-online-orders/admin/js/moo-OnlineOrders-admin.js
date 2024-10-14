@@ -2467,15 +2467,14 @@ function moo_showHideSection(id, show) {
 function moo_filtrer_by_category(e)
 {
     e.preventDefault();
-    var url = jQuery('#moo_cat_filter').val();
-
-    if(url && url != '') {
-        document.location.href = url
+    var catUuid = jQuery('#moo_cat_filter').val();
+    if(catUuid && catUuid !== '') {
+        document.location.href = 'admin.php?page=moo_items&category='+catUuid;
     } else {
         document.location.href = 'admin.php?page=moo_items';
     }
 }
-function moo_markItemAsFeatured(e,item_uuid, isFeaturedOld) {
+function moo_markItemAsFeatured(e,item_uuid) {
     e.preventDefault();
     swal({
         title: 'Please wait ..',
@@ -2519,6 +2518,119 @@ function moo_markItemAsFeatured(e,item_uuid, isFeaturedOld) {
                     confirmButtonText: "ok"
                 });
             }
+        } else {
+            swal({
+                title: "Error",
+                text: 'Try again',
+                type: "error",
+                confirmButtonText: "ok"
+            });
+        }
+    });
+}
+function moo_markItemAsOutOfStock(e,item_uuid) {
+    e.preventDefault();
+    swal({
+        title: 'Please wait ..',
+        showConfirmButton: false
+    });
+    const isOutOfStock = jQuery(e.target).data('isOutOfStock');
+    jQuery.ajax({
+        type: 'POST',
+        url: moo_RestUrl+"moo-clover/v1/dashboard/out_of_stock_items",
+        contentType: 'application/json; charset=UTF-8',
+        beforeSend: function(jqXhr) {
+            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce)
+        },
+        data: JSON.stringify({"itemUuid":item_uuid,"isOutOfStock":isOutOfStock})
+    }).fail(function (data) {
+        //Change butn text
+        swal({
+            title: "Error",
+            text: 'An has occurred, please refresh the page or contact us',
+            type: "error",
+            confirmButtonText: "ok"
+        });
+    }).done(function (data) {
+        if(data.status === "success"){
+            if (isOutOfStock){
+                jQuery('#sooOutOfStockItem-'+item_uuid).hide();
+                jQuery('#sooInStockItem-'+item_uuid).show();
+                jQuery('#outofstock-item-'+item_uuid).text("Yes");
+                swal({
+                    title: "Done!",
+                    text: 'The item has been marked as out of stock',
+                    type: "success",
+                    confirmButtonText: "ok"
+                });
+            } else {
+                jQuery('#sooOutOfStockItem-'+item_uuid).show();
+                jQuery('#sooInStockItem-'+item_uuid).hide();
+                jQuery('#outofstock-item-'+item_uuid).text("No");
+                swal({
+                    title: "Done!",
+                    text: 'The item has been marked as in stock',
+                    type: "success",
+                    confirmButtonText: "ok"
+                });
+            }
+        } else {
+            swal({
+                title: "Error",
+                text: 'Try again',
+                type: "error",
+                confirmButtonText: "ok"
+            });
+        }
+    });
+}
+function moo_changeItemVisibility(e,item_uuid) {
+    e.preventDefault();
+    swal({
+        title: 'Please wait ..',
+        showConfirmButton: false
+    });
+    const isVisible = jQuery(e.target).data('is-visible');
+    jQuery.ajax({
+        type: 'POST',
+        url: moo_RestUrl+"moo-clover/v1/dashboard/showhide_items",
+        contentType: 'application/json; charset=UTF-8',
+        beforeSend: function(jqXhr) {
+            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce)
+        },
+        data: JSON.stringify({"itemUuid":item_uuid,"visibility":!isVisible})
+    }).fail(function (data) {
+        //Change butn text
+        swal({
+            title: "Error",
+            text: 'An has occurred, please refresh the page or contact us',
+            type: "error",
+            confirmButtonText: "ok"
+        });
+    }).done(function (data) {
+        if(data.status === "success") {
+            if (!isVisible){
+                jQuery('#sooShowAnItem-'+item_uuid).hide();
+                jQuery('#sooHideAnItem-'+item_uuid).show();
+                jQuery('#visibility-item-'+item_uuid).text("No");
+                swal({
+                    title: "Done!",
+                    text: 'The item has been marked as visible',
+                    type: "success",
+                    confirmButtonText: "ok"
+                });
+            } else {
+                jQuery('#sooShowAnItem-'+item_uuid).show();
+                jQuery('#sooHideAnItem-'+item_uuid).hide();
+                jQuery('#visibility-item-'+item_uuid).text("Yes");
+                swal({
+                    title: "Done!",
+                    text: 'The item has been marked as hidden',
+                    type: "success",
+                    confirmButtonText: "ok"
+                });
+            }
+            jQuery('#soo-item-row-'+item_uuid).toggleClass( "item-hidden" );
         } else {
             swal({
                 title: "Error",
@@ -2905,6 +3017,52 @@ function MooPanel_CleanInventory(e)
         swal.resetDefaults()
     })
 }
+
+/*
+ * Repair the database issues
+ * @version 1.5.8
+ */
+
+function sooRepairDatabase(e)
+{
+    e.preventDefault();
+    swal({
+        title: 'Repairing your database',
+        text: 'Please wait...',
+        showConfirmButton: false
+    });
+    jQuery.ajax({
+        type: 'GET',
+        url: moo_RestUrl+"moo-clover/v1/tools/repair_database",
+        beforeSend: function(jqXhr) {
+            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce)
+        }
+    }).fail(function (data) {
+        //Change butn text
+        swal({
+            title: "Error",
+            text: 'An has occurred, please refresh the page or contact us',
+            type: "error",
+            confirmButtonText: "ok"
+        });
+    }).done(function (data) {
+        if(data.status === "success"){
+            swal({
+                title: "All Done!",
+                text: 'Your database has been repaired.',
+                type: "success",
+                confirmButtonText: "ok"
+            });
+        } else {
+            swal({
+                title: "Error",
+                text: 'Database repair was not completed successfully. Please verify your data or contact support if the issue persists',
+                type: "error",
+                confirmButtonText: "ok"
+            });
+        }
+    });
+}
 /*
  * This function to Clean the inventory, we set teh typOfdate wich may take (order_tyes,tax_rates,categories,items..)
  * The default number of data per page is 10, then we send an other request using the recursive loop CleanByPage
@@ -3113,11 +3271,11 @@ function mooGetOpeningHours( event, sync = false ) {
         }
     });
 }
-function enableOrDisableNewCheckout() {
-    const enable = jQuery('#sooNewCheckoutPage').is(":checked");
+function enableOrDisableOldCheckout() {
+    const enable = jQuery('#sooOldCheckoutPage').is(":checked");
     if(enable){
         swal({
-            title: 'Enabling the new Checkout page...',
+            title: 'Enabling the old Checkout page...',
             showConfirmButton: false
         });
     } else {
@@ -3127,14 +3285,12 @@ function enableOrDisableNewCheckout() {
         });
     }
 
-    let endpoint = moo_RestUrl+'moo-clover/v2/dash/enable-new-checkout';
-
+    let endpoint = moo_RestUrl+'moo-clover/v2/dash/enable-old-checkout';
     if(moo_RestUrl.indexOf("?rest_route") !== -1){
          endpoint += '&_wpnonce='+ moo_params.nonce;
     } else {
         endpoint += '?_wpnonce='+ moo_params.nonce;
     }
-
     var data = {
         "status":enable
     };
@@ -3144,22 +3300,22 @@ function enableOrDisableNewCheckout() {
             if(enable){
                 swal({
                     type:"success",
-                    title:"New Checkout Page is Now Live",
+                    title:"Old Checkout Page is Enabled",
                     text:"Checkout beta enabled, Google Pay and DoorDash Drive Integration is available with this feature reach out to support@zaytech.com for instructions on how to get started."
                 });
-                jQuery('#sooAdditionalPaymentMethods').show();
+                jQuery('#sooAdditionalPaymentMethods').hide();
                 // Show Google Recaptcha
             } else {
                 swal({
-                    type:"warning",
-                    title:'Change to Previous Version Confirmed',
-                    text:'Reverting back to the previous version, if you have experienced any issues please provide an image and description of the issue to support@zaytech.com'
+                    type:"success",
+                    title:"Old Checkout Page is Disabled",
+                    text:"Checkout beta enabled, Google Pay and DoorDash Drive Integration is available with this feature reach out to support@zaytech.com for instructions on how to get started."
                 });
-                jQuery('#sooAdditionalPaymentMethods').hide();
+                jQuery('#sooAdditionalPaymentMethods').show();
                 // Hide Google Recaptcha
             }
         } else {
-            jQuery('#sooNewCheckoutPage').prop('checked',!enable)
+            jQuery('#sooOldCheckoutPage').prop('checked',!enable)
             swal({
                 type:"error",
                 text:'Error Occurred: Please Refresh and Retry'
@@ -3167,7 +3323,7 @@ function enableOrDisableNewCheckout() {
         }
 
     }).fail(function (response) {
-        jQuery('#sooNewCheckoutPage').prop('checked',!enable)
+        jQuery('#sooOldCheckoutPage').prop('checked',!enable)
         swal({
             text: 'Error Occurred: Please Refresh and Retry'
         });
@@ -3281,7 +3437,7 @@ function mooSaveDeliveryAreas(event, el)
 }
 function mooShowWaitMessage() {
     swal({
-        title: 'Saving your changes, please wait ..',
+        title: 'Saving your changes ..',
         showConfirmButton: false
     });
 }

@@ -453,12 +453,12 @@ class  CheckoutRoutes extends BaseRoute {
         $customer_token =  (isset($body["customer_token"]) && !empty($body["customer_token"])) ?  $body["customer_token"] : null;
         $googleReCAPTCHADisabled =  (bool) get_option('sooDisableGoogleReCAPTCHA',false);
 
-        if (get_option('moo_new_checkout_enabled') !== 'yes'){
+        if (get_option('moo_old_checkout_enabled') === 'yes'){
             $googleReCAPTCHADisabled = true;
         }
 
         //Check Google recaptcha
-        if (!$googleReCAPTCHADisabled && !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
+        if (!$googleReCAPTCHADisabled && !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])) {
             $reCaptchaErrorMessage = "Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused.";
             $args = array(
                 'method'    => 'POST',
@@ -781,7 +781,6 @@ class  CheckoutRoutes extends BaseRoute {
                 }
             }
         }
-
 
         //show Order number
         if(isset($this->pluginSettings["show_order_number"]) && $this->pluginSettings["show_order_number"] === "on") {

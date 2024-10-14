@@ -109,11 +109,11 @@ class DashboardRoutes extends BaseRoute {
             )
         ));
         // Enable the new Checkout
-        register_rest_route($this->namespace, '/dash/enable-new-checkout', array(
+        register_rest_route($this->namespace, '/dash/enable-old-checkout', array(
             // Here we register the readable endpoint for collections.
             array(
                 'methods' => 'POST',
-                'callback' => array($this, 'enableNewCheckout'),
+                'callback' => array($this, 'enableOldCheckout'),
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
@@ -531,7 +531,7 @@ class DashboardRoutes extends BaseRoute {
             //-- Table `item_tax_rate` --
             $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_tax_rate` ;");
             // -- Table `modifier_group` --
-            $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_order` ;");
+            @$wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_order` ;");
             //*-- Table `item_tag` --
             $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_tag` ;");
             //-- Table `item_modifier_group` --
@@ -588,20 +588,20 @@ class DashboardRoutes extends BaseRoute {
             );
         }
     }
-    function enableNewCheckout( $request ) {
+    function enableOldCheckout( $request ) {
 
         if (empty( $request["status"] )) {
             return new WP_Error( 'status_required', 'An error has occurred', array( 'status' => 400 ) );
         } else {
             $status = rest_sanitize_boolean($request["status"]);
             if($status){
-                update_option("moo_new_checkout_enabled",'yes');
+                update_option("moo_old_checkout_enabled",'yes');
             } else {
-                update_option("moo_new_checkout_enabled",'no');
+                update_option("moo_old_checkout_enabled",'no');
             }
             //Save on Cloud
             try {
-                $this->api->saveMerchantSettings("new_checkout", $status);
+                $this->api->saveMerchantSettings("old_checkout", $status);
             } catch (Exception $e){
                 // Silence is golden
             }
@@ -1244,7 +1244,6 @@ class DashboardRoutes extends BaseRoute {
             );
         }
     }
-
     function dashImportCustomHours( $request ){
         $files = $request->get_file_params();
         if (empty( $files['file'] )) {
@@ -1289,19 +1288,19 @@ class DashboardRoutes extends BaseRoute {
         ];
         $upload_dir = wp_upload_dir();
         $permittedExtension = 'json';
-        //Get Data from file or Json Body
+        //Get Data from file or JSON Body
         $files = $request->get_file_params();
-        if ( !isset( $files['file'] ) || empty( $files['file'] ) ) {
+        if (empty( $files['file'] )) {
             $data = json_decode($request->get_body(),true);
             //Get Data from json
             if ( isset( $data["cloneImages"] ) ) {
-                $cloneImages = $data["cloneImages"];
+                $cloneImages = $data["cloneImages"] !== 'false';
             } else {
                 $cloneImages = true;
             }
 
             if ( isset( $data["skipWhenImageExist"] ) ) {
-                $skipWhenImageExist = $data["skipWhenImageExist"];
+                $skipWhenImageExist = $data["skipWhenImageExist"] !== 'false';
             } else {
                 $skipWhenImageExist = false;
             }
@@ -1335,10 +1334,10 @@ class DashboardRoutes extends BaseRoute {
             $data = json_decode($filecontent,true);
         }
 
-        if(isset($data["items"]) && is_array($data["items"])){
+        if(isset($data["items"]) && is_array($data["items"])) {
             foreach ($data["items"] as $item) {
                 if(isset($item["url"])){
-                    //get item uuid based  on name and uuid
+                    //get item uuid based on name and uuid
                     $name = esc_sql($item["name"]);
                     $sql = "SELECT * FROM `{$wpdb->prefix}moo_item` 
                         WHERE name like '{$name}' OR alternate_name like '{$name}'
@@ -1355,11 +1354,11 @@ class DashboardRoutes extends BaseRoute {
                         }
 
                         if($cloneImages){
-                            try{
+                            try {
                                 $link = $this->uploadFileByUrl($item["url"]);
                                 if($link){
                                     $link_image = $link;
-                                } else{
+                                } else {
                                     throw new Exception();
                                 }
                             } catch (Exception  $e){
@@ -1392,7 +1391,7 @@ class DashboardRoutes extends BaseRoute {
             }
         }
 
-        if(isset($data["categories"]) && is_array($data["categories"])){
+        if(isset($data["categories"]) && is_array($data["categories"])) {
             foreach ($data["categories"] as $category) {
                 if(isset($category["uuid"]) || isset($category["name"])){
 
@@ -1462,7 +1461,7 @@ class DashboardRoutes extends BaseRoute {
             "skipImages"=>[
                 "skipWhenImageExist"=>$skipWhenImageExist,
                 "skippedItems"=>$skippedItems,
-                "skippedCategoeries"=>$skippedCategories,
+                "skippedCategories"=>$skippedCategories,
             ],
             "errors"=>$errors
         );
@@ -1555,10 +1554,16 @@ class DashboardRoutes extends BaseRoute {
 
     }
 
-    private function uploadFileByUrl( $image_url ) {
+    /**
+     * @throws Exception
+     */
+    private function uploadFileByUrl($image_url ) {
 
-        // it allows us to use download_url() and wp_handle_sideload() functions
-        require_once( ABSPATH . 'wp-admin/includes/file.php' );
+        // If the function it's not available, require it.
+        if ( ! function_exists( 'download_url' ) ) {
+            // it allows us to use download_url() and wp_handle_sideload() functions
+            require_once ABSPATH . '/wp-admin/includes/file.php';
+        }
 
         // download to temp dir
         $temp_file = download_url( $image_url );
@@ -1567,6 +1572,7 @@ class DashboardRoutes extends BaseRoute {
             return false;
         }
         $filetype = wp_check_filetype( $temp_file );
+
 
         // move the temp file into the uploads directory
         $file = array(
@@ -1584,7 +1590,7 @@ class DashboardRoutes extends BaseRoute {
         );
 
         if( ! empty( $sideload[ 'error' ] ) ) {
-            // you may return error message if you want
+            // you may return an error message if you want
             throw new Exception($sideload[ 'error' ]);
         }
 
@@ -1604,13 +1610,15 @@ class DashboardRoutes extends BaseRoute {
             return false;
         }
 
-        // update medatata, regenerate image sizes
+        // update metadata, regenerate image sizes
         require_once( ABSPATH . 'wp-admin/includes/image.php' );
 
         wp_update_attachment_metadata(
             $attachment_id,
             wp_generate_attachment_metadata( $attachment_id, $sideload[ 'file' ] )
         );
+
+        @unlink( $temp_file );
 
         return $sideload[ 'url' ];
 

@@ -47,7 +47,6 @@ class addToCartButton extends sooShortCode
     }
     private function enqueueStylesAndScripts()
     {
-
         $this->enqueueCssGrid();
 
         $this->enqueueFontAwesome();

@@ -19,8 +19,9 @@ class Moo_OnlineOrders_Widgets_Opening_hours extends WP_Widget{
     public function widget( $args, $instance ) {
         $title = apply_filters( 'widget_title', $instance['title'] );
         echo $args['before_widget'];
-        if ( ! empty( $title ) )
+        if ( ! empty( $title ) ) {
             echo $args['before_title'] . $title . $args['after_title'];
+        }
         /* -------- */
         require_once plugin_dir_path(dirname(__FILE__)) . "includes/moo-OnlineOrders-sooapi.php";
         $api   = new Moo_OnlineOrders_SooApi();
@@ -28,12 +29,18 @@ class Moo_OnlineOrders_Widgets_Opening_hours extends WP_Widget{
         $current_hours = !empty($current_hours["days"]) ? $current_hours["days"] : [] ;
 
         echo '<div style="padding-left:15px">';
-        if(@count($current_hours)>0 && $current_hours!="Please setup you business hours on Clover")
+        if(@count($current_hours)>0 && $current_hours != "Please setup you business hours on Clover")
         {
             foreach ($current_hours as $key=>$value) {
-                $value = str_replace('AND',"<br/>",$value);
                 echo '<strong><dt>'.$key.'</dt></strong>';
-                echo '<dd>'.$value.'</dd>';
+                if (is_array($value)){
+                    foreach ($value as $key1 => $value1) {
+                        echo '<dd>'.strtoupper($value1).'</dd>';
+                    }
+                } else {
+                    echo '<dd>'.strtoupper($value).'</dd>';
+                }
+
             }
         }
         else
@@ -53,7 +60,7 @@ class Moo_OnlineOrders_Widgets_Opening_hours extends WP_Widget{
         }
         ?>
         <p>
-            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label>
+            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:',"moo_OnlineOrders" ); ?></label>
             <input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $title ); ?>" />
         </p>
         <?php
@@ -120,12 +127,12 @@ class Moo_OnlineOrders_Widgets_best_selling extends WP_Widget{
         }
         ?>
         <p>
-            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label>
+            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:',"moo_OnlineOrders" ); ?></label>
             <input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $title ); ?>" />
         </p>
 
         <p>
-            <label for="<?php echo $this->get_field_id( 'nb_product' ); ?>"><?php _e( 'Number of products:' ); ?></label>
+            <label for="<?php echo $this->get_field_id( 'nb_product' ); ?>"><?php _e( 'Number of products:',"moo_OnlineOrders" ); ?></label>
             <input class="widefat" id="<?php echo $this->get_field_id( 'nb_product' ); ?>" name="<?php echo $this->get_field_name( 'nb_product' ); ?>" type="number" value="<?php echo esc_attr( $nb_product ); ?>" />
         </p>
 
@@ -184,7 +191,7 @@ class Moo_OnlineOrders_Widgets_categories extends WP_Widget {
         }
         ?>
         <p>
-            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label>
+            <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:',"moo_OnlineOrders" ); ?></label>
             <input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $title ); ?>" />
         </p>
 

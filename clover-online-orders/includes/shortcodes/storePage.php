@@ -183,12 +183,12 @@ class storePage extends sooShortCode
 
         $categories = array();
         if(!empty($atts["categories"])){
-            $categoriesIds = sanitize_text_field($atts["categories"]);
+            $categoriesIds = esc_attr($atts["categories"]);
             $categories = explode(",",strtoupper($categoriesIds));
         }
 
         if(!empty($atts["force_theme"])){
-            $theme_id = sanitize_text_field($atts["force_theme"]);
+            $theme_id = esc_attr($atts["force_theme"]);
         }
 
         $files = scandir($path.$theme_id);
@@ -238,7 +238,7 @@ class storePage extends sooShortCode
         $categories = array();
 
         if(!empty($atts["categories"])){
-            $categoriesIds = sanitize_text_field($atts["categories"]);
+            $categoriesIds = esc_attr($atts["categories"]);
             $categories = explode(",",strtoupper($categoriesIds));
         }
 

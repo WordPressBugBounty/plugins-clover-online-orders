@@ -1,11 +1,11 @@
-﻿=== Smart Online Order for Clover ===
+=== Smart Online Order for Clover ===
 Contributors: elbanyaoui, khalid995
 Donate link: http://www.zaytech.com/
-Tags: clover,online orders for clover,zaytech online orders,Clover online orders, Online orders for Clover, Wordpress and Clover,Clover, online ordering for clover, online order for clover pos, Online ordering for Clover POS,clover POS
+Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
-Tested up to: 6.6.1
+Tested up to: 6.6.2
 Requires PHP: 5.2.0
-Stable tag: 1.5.7
+Stable tag: 1.5.8
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -149,6 +149,13 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 
 == Changelog ==
 
+= 1.5.8 =
+* Enhanced compatibility with the latest WordPress version.
+* Updated and refined the item list.
+* Set the new checkout as the default option.
+* Added integration with DoorDash.
+* Various other improvements to enhance user experience.
+
 = 1.5.7 =
 * Improved compatibility with the latest version of Wordpress.
 * fixed bulk delete for coupons
@@ -180,10 +187,10 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 = 1.5.3 =
 * Fixed issue when modifier qty was manually entered
 * Improved the design of the list of orders
-* Orders now show where the source of the order originated from. For example, if you have Branded App, then you will see: Web, IOS, or Android.
+* Orders now show where the source of the order originated from. For example, if you have a Branded App, then you will see: Web, IOS, or Android.
 * Improved Order Details
 * Added ability to use shortcode to display receipt link on a separate “Thank You” page, [moo_receipt_link] or [moo_receipt_link text="click here"]
-* Other General Improvements and compatibility with latest version of Wordpress
+* Other General Improvements and compatibility with a latest version of WordPress
 
 = 1.5.2 =
 * This update includes updates and improvements.

@@ -9,8 +9,8 @@ class Orders_List_Moo extends WP_List_Table_MOO {
     public function __construct() {
 
         parent::__construct( array(
-            'singular' => __( 'Order'), //singular name of the listed records
-            'plural'   => __( 'Orders'), //plural name of the listed records
+            'singular' => __( 'Order', "moo_OnlineOrders"), //singular name of the listed records
+            'plural'   => __( 'Orders', "moo_OnlineOrders"), //plural name of the listed records
             'ajax'     => false //should this table support ajax?
 
         ) );
@@ -34,7 +34,7 @@ class Orders_List_Moo extends WP_List_Table_MOO {
     }
     /** Text displayed when no customer data is available */
     public function no_items() {
-        _e( 'No orders available.');
+        _e( 'No orders available.',"moo_OnlineOrders");
     }
 
     function column_order_number( $order ) {
@@ -152,13 +152,13 @@ class Orders_List_Moo extends WP_List_Table_MOO {
      */
     function get_columns() {
         $columns = array(
-            'order_number'    => __( 'Order Number'),
-            'customer_name' => __( 'Customer Name'),
-            'order_type_label'    => __( 'Order Type'),
-            'status' => __( 'Status'),
-            'amount' => __( 'Amount'),
-            'created_at_hf' => __( 'Order Date'),
-            'source' => __('Source')
+            'order_number'    => __( 'Order Number', "moo_OnlineOrders"),
+            'customer_name' => __( 'Customer Name',"moo_OnlineOrders"),
+            'order_type_label'    => __( 'Order Type',"moo_OnlineOrders"),
+            'status' => __( 'Status',"moo_OnlineOrders"),
+            'amount' => __( 'Amount',"moo_OnlineOrders"),
+            'created_at_hf' => __( 'Order Date',"moo_OnlineOrders"),
+            'source' => __('Source',"moo_OnlineOrders")
         );
 
         return $columns;

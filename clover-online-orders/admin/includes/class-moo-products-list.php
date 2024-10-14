@@ -7,11 +7,13 @@ class Products_List_Moo extends WP_List_Table_MOO {
     protected $placeholderImg;
     protected $editIcon;
     protected $api;
+    private $itemsPageUrl;
 
     /** Class constructor */
     public function __construct() {
         require_once plugin_dir_path( dirname(__FILE__) )."../includes/moo-OnlineOrders-sooapi.php";
         $this->api = new Moo_OnlineOrders_SooApi();
+        $this->itemsPageUrl = admin_url('admin.php?page=moo_items');
 
         /** Process bulk action */
         $this->process_bulk_action();
@@ -21,8 +23,8 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $this->editIcon = plugin_dir_url(dirname(__FILE__))."img/edit-icon.png";
 
         parent::__construct( array(
-            'singular' => __( 'Item'), //singular name of the listed records
-            'plural'   => __( 'Items'), //plural name of the listed records
+            'singular' => __( 'Item',"moo_OnlineOrders"), //singular name of the listed records
+            'plural'   => __( 'Items',"moo_OnlineOrders"), //plural name of the listed records
             'ajax'     => false //should this table support ajax?
 
         ) );
@@ -162,7 +164,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
     }
     /** Text displayed when no customer data is available */
     public function no_items() {
-        _e( 'No items available.');
+        _e( 'No items available.',"moo_OnlineOrders");
     }
     /**
      * Returns the count of records in the database.
@@ -220,64 +222,35 @@ class Products_List_Moo extends WP_List_Table_MOO {
             $title .= "<p style='font-size:11px' class='moo-itemTitle-desc' id='moo-itemTitleDesc-ItemUuid-".esc_attr($item['uuid'])."'>".$itemDescription."</p>";
         }
 
-        if(isset($_GET["category"])){
-            if($item['visible']) {
-                $actions = array(
-                    'id' =>"ID: ".esc_attr($item['uuid']),
-                    'hide' => sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&category=%s&paged=%s">Hide from the Website</a>',
-                        'moo_items', 'hide',esc_attr($item['uuid']), $hide_nonce,esc_attr($_GET["category"]),$this->get_pagenum())
-                );
-            } else {
-                $actions = array(
-                    'id' =>"ID: ".esc_attr($item['uuid']),
-                    'show' => sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&category=%s&paged=%s">Show in the Website</a>',
-                        'moo_items', 'show',esc_attr($item['uuid']), $show_nonce,esc_attr($_GET["category"]),$this->get_pagenum())
-                );
-            }
-            $actions['edit'] = sprintf( '<a href="?page=%s&action=%s&item_uuid=%s&category=%s&paged=%s">Add / Edit Images</a>',
-                'moo_items', 'update_item',esc_attr($item['uuid']),esc_attr($_GET["category"]),$this->get_pagenum());
-
-            if($item['outofstock']) {
-                $actions['disable_ot']  = sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s&category=%s">Disable out of stock</a>',
-                    'moo_items', 'disable_ot',esc_attr($item['uuid']), $disable_ot_nonce,$this->get_pagenum(),esc_attr($_GET["category"]));
-            } else {
-                $actions['enable_ot']  = sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s&category=%s">Enable out of stock</a>',
-                    'moo_items', 'enable_ot',esc_attr($item['uuid']), $enable_ot_nonce,$this->get_pagenum(),esc_attr($_GET["category"]));
-            }
-
+        $actions = array(
+            'id' =>"ID: ".esc_attr($item['uuid']),
+        );
+        if( ! empty( $_REQUEST['filter'] )){
+            $filter = esc_attr($_REQUEST['filter']);
         } else {
-            if($item['visible']) {
-                $actions = array(
-                    'id' =>"ID: ".esc_attr($item['uuid']),
-                    'hide' => sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s">Hide from the Website</a>',
-                        'moo_items', 'hide',esc_attr($item['uuid']), $hide_nonce,$this->get_pagenum())
-                );
-            } else {
-                $actions = array(
-                    'id' =>"ID: ".esc_attr($item['uuid']),
-                    'show' => sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s">Show in the Website</a>',
-                        'moo_items', 'show',esc_attr($item['uuid']), $show_nonce,$this->get_pagenum())
-                );
-            }
-            $actions['edit'] = sprintf( '<a href="?page=%s&action=%s&item_uuid=%s&paged=%s">Add / Edit Images</a>',
-                'moo_items', 'update_item',esc_attr($item['uuid']),$this->get_pagenum());
-
-            if($item['outofstock']) {
-                $actions['disable_ot']  = sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s">Disable out of stock</a>',
-                    'moo_items', 'disable_ot',esc_attr($item['uuid']), $disable_ot_nonce,$this->get_pagenum());
-            } else {
-                $actions['enable_ot']  = sprintf( '<a href="?page=%s&action=%s&item=%s&_wpnonce=%s&paged=%s">Enable out of stock</a>',
-                    'moo_items', 'enable_ot',esc_attr($item['uuid']), $enable_ot_nonce,$this->get_pagenum());
-            }
-
-
+            $filter = 'all';
         }
 
+        if( ! empty( $_REQUEST['category'] )) {
+            $actions['edit'] = sprintf( '<a href="?page=%s&action=%s&item_uuid=%s&category=%s&paged=%s&filter=%s">Add / Edit Images</a>',
+                'moo_items', 'update_item',esc_attr($item['uuid']),esc_attr($_REQUEST["category"]),$this->get_pagenum(),$filter);
+        } else {
+            $actions['edit'] = sprintf( '<a href="?page=%s&action=%s&item_uuid=%s&paged=%s&filter=%s">Add / Edit Images</a>',
+                'moo_items', 'update_item',esc_attr($item['uuid']),$this->get_pagenum(),$filter);
+        }
+
+        $actions['visibility']  = sprintf( '<a style="%s" id="sooHideAnItem-%s"  data-is-visible="true" href="#" onclick="moo_changeItemVisibility(event, \'%s\')">Hide from the Website</a><a style="%s" id="sooShowAnItem-%s"  data-is-visible="false" href="#" onclick="moo_changeItemVisibility(event, \'%s\')">Show in the Website</a>',
+            (($item['visible'] == '1') ? '':'display: none;'), esc_attr($item['uuid']), esc_attr($item['uuid']),  (($item['visible'] == "1") ? 'display: none;':''), esc_attr($item['uuid']), esc_attr($item['uuid']));
+
+        $actions['outofstock']  = sprintf( '<a style="%s" id="sooOutOfStockItem-%s"  data-is-out-of-stock="true" href="#" onclick="moo_markItemAsOutOfStock(event, \'%s\')">Enable Out Of Stock</a><a style="%s" id="sooInStockItem-%s"  data-is-out-of-stock="false" href="#" onclick="moo_markItemAsOutOfStock(event, \'%s\')">Disable Out Of Stock</a>',
+            (empty($item['outofstock']) ? '':'display: none;'), esc_attr($item['uuid']), esc_attr($item['uuid']),  (empty($item['outofstock']) ? 'display: none;':''), esc_attr($item['uuid']), esc_attr($item['uuid']));
+
         $actions['edit_description'] = sprintf( '<a class="moo-edit-description-button" href="#" onclick="moo_editItemDescription(event,\'%s\',\'%s\')">Add / Edit description</a>',
-            esc_attr($item['uuid']), esc_js($itemName), esc_attr($item['uuid']));
+            esc_attr($item['uuid']), esc_js($itemName));
 
         $actions['featured_item']  = sprintf( '<a style="%s" id="sooMarkAsFeaturedLink-%s"  data-is-featured="true" href="#" onclick="moo_markItemAsFeatured(event, \'%s\')">Mark as Featured</a><a style="%s" id="sooMarkAsUnFeaturedLink-%s"  data-is-featured="false" href="#" onclick="moo_markItemAsFeatured(event, \'%s\')">Unfeature</a>',
             (empty($item['featured']) ? '':'display: none;'), esc_attr($item['uuid']), esc_attr($item['uuid']),  (empty($item['featured']) ? 'display: none;':''), esc_attr($item['uuid']), esc_attr($item['uuid']));
+
         return $title . $this->row_actions( $actions );
     }
     /**
@@ -295,9 +268,24 @@ class Products_List_Moo extends WP_List_Table_MOO {
             case 'code':
             case 'unit_name':
                 return $item[ $column_name ];
+            case 'visible':
+                if($item[ $column_name ]) {
+                    return "<span id='visibility-item-{$item["uuid"]}'>No</span>";
+                } else {
+                    return "<span id='visibility-item-{$item["uuid"]}'>Yes</span>";
+                }
             case 'available':
+                if($item[ $column_name ]) {
+                    return "<span>Yes</span>";
+                } else {
+                    return "<span>No</span>";
+                }
             case 'outofstock':
-                return intval($item[ $column_name ])=== 1 ? "Yes" : "No" ;
+                if($item[ $column_name ]) {
+                    return "<span id='outofstock-item-{$item["uuid"]}'>Yes</span>";
+                } else {
+                    return "<span id='outofstock-item-{$item["uuid"]}'>No</span>";
+                }
             case 'custom_hours':
                 return $this->getCustomHours($item[ $column_name ]);
             case 'price_type':
@@ -356,13 +344,14 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $columns = array(
             'cb'      => '<input type="checkbox" />',
             'image'      => "",
-            'soo_name'    => __( 'Online Name'),
-            'name'    => __( 'Clover Name'),
-            'price' => __( 'Price'),
-            'price_type' => __( 'Price Type'),
-            'outofstock' => __( 'Out Of Stock'),
-            'available' => __( 'Available'),
-            'custom_hours' => __( 'Custom Hours'),
+            'soo_name'    => __( 'Online Name',"moo_OnlineOrders"),
+            'name'    => __( 'Clover Name',"moo_OnlineOrders"),
+            'price' => __( 'Price',"moo_OnlineOrders"),
+            'price_type' => __( 'Price Type',"moo_OnlineOrders"),
+            'outofstock' => __( 'Out Of Stock',"moo_OnlineOrders"),
+            'visible' => __( 'is Hidden',"moo_OnlineOrders"),
+            'available' => __( 'Available',"moo_OnlineOrders"),
+            'custom_hours' => __( 'Custom Hours',"moo_OnlineOrders"),
 
         );
 
@@ -427,9 +416,20 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $this->items = $this->get_items( $per_page, $current_page );
     }
     public function process_bulk_action() {
+        $queryArgs =  array('paged'=>$this->get_pagenum());
 
-        $custom_url  = add_query_arg( 'bulk-status', 'success', remove_query_arg( array( 'action', '_wpnonce' ) ) );
+        if( ! empty( $_REQUEST['filter'] )){
+            $queryArgs[] = array(
+                "filter" => esc_attr($_REQUEST['filter'])
+            );
+        }
 
+        if( ! empty( $_REQUEST['category'] )){
+            $queryArgs[] = array(
+                "category" => esc_attr($_REQUEST['category'])
+            );
+        }
+        $redirect_url  = add_query_arg($queryArgs, $this->itemsPageUrl );
         //Detect when a single action is being triggered...
         if ( 'hide' === $this->current_action() ) {
 
@@ -440,7 +440,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
                 die( 'You are not permitted to perform this action' );
             } else {
                 $this->hide_item(sanitize_text_field($_GET['item']));
-                wp_redirect($custom_url);
+                wp_safe_redirect($redirect_url);
                 exit;
             }
 
@@ -453,7 +453,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
             }
             else {
                 $this->show_item(sanitize_text_field($_GET['item']));
-                wp_redirect($custom_url);
+                wp_safe_redirect($redirect_url);
                 exit;
             }
         }
@@ -464,7 +464,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
                 die( 'You are not permitted to perform this action' );
             } else {
                 $this->out_of_stock(sanitize_text_field($_GET['item']),true);
-                wp_redirect($custom_url);
+                wp_safe_redirect($redirect_url);
                 exit;
             }
         }
@@ -474,7 +474,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
                 die( 'You are not permitted to perform this action' );
             } else {
                 $this->out_of_stock(sanitize_text_field($_GET['item']),false);
-                wp_redirect($custom_url);
+                wp_safe_redirect($redirect_url);
                 exit;
             }
         }
@@ -487,7 +487,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
             foreach ( $hide_ids as $id ) {
                $this->hide_item( esc_sql($id) );
             }
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
          }
         if ( 'bulk-show' === $this->current_action() ) {
@@ -498,7 +498,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
                 $this->show_item( esc_sql($id) );
             }
 
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
         }
         if ( 'bulk-enable-ot' === $this->current_action() ) {
@@ -508,7 +508,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
             foreach ( $enable_ids as $id ) {
                 $this->out_of_stock( esc_sql($id),true);
             }
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
         }
         if ( 'bulk-disable-ot' === $this->current_action() ) {
@@ -518,19 +518,18 @@ class Products_List_Moo extends WP_List_Table_MOO {
             foreach ( $disable_ids as $id ) {
                 $this->out_of_stock( esc_sql($id),false );
             }
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
         }
 
         if ( 'bulk-feature' === $this->current_action() ) {
-
             $ids = esc_sql( $_POST['bulk-hideOrShow'] );
             // loop over the array of record IDs and delete them
             foreach ( $ids as $id ) {
                 $this->markItemAsFeatured( $id, true );
             }
 
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
         }
         if ( 'bulk-unfeature' === $this->current_action() ) {
@@ -540,17 +539,18 @@ class Products_List_Moo extends WP_List_Table_MOO {
             foreach ( $ids as $id ) {
                 $this->markItemAsFeatured( esc_sql($id), false );
             }
-            wp_redirect($custom_url);
+            wp_safe_redirect($redirect_url);
             exit;
         }
 
 
     }
     public function single_row( $item ) {
-        if(! $item['visible'])
-            echo '<tr class="item-hidden">';
-        else
-            echo '<tr>';
+        if(! $item['visible']) {
+            echo "<tr class='item-hidden' id='soo-item-row-{$item["uuid"]}'>";
+        } else {
+            echo "<tr id='soo-item-row-{$item["uuid"]}'>";
+        }
         $this->single_row_columns( $item );
         echo '</tr>';
     }
@@ -571,12 +571,11 @@ class Products_List_Moo extends WP_List_Table_MOO {
                         <?php
                         foreach( $cats as $cat ){
                             $selected = '';
-                            if( $_GET['category'] == $cat['uuid'] ){
+                            if(isset($_GET['category']) && $_GET['category'] == $cat['uuid'] ){
                                 $selected = ' selected = "selected"';
                             }
-                            $custom_url  = add_query_arg( 'category', $cat['uuid'] , remove_query_arg( array( 's', 'paged', 'alert' ) ));
                             ?>
-                                <option value="<?php echo $custom_url; ?>" <?php echo $selected; ?>><?php
+                                <option value="<?php echo esc_attr($cat['uuid']); ?>" <?php echo $selected; ?>><?php
                                     if($cat["alternate_name"]=="" || $cat["alternate_name"]== null ){
                                         echo stripslashes((string)$cat['name']);
                                     } else {
@@ -606,13 +605,13 @@ class Products_List_Moo extends WP_List_Table_MOO {
 
         //All Actions
         $class        = ( $current == 'all' ? ' class="current"' : '' );
-        $all_url      = remove_query_arg( array( 'filter', 's', 'paged', 'alert', 'user' ) );
-        $views['all'] = "<a href='{$all_url }' {$class} >All Items</a>";
+        //$all_url      = remove_query_arg( array( 'filter', 's', 'paged', 'alert', 'user' ) );
+        $views['all'] = "<a href='{$this->itemsPageUrl}' {$class} >All Items</a>";
         $views_item   = array(
             'featured'   => array( "name" => "Featured Items", "featured" => 1 )
         );
         foreach ( $views_item as $k => $v ) {
-            $custom_url  = add_query_arg( 'filter', $k, remove_query_arg( array( 's', 'paged', 'alert' ) ) );
+            $custom_url  = add_query_arg( array('filter'=>$k), $this->itemsPageUrl );
             $class       = ( $current == $k ? ' class="current"' : '' );
             $views[ $k ] = "<a href='{$custom_url}' {$class} >" . $v['name'] . "</a>";
         }

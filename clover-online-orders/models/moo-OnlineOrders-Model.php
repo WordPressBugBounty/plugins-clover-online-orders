@@ -409,8 +409,9 @@ class Moo_OnlineOrders_Model {
     }
     function updateOrderType($uuid,$name,$enable,$taxable,$type,$minAmount,$maxAmount,$customHours,$useCoupons,$customMessage,$allowScOrders,$allowServiceFee)
     {
-        $uuid = esc_sql($uuid);
-       // $label = esc_sql($name);
+
+        $uuid = sanitize_text_field($uuid);
+        $label = wp_kses_post(wp_unslash($name));
         $taxable = esc_sql($taxable);
         $status = esc_sql($enable);
         $type = esc_sql($type);
@@ -420,11 +421,11 @@ class Moo_OnlineOrders_Model {
         $useCoupons = esc_sql($useCoupons);
         $allowScOrders = esc_sql($allowScOrders);
         $allowServiceFee = esc_sql($allowServiceFee);
-       // $customMessage = esc_sql($customMessage);
+        $customMessage = wp_kses_post(wp_unslash($customMessage));
 
         return $this->db->update("{$this->db->prefix}moo_order_types",
             array(
-                'label' => $name,
+                'label' => $label,
                 'taxable' => $taxable,
                 'status' => $status,
                 'minAmount' => $minAmount,
@@ -624,7 +625,7 @@ class Moo_OnlineOrders_Model {
         $customer_lat    = esc_sql($customer_lat);
         $customer_lng    = esc_sql($customer_lng);
 
-        $date = date('Y/m/d H:i:s', $datetime);
+        $date = gmdate('Y/m/d H:i:s', $datetime);
         $this->db->insert(
             "{$this->db->prefix}moo_order",
             array(
@@ -901,6 +902,12 @@ class Moo_OnlineOrders_Model {
 
             if ( isset($item["featured"]) ){
                 $fields["featured"] = $item["featured"];
+            }
+            if ( isset($item["outofstock"]) ){
+                $fields["outofstock"] = $item["outofstock"];
+            }
+            if ( isset($item["visible"]) ){
+                $fields["visible"] = $item["visible"];
             }
             if (count($fields)>0){
                 return $this->db->update("{$this->db->prefix}moo_item",

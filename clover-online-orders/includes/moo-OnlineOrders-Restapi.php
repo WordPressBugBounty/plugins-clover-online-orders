@@ -317,12 +317,20 @@ class Moo_OnlineOrders_Restapi
             )
         ) );
 
-        // Get Fresh version for blackout times
+        // Get a Fresh version for blackout times
         register_rest_route( $this->namespace, '/tools/update_blackouts', array(
             array(
                 'methods'   => 'GET',
                 'callback'  => array( $this, 'updateBlackouts' ),
                 'permission_callback' => '__return_true'
+            )
+        ) );
+
+        register_rest_route( $this->namespace, '/tools/repair_database', array(
+            array(
+                'methods'   => 'GET',
+                'callback'  => array( $this, 'repairDatabase' ),
+                'permission_callback' => array( $this, 'permissionCheck' )
             )
         ) );
 
@@ -428,6 +436,23 @@ class Moo_OnlineOrders_Restapi
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ) );
+
+        register_rest_route( $this->namespace, '/dashboard/out_of_stock_items', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'markItemAsOutOfStock' ),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ) );
+
+        register_rest_route( $this->namespace, '/dashboard/showhide_items', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'showHideAnItem' ),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ) );
+
 
         //Customer account functions
         register_rest_route( $this->namespace, '/customers', array(
@@ -1806,6 +1831,48 @@ class Moo_OnlineOrders_Restapi
             );
         }
     }
+    public function markItemAsOutOfStock($request) {
+        $request_body   = json_decode($request->get_body(),true);
+        $itemUuid    = sanitize_text_field($request_body['itemUuid']);
+        $isOutOfStock    = boolval($request_body['isOutOfStock']);
+
+        if( ! empty($itemUuid) ) {
+            $res = $this->model->updateItem(["outofstock"=>$isOutOfStock, "uuid"=>$itemUuid,], true);
+            if ($res){
+                $this->api->sendEvent([
+                    "event"=>'updated-items'
+                ]);
+            }
+            return array(
+                'status'	=> $res ? 'success' :  'failed'
+            );
+        } else {
+            return array(
+                'status'	=> 'failed'
+            );
+        }
+    }
+    public function showHideAnItem($request) {
+        $request_body   = json_decode($request->get_body(),true);
+        $itemUuid    = sanitize_text_field($request_body['itemUuid']);
+        $visibility    = boolval($request_body['visibility']);
+
+        if( ! empty($itemUuid) ) {
+            $res = $this->model->updateItem(["visible"=>$visibility, "uuid"=>$itemUuid,], true);
+            if ($res){
+                $this->api->sendEvent([
+                    "event"=>'updated-items'
+                ]);
+            }
+            return array(
+                'status'	=> $res ? 'success' :  'failed'
+            );
+        } else {
+            return array(
+                'status'	=> 'failed'
+            );
+        }
+    }
     public function changeApiKey($request) {
         $request_body   = json_decode($request->get_body(),true);
         $result = array();
@@ -1864,6 +1931,26 @@ class Moo_OnlineOrders_Restapi
         return array(
             "status"=>'success',
         );
+    }
+    public function repairDatabase( $request ){
+        try {
+            if (! class_exists( 'Moo_OnlineOrders_Helpers' ) ){
+                require_once SOO_PLUGIN_PATH ."/includes/moo-OnlineOrders-helpers.php";
+            }
+
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion136();
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion150();
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion158();
+
+            return array(
+                "status"=>'success',
+            );
+
+        } catch (Exception $e) {
+            return array(
+                "status"=>'error',
+            );
+        }
     }
 
     /*

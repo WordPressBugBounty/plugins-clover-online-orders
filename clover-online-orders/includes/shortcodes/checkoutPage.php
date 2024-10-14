@@ -445,7 +445,7 @@ class checkoutPage extends sooShortCode
                             <p>
                                 <?php
                                 /* translators: %s represent our tos link */
-                                printf(__('By clicking the button below you agree to our <a href="%s" target="_blank">Terms Of Service</a>', 'moo_OnlineOrders'), "https://www.zaytech.com/zaytech-eula");
+                                printf(__('By clicking the button below, you agree to our <a href="%s" target="_blank">Terms Of Service</a>', 'moo_OnlineOrders'), "https://www.zaytech.com/zaytech-eula");
                                 ?>
                             </p>
                             <button class="moo-btn moo-btn-primary" onclick="moo_signin(event)">
@@ -553,7 +553,7 @@ class checkoutPage extends sooShortCode
                                 <div class="moo-checkout-bloc-title moo-checkoutText-contact">
                                     <?php _e("contact", "moo_OnlineOrders"); ?>
                                     <span class="moo-checkout-edit-icon" onclick="moo_checkout_edit_contact()">
-                                        <img src="<?php echo  plugin_dir_url(dirname(__FILE__))."../public/img/edit-pen.png"?>" alt="edit">
+                                        <img src="<?php echo  SOO_PLUGIN_PATH."/public/img/edit-pen.png"?>" alt="edit">
                                     </span>
                                 </div>
                                 <div class="moo-checkout-bloc-content">
@@ -593,11 +593,11 @@ class checkoutPage extends sooShortCode
                                         foreach ($orderTypes as $ot) {
                                             echo '<div class="moo-checkout-form-ordertypes-option">';
                                             if (isset($ot->available) && $ot->available === false) {
-                                                echo '<input class="moo-checkout-form-ordertypes-input" type="radio" name="ordertype" value="'.$ot->ot_uuid.'" id="moo-checkout-form-ordertypes-'.$ot->ot_uuid.'" disabled>';
-                                                echo '<label for="moo-checkout-form-ordertypes-'.$ot->ot_uuid.'" style="display: inline;margin-left:15px;font-size: 16px; vertical-align: sub;">'.stripslashes((string)$ot->label).' ( '.stripslashes((string)$ot->custom_message).' )</label></div>';
+                                                echo '<input class="moo-checkout-form-ordertypes-input" type="radio" name="ordertype" value="'.esc_attr($ot->ot_uuid).'" id="moo-checkout-form-ordertypes-'.esc_attr($ot->ot_uuid).'" disabled>';
+                                                echo '<label for="moo-checkout-form-ordertypes-'.esc_attr($ot->ot_uuid).'" style="display: inline;margin-left:15px;font-size: 16px; vertical-align: sub;">'.wp_kses_post(wp_unslash($ot->label)).' ( '.wp_kses_post(wp_unslash($ot->custom_message)).' )</label></div>';
                                             } else {
-                                                echo '<input class="moo-checkout-form-ordertypes-input" type="radio" name="ordertype" value="'.$ot->ot_uuid.'" id="moo-checkout-form-ordertypes-'.$ot->ot_uuid.'">';
-                                                echo '<label for="moo-checkout-form-ordertypes-'.$ot->ot_uuid.'" style="display: inline;margin-left:15px;font-size: 16px; vertical-align: sub;">'.stripslashes((string)$ot->label).'</label></div>';
+                                                echo '<input class="moo-checkout-form-ordertypes-input" type="radio" name="ordertype" value="'.esc_attr($ot->ot_uuid).'" id="moo-checkout-form-ordertypes-'.esc_attr($ot->ot_uuid).'">';
+                                                echo '<label for="moo-checkout-form-ordertypes-'.esc_attr($ot->ot_uuid).'" style="display: inline;margin-left:15px;font-size: 16px; vertical-align: sub;">'.wp_kses_post(wp_unslash($ot->label)).'</label></div>';
                                             }
                                         }
                                         ?>
@@ -621,7 +621,7 @@ class checkoutPage extends sooShortCode
                                                     <select class="moo-form-control" name="moo_pickup_day" id="moo_pickup_day" onchange="moo_pickup_day_changed(this)">
                                                         <?php
                                                         foreach ($oppening_status["pickup_time"] as $key => $val) {
-                                                            echo '<option value="'.$key.'">'.$key.'</option>';
+                                                            echo '<option value="'.esc_attr($key).'">'.esc_attr($key).'</option>';
                                                         }
                                                         ?>
                                                     </select>
@@ -634,7 +634,7 @@ class checkoutPage extends sooShortCode
                                                         <?php
                                                         foreach ($oppening_status["pickup_time"] as $val) {
                                                             foreach ($val as $h) {
-                                                                echo '<option value="'.$h.'">'.$h.'</option>';
+                                                                echo '<option value="'.esc_attr($h).'">'.esc_attr($h).'</option>';
                                                             }
                                                             break;
                                                         }
@@ -671,7 +671,7 @@ class checkoutPage extends sooShortCode
                                     if ($this->pluginSettings['payment_cash'] == 'on' || $this->pluginSettings['payment_cash_delivery'] == 'on') { ?>
                                         <div id="moo_cashPanel">
                                             <div class="moo-row"  id="moo_verifPhone_verified">
-                                                <img src="<?php echo  plugin_dir_url(dirname(__FILE__))."../public/img/check.png"?>" width="60px" style="display: inline-block;" alt="">
+                                                <img src="<?php echo  SOO_PLUGIN_URL ."/public/img/check.png"?>" width="60px" style="display: inline-block;" alt="">
                                                 <p>
                                                     <?php _e("Your phone number has been verified", "moo_OnlineOrders"); ?>
                                                     <br/>
@@ -771,9 +771,12 @@ class checkoutPage extends sooShortCode
                                                                                                          } ?>">
                                         <div class="moo-col-md-8">
                                             <div class="moo-form-group">
-                                                <p style="font-size: 20px" id="moo_remove_coupon_code"><?php if ($coupon != null) {
-                                                    echo $coupon['code'];
-                                                                                                       }?></p>
+                                                <p style="font-size: 20px" id="moo_remove_coupon_code">
+                                                    <?php
+                                                        if ($coupon != null) {
+                                                            echo sanitize_text_field($coupon['code']);
+                                                        }
+                                                    ?></p>
                                             </div>
                                         </div>
                                         <div class="moo-col-md-4">
@@ -798,19 +801,19 @@ class checkoutPage extends sooShortCode
                                 <?php foreach ($session->get("items") as $key => $line) {
                                     $modifiers_price = 0;
                                     if (isset($line['item']->soo_name) && !empty($line['item']->soo_name)) {
-                                        $item_name=stripslashes((string)$line['item']->soo_name);
+                                        $item_name=wp_unslash((string)$line['item']->soo_name);
                                     } else {
                                         if ($this->useAlternateNames && isset($line['item']->alternate_name) && $line['item']->alternate_name!=="") {
-                                            $item_name=stripslashes((string)$line['item']->alternate_name);
+                                            $item_name=wp_unslash((string)$line['item']->alternate_name);
                                         } else {
-                                            $item_name=stripslashes((string)$line['item']->name);
+                                            $item_name=wp_unslash((string)$line['item']->name);
                                         }
                                     }
 
                                     ?>
-                                    <div class="moo-product" tabindex="0" aria-label="<?php echo $line['quantity']." of ".$line['item']->name."" ?>">
+                                    <div class="moo-product" tabindex="0" aria-label="<?php echo sanitize_text_field($line['quantity'])." of ".$line['item']->name."" ?>">
                                         <div class="moo-product-quantity" style="width: 20%">
-                                            <strong><?php echo $line['quantity']?></strong>
+                                            <strong><?php echo sanitize_text_field($line['quantity']); ?></strong>
                                         </div>
                                         <div class="moo-product-details moo-product-details-checkout" style="width: 60%">
                                             <div class="moo-product-title"><strong><?php echo $item_name; ?></strong></div>
@@ -819,9 +822,9 @@ class checkoutPage extends sooShortCode
                                                 foreach ($line['modifiers'] as $modifier) {
                                                     $modifier_name = "";
                                                     if ($this->useAlternateNames && isset($modifier["alternate_name"]) && $modifier["alternate_name"]!=="") {
-                                                        $modifier_name =stripslashes((string)$modifier["alternate_name"]);
+                                                        $modifier_name =wp_unslash((string)$modifier["alternate_name"]);
                                                     } else {
-                                                        $modifier_name =stripslashes((string)$modifier["name"]);
+                                                        $modifier_name =wp_unslash((string)$modifier["name"]);
                                                     }
                                                     if (isset($modifier['qty']) && intval($modifier['qty'])>0) {
                                                         echo '<small tabindex="0">'.$modifier['qty'].'x ';
@@ -838,7 +841,7 @@ class checkoutPage extends sooShortCode
                                                     }
                                                 }
                                                 if ($line['special_ins'] != "") {
-                                                    echo '<span tabindex="0" aria-label="your special instructions">SI:<span><span tabindex="0"> '.$line['special_ins']."<span>";
+                                                    echo '<span tabindex="0" aria-label="your special instructions">SI:<span><span tabindex="0"> '.sanitize_text_field($line['special_ins'])."<span>";
                                                 }
                                                 ?>
                                             </p>
@@ -1647,11 +1650,11 @@ class checkoutPage extends sooShortCode
                                         foreach ($orderTypes as $ot) {
                                             echo '<div class="soo-checkout-radio-input-option">';
                                             if (isset($ot['available']) && $ot['available'] === false) {
-                                                echo '<input class="soo-checkout-radio-input" type="radio" name="ordertype" value="'.$ot['ot_uuid'].'" id="moo-checkout-form-ordertypes-'.$ot['ot_uuid'].'" disabled>';
-                                                echo '<label for="moo-checkout-form-ordertypes-'.$ot['ot_uuid'].'" class="moo-checkout-radio-input-label">'.stripslashes((string)$ot['label']).' ( '.stripslashes((string)$ot['custom_message']).' )</label></div>';
+                                                echo '<input class="soo-checkout-radio-input" type="radio" name="ordertype" value="'.esc_attr($ot['ot_uuid']).'" id="moo-checkout-form-ordertypes-'.esc_attr($ot['ot_uuid']).'" disabled>';
+                                                echo '<label for="moo-checkout-form-ordertypes-'.esc_attr($ot['ot_uuid']).'" class="moo-checkout-radio-input-label">'.wp_kses_post(wp_unslash($ot['label'])).' ( '.wp_kses_post(wp_unslash($ot['custom_message'])).' )</label></div>';
                                             } else {
-                                                echo '<input onchange="mooCheckout.orderTypeChanged()" class="soo-checkout-radio-input" type="radio" name="ordertype" value="'.$ot['ot_uuid'].'" id="moo-checkout-form-ordertypes-'.$ot['ot_uuid'].'">';
-                                                echo '<label for="moo-checkout-form-ordertypes-'.$ot['ot_uuid'].'" class="moo-checkout-radio-input-label">'.stripslashes((string)$ot['label']).'</label></div>';
+                                                echo '<input onchange="mooCheckout.orderTypeChanged()" class="soo-checkout-radio-input" type="radio" name="ordertype" value="'.esc_attr($ot['ot_uuid']).'" id="moo-checkout-form-ordertypes-'.esc_attr($ot['ot_uuid']).'">';
+                                                echo '<label for="moo-checkout-form-ordertypes-'.esc_attr($ot['ot_uuid']).'" class="moo-checkout-radio-input-label">'.wp_kses_post(wp_unslash($ot['label'])).'</label></div>';
                                             }
                                         }
                                         ?>
@@ -1997,10 +2000,10 @@ class checkoutPage extends sooShortCode
      */
     public function render($atts, $content)
     {
-        if (get_option('moo_new_checkout_enabled') === 'yes') {
-            return $this->advancedCheckout($atts, $content);
+        if (get_option('moo_old_checkout_enabled') === 'yes') {
+            return $this->standardCheckout($atts, $content);
         }
-        return $this->standardCheckout($atts, $content);
+        return $this->advancedCheckout($atts, $content);
     }
 
     /**
@@ -2012,9 +2015,9 @@ class checkoutPage extends sooShortCode
     {
         $defaultText = __("Click Here", "moo_OnlineOrders");
         $defaultTitle = __("Click Here", "moo_OnlineOrders");
-        $linkText = (isset($atts['text']) && !empty($atts['text'])) ? sanitize_text_field($atts['text']) : $defaultText;
-        $linkTitle = (isset($atts['title']) && !empty($atts['title'])) ? sanitize_text_field($atts['title']) : $defaultTitle;
-        $orderId = (isset($_GET['order_id']) && !empty($_GET['order_id'])) ? sanitize_text_field($_GET['order_id']) : null;
+        $linkText = (!empty($atts['text'])) ? esc_attr($atts['text']) : $defaultText;
+        $linkTitle = (!empty($atts['title'])) ? esc_attr($atts['title']) : $defaultTitle;
+        $orderId = (!empty($_GET['order_id'])) ? esc_attr($_GET['order_id']) : null;
         if ($orderId) {
             if (defined('SOO_ENV') && SOO_ENV === 'DEV') {
                 $html = '<a href="https://dev.clover.com/r/';
@@ -2334,7 +2337,7 @@ HTML;
         $balance = __("Balance", "moo_OnlineOrders");
         $use = __("Use ", "moo_OnlineOrders"). $label;
         $dontUse = __("Remove ", "moo_OnlineOrders"). $label;
-        $imgLink = plugin_dir_url(dirname(__FILE__))."../public/img/loyaltyIcon.svg";
+        $imgLink = SOO_PLUGIN_URL . "/public/img/loyaltyIcon.svg";
         $html = <<<HTML
         <div id="moo-checkout-form-loyalty">
             <div class="moo_checkout_border_bottom"></div>
@@ -2615,7 +2618,7 @@ HTML;
 
         $html .= '<div class="moo-checkout-bloc-content">';
         if (isset($this->pluginSettings['text_under_special_instructions']) && $this->pluginSettings['text_under_special_instructions']!=='') {
-            $html .= '<div class="moo-special-instruction-title">'.$this->pluginSettings['text_under_special_instructions'].'</div>';
+            $html .= '<div class="moo-special-instruction-title">'.wp_kses_post(wp_unslash($this->pluginSettings['text_under_special_instructions'])).'</div>';
         }
         if (isset($this->pluginSettings['special_instructions_required']) && $this->pluginSettings['special_instructions_required']==='yes') {
             $html .= '<textarea class="moo-form-control sooCheckoutTextInput" cols="100%" rows="5" id="Mooinstructions" style="height: 80px;" required></textarea>';

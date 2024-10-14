@@ -47,39 +47,40 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
             if($cart_page_id) wp_delete_post($cart_page_id,true);
             if($my_account_page_id) wp_delete_post($my_account_page_id,true);
 
+            // @codingStandardsIgnoreStart
 
             /*-- Table `item_option`--*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_option` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_option` ;"); //db call ok
 
             /*-- Table `item_tax_rate` --*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_tax_rate` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_tax_rate` ;"); //db call ok
 
             /* -- Table `modifier_group` -- */
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_order` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_order` ;"); //db call ok; no-cache ok
 
             /*-- Table `item_tag` --*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_tag` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_tag` ;"); // db call ok
 
             /*-- Table `item_modifier_group` --*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_modifier_group` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_modifier_group` ;"); // db call ok
 
             /* -- Table `order_types -- */
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_images` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_images` ;"); // db call ok
 
             /* -- Table `item` -- */
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item` ;"); // db call ok
 
             /* -- Table `orders` -- */
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_order` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_order` ;"); // db call ok
 
             /*-- Table `option`--*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_option` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_option` ;"); // db call ok
 
             /* -- Table `tag` --*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_tag` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_tag` ;"); // db call ok
 
             /* -- Table `tax_rate` --*/
-            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_tax_rate` ;");
+            $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_tax_rate` ;"); // db call ok
 
             /* -- Table `modifier` --*/
             $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_modifier` ;");
@@ -99,6 +100,8 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
             /* -- Table `order_types -- */
             $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_order_types` ;");
 
+            // @codingStandardsIgnoreEnd
+
             update_option( 'moo_settings','');
             update_option( 'moo_pakms_key', '');
             update_option( 'moo_onlineOrders_version', '');
@@ -106,6 +109,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
             update_option( 'moo_next_order_number', '');
             update_option( 'moo_slug', '');
             update_option( 'moo_new_checkout_enabled', '');
+            update_option( 'moo_old_checkout_enabled', '');
         }
         switch_to_blog($old_blog);
     } else {
@@ -119,6 +123,8 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
         if($checkout_page_id) wp_delete_post($checkout_page_id,true);
         if($cart_page_id) wp_delete_post($cart_page_id,true);
         if($my_account_page_id) wp_delete_post($my_account_page_id,true);
+
+        // @codingStandardsIgnoreStart
 
         /*-- Table `item_option`--*/
         $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_option` ;");
@@ -171,6 +177,8 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
         /* -- Table `order_types -- */
         $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_order_types` ;");
 
+        // @codingStandardsIgnoreEnd
+
         update_option( 'moo_settings', '');
         update_option( 'moo_pakms_key', '');
         update_option( 'moo_onlineOrders_version', '');
@@ -178,5 +186,6 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
         update_option( 'moo_next_order_number', '');
         update_option( 'moo_slug', '');
         update_option( 'moo_new_checkout_enabled', '');
+        update_option( 'moo_old_checkout_enabled', '');
     }
 }
