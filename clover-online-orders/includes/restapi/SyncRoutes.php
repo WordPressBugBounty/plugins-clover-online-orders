@@ -85,6 +85,7 @@ class SyncRoutes extends BaseRoute
                 'permission_callback' => '__return_true'
             )
         ));
+
         // Update one modifier group
         register_rest_route($this->namespace, '/sync/update_modifier_group/(?P<group_uuid>[a-zA-Z0-9-]+)', array(
             // Here we register the readable endpoint for collections.
@@ -108,26 +109,30 @@ class SyncRoutes extends BaseRoute
         } else {
             $category_id = sanitize_text_field($request["cat_id"]);
             $category = $this->api->getCategoryWithoutSaving($category_id);
-            if (isset($category['id'])){
-                if ($this->model->update_category($category)){
+            if (isset($category['id'])) {
+                //Save the category
+                if ($this->api->insertOrUpdateCategory($category)) {
                     $this->api->sendEvent([
                         "event"=>"updated-category",
                         "uuid"=>$category_id
                     ]);
-                    return 'Category Has Been Updated';
+                    return "The Category ".$category['name']." Has Been Updated";
                 } else {
                     return 'Category Not Updated';
                 }
             } else {
                 if (isset($category['message']) && $category['message'] === "Not Found"){
-                    $this->model->deleteCategory($request["cat_id"]);
-                    $this->api->sendEvent([
-                        "event"=>"updated-category",
-                        "uuid"=>$category_id
-                    ]);
-                    return 'Category Has Been Deleted';
+                   if ( $this->model->deleteCategory($category_id) ) {
+                       $this->api->sendEvent([
+                           "event"=>"updated-category",
+                           "uuid"=>$category_id
+                       ]);
+                       return "Category Has Been Deleted";
+                   } else {
+                       return "Category Not found";
+                   }
                 } else {
-                    return 'Category not exist';
+                    return "Can't get Category From Clover";
                 }
             }
         }
@@ -135,66 +140,36 @@ class SyncRoutes extends BaseRoute
     function syncUpdateItem($request) {
         if (empty( $request["item_id"] )) {
             return new WP_Error( 'item_id_required', 'Item id not found', array( 'status' => 404 ) );
-        } else {
-            $categories = [];
-            $countUpdatedCategories = 0;
-            $item_id = sanitize_text_field($request["item_id"]);
-            $cloverItem = $this->api->getItemWithoutSaving($item_id);
-            $currentItem = $this->model->getItem($item_id);
-
-            //Update Categories
-            $currentItemCategories = $this->model->getItemCategories($item_id);
-            if(count($currentItemCategories)>0) {
-                foreach ($currentItemCategories as $cate) {
-                    $categories[] = $cate["id"];
-                }
-            }
-            if(isset($cloverItem['categories']['elements']) && count($cloverItem['categories']['elements'])>0) {
-                foreach ($cloverItem['categories']['elements'] as $category) {
-                    $categories[] = $category["id"];
-                }
-            }
-            $categories = array_unique($categories);
-            foreach ($categories as $category) {
-                $cat = $this->api->getCategoryWithoutSaving($category);
-                if (isset($cat['id'])){
-                   if ($this->model->update_category($cat)){
-                       $countUpdatedCategories++;
-                   }
-                }
-            }
-            if(isset($cloverItem['id'])){
-                if(isset($currentItem->modified_time) && intval($currentItem->modified_time) === $cloverItem['modifiedTime']){
-                    if ($countUpdatedCategories>0){
-                        $this->api->sendEvent([
-                            "event"=>"updated-item",
-                            "uuid"=>$cloverItem['id']
-                        ]);
-                        return 'The item '.$cloverItem['name'].' categories have been updated.';
-                    } else {
-                        return 'The item '.$cloverItem['name'].' already up-to-date';
-                    }
-                } else {
-                    $this->api->update_item($cloverItem);
-                    $this->api->sendEvent([
-                        "event"=>"updated-item",
-                        "uuid"=>$cloverItem['id']
-                    ]);
-                    return 'The item '.$cloverItem['name'].' was updated successfully';
-                }
+        }
+        $item_id = sanitize_text_field($request["item_id"]);
+        $cloverItem = $this->api->getItemWithoutSaving($item_id);
+        if(!empty($cloverItem['id'])){
+            if($this->api->syncCloverItem($cloverItem)){
+                $this->api->sendEvent([
+                    "event"=>"updated-item",
+                    "uuid"=>$cloverItem['id']
+                ]);
+                return 'The item '.$cloverItem['name'].' was updated successfully';
             } else {
-                if (isset($cloverItem['message']) && $cloverItem['message'] === "Not Found"){
-                    $this->model->hideItem($request["item_id"]);
-                    $this->api->sendEvent([
-                        "event"=>"updated-item",
-                        "uuid"=>$request["item_id"]
-                    ]);
-                    return 'Item Has Been Hidden';
-                } else {
-                    return "Item not found on Clover";
-                }
-
+                return 'Error In Updating The item '.$cloverItem['name'];
             }
+        }
+
+        $currentItem = $this->model->getItem($item_id);
+
+        if(empty($currentItem['id'])) {
+            return "Item not found";
+        }
+
+        if (isset($cloverItem['message']) && $cloverItem['message'] === "Not Found"){
+            $this->model->deleteItem($item_id);
+            $this->api->sendEvent([
+                "event"=>"updated-item",
+                "uuid"=>$request["item_id"]
+            ]);
+            return 'Item Has Been Deleted';
+        } else {
+            return "Can't get the item from Clover";
         }
     }
     function syncUpdateOneModifier($request) {

@@ -10,6 +10,7 @@ class giftCardBalance extends sooShortCode
 
         $this->enqueueStyles();
         $this->enqueueScripts();
+
         $jsOptions = array(
             'restApiUrl' =>  get_rest_url(),
             "pakmsKey"=>$this->api->getPakmsKey(),

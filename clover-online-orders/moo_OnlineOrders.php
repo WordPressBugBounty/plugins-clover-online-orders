@@ -16,7 +16,7 @@
  * Plugin Name:       Smart Online Order for Clover
  * Plugin URI:        https://www.zaytech.com
  * Description:       Start taking orders from your Wordpress website and have them sent to your Clover Station
- * Version:           1.5.8
+ * Version:           1.5.9
  * Author:            Zaytech
  * Author URI:        https://www.zaytech.com
  * License:           GPLv2 or later
@@ -37,9 +37,9 @@ define(
 define('SOO_PLUGIN_PATH', untrailingslashit(plugin_dir_path(__FILE__)));
 define('SOO_ENV', 'PROD');
 define('SOO_DEFAULT_CDN', false);
-define('SOO_VERSION', "1.5.8-beta");
+define('SOO_VERSION', "1.5.9");
 define('SOO_G_RECAPTCHA_URL', 'https://www.google.com/recaptcha/api/siteverify');
-define('SOO_ACCEPT_GIFTCARDS', true);
+define('SOO_DEBUG', false);
 
 /**
  * The core plugin class that is used to define internationalization,
@@ -73,7 +73,6 @@ function activate_moo_OnlineOrders($network_wide) {
  * This action is documented in includes/moo-OnlineOrders-deactivator.php
  */
 function deactivate_moo_OnlineOrders() {
-
     require_once plugin_dir_path(__FILE__) . 'includes/moo-OnlineOrders-deactivator.php';
     Moo_OnlineOrders_Deactivator::deactivate();
 }
@@ -213,9 +212,11 @@ function moo_deactivateAndClean() {
 }
 add_action('admin_init', 'moo_deactivateAndClean');
                  
-if (get_option('moo_onlineOrders_version') != '158') {
+if (get_option('moo_onlineOrders_version') != '159') {
     add_action('plugins_loaded', 'moo_onlineOrders_check_version');
+    add_action('plugins_loaded', 'moo_schedule_cron_tasks');
 }
+
 
 
 /*
@@ -234,25 +235,32 @@ function moo_onlineOrders_check_version() {
     if (! class_exists( 'Moo_OnlineOrders_Helpers' ) ){
         require_once SOO_PLUGIN_PATH ."/includes/moo-OnlineOrders-helpers.php";
     }
-    //Upgrade Database
-    if ($version <= 136 ) {
-        Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion136();
-    }
-    if ( $version <= 150 ) {
-        Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion150();
-    }
-    if ( $version <= 158 ) {
-        Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion158();
-    }
+    try {
+        //Upgrade Database
+        if ($version <= 136 ) {
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion136();
+        }
+        if ( $version <= 150 ) {
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion150();
+        }
+        if ( $version <= 158 ) {
+            Moo_OnlineOrders_Helpers::upgradeDatabaseToVersion158();
+        }
+    } catch (Exception $e){}
+
 
     //Apply default options
     $defaultOptions = get_option('moo_settings');
     Moo_OnlineOrders_Helpers::applyDefaultOptions($defaultOptions);
     update_option("moo_settings", $defaultOptions);
     //Upgrade version
-    update_option('moo_onlineOrders_version', '158');
+    update_option('moo_onlineOrders_version', '159');
 }
 
+function moo_schedule_cron_tasks() {
+    require_once plugin_dir_path(__FILE__) . 'includes/moo-OnlineOrders-activator.php';
+    Moo_OnlineOrders_Activator::scheduleCronTasks();
+}
 
 /**
  * Begins execution of the plugin.

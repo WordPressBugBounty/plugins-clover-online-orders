@@ -248,12 +248,8 @@ class  CheckoutRoutes extends BaseRoute {
         $response["delivery_areas"]["free_after"]   = $this->pluginSettings['free_delivery'];
         $response["delivery_areas"]["fixed_fees"]   = $this->pluginSettings['fixed_delivery'];
         $response["delivery_areas"]["errorMsg"]     = $this->pluginSettings['delivery_errorMsg'];
-
-        // payment keys
-        if(isset($this->pluginSettings["clover_payment_form"]) && $this->pluginSettings["clover_payment_form"] == "on") {
-            $response["cloverPakmsPaymentKey"] = $this->api->getPakmsKey();
-        }
-
+        $response["cloverPakmsPaymentKey"] = $this->api->getPakmsKey();
+        $response["isApplePayEnabled"] =  (bool) get_option("moo_apple_pay_enabled",false);;
         $response["pubkey"] = $this->api->getMerchantPubKey();
 
         return $response;
@@ -284,21 +280,11 @@ class  CheckoutRoutes extends BaseRoute {
             $tempo["is_delivery"]= $orderType->show_sa == "1";
             $tempo["use_coupons"]= $orderType->use_coupons == "1";
             $tempo["allow_sc_order"]= $orderType->allow_sc_order == "1";
-
-            if(
-                $orderType->allow_service_fee === 1 ||
-                $orderType->allow_service_fee === "1" ||
-                $orderType->allow_service_fee === true ||
-                $orderType->allow_service_fee === "true"
-            ){
-                $tempo["allow_service_fee"] = true;
-            } else {
-                $tempo["allow_service_fee"] = false;
-            }
+            $tempo["allow_service_fee"] = filter_var($orderType->allow_service_fee, FILTER_VALIDATE_BOOLEAN);
             $tempo["minAmount"]=floatval($orderType->minAmount );
             $tempo["maxAmount"]=floatval($orderType->maxAmount );
             $tempo["available"] = true;
-            if(isset($orderType->custom_hours) && !empty($orderType->custom_hours)) {
+            if( ! empty($orderType->custom_hours) ) {
                 if(in_array($orderType->custom_hours, $merchantCustomHours)){
                     $isNotAvailable = $merchantCustomHoursStatus[$orderType->custom_hours] === "close";
                     if ($isNotAvailable){
@@ -450,10 +436,10 @@ class  CheckoutRoutes extends BaseRoute {
     public function checkout( $request ) {
 
         $body = json_decode($request->get_body(),true);
-        $customer_token =  (isset($body["customer_token"]) && !empty($body["customer_token"])) ?  $body["customer_token"] : null;
+        $customer_token =  (!empty($body["customer_token"])) ?  $body["customer_token"] : null;
         $googleReCAPTCHADisabled =  (bool) get_option('sooDisableGoogleReCAPTCHA',false);
 
-        if (get_option('moo_old_checkout_enabled') === 'yes'){
+        if (get_option('moo_old_checkout_enabled') === 'yes') {
             $googleReCAPTCHADisabled = true;
         }
 
@@ -546,6 +532,13 @@ class  CheckoutRoutes extends BaseRoute {
                 'message'	=> "Customer is required"
             );
         }
+        if (! empty($body["special_instructions"]) ) {
+            if (strlen($body["special_instructions"]) > 1000)
+            return array(
+                'status'	=> 'failed',
+                'message'	=> "special instructions too long"
+            );
+        }
 
         //service Fee and delivery fees Names
         if(isset($this->pluginSettings['service_fees_name']) && !empty($this->pluginSettings['service_fees_name'])) {
@@ -577,7 +570,7 @@ class  CheckoutRoutes extends BaseRoute {
         $note = 'SOO' ;
 
         //check the customer
-        if(is_array($body["customer"])){
+        if(is_array($body["customer"])) {
             $customer  = $body["customer"];
             if (!empty($customer["first_name"])){
                 $note .= ' | ' .  $customer["first_name"];
@@ -603,6 +596,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(isset($body['scheduled_time'])){
             $note .=' | '.$body['scheduled_time'];
         }
+
         //check the order type
         if(!empty($body["order_type"]) && $body["order_type"] !== "onDemandDelivery") {
             $orderTypeUuid = sanitize_text_field($body['order_type']);
@@ -840,7 +834,7 @@ class  CheckoutRoutes extends BaseRoute {
         $body["delivery_amount"] = apply_filters('moo_filter_delivery_amount', $body["delivery_amount"]);
         $body["service_fee"] = apply_filters('moo_filter_service_fee', $body["service_fee"]);
 
-
+        $body = apply_filters('moo_filter_pre_create_order_body', $body);
 
         // add some merchant info
         $body["merchant"] = array();
@@ -848,9 +842,11 @@ class  CheckoutRoutes extends BaseRoute {
         if(isset($this->pluginSettings["merchant_phone"])){
             $body["merchant"]["phone"] = $this->pluginSettings["merchant_phone"];
         }
+
         if(isset($this->pluginSettings["merchant_email"])){
             $body["merchant"]["emails"] = $this->pluginSettings["merchant_email"];
         }
+
         $metaData = array(
           ["name"=>"clientIp","value"=>$this->getClientIp()],
           ["name"=>"clientUserAgent","value"=>$_SERVER["HTTP_USER_AGENT"]],
@@ -863,6 +859,7 @@ class  CheckoutRoutes extends BaseRoute {
         } else {
             $body["metainfo"] = $metaData;
         }
+
         //send request to the Api
         try{
             do_action("moo_action_new_order_received", $body);
@@ -1045,7 +1042,7 @@ class  CheckoutRoutes extends BaseRoute {
         }
         return false;
     }
-    private function getClientIp(){
+    private function getClientIp() {
         $fields = array(
             'HTTP_CF_CONNECTING_IP',
             'HTTP_X_SUCURI_CLIENTIP',

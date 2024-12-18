@@ -509,13 +509,14 @@ class Moo_OnlineOrders_Activator {
         }
 
         // Save the version of the plugin in the Database
-         update_option('moo_onlineOrders_version', '157');
+         update_option('moo_onlineOrders_version', '159');
 
         // Enable the new checkout
         update_option("moo_old_checkout_enabled",'no');
 
         //Apply default options
         Moo_OnlineOrders_Helpers::applyDefaultOptions($currentOptions);
+        self::scheduleCronTasks();
 
 	}
 	public static function applyDefaultOptionsOld($MooOptions) {
@@ -546,7 +547,7 @@ class Moo_OnlineOrders_Activator {
             array("name"=>"clover_payment_form","value"=>"on"),
             array("name"=>"clover_googlepay","value"=>"on"),
             array("name"=>"clover_applepay","value"=>"on"),
-            array("name"=>"clover_giftcards","value"=>"off"),
+            array("name"=>"clover_giftcards","value"=>"on"),
             array("name"=>"payment_cash","value"=>"off"),
             array("name"=>"payment_cash_delivery","value"=>"off"),
             array("name"=>"scp","value"=>"off"),
@@ -622,6 +623,20 @@ class Moo_OnlineOrders_Activator {
         }
 
         return $MooOptions;
+    }
+
+    public static function scheduleCronTasks() {
+        $cron_tasks = [
+            'smart_online_order_update_inventory',
+            'smart_online_order_update_jwttoken',
+            'smart_online_order_import_inventory'
+        ];
+
+        foreach ($cron_tasks as $task) {
+            if (!wp_next_scheduled($task)) {
+                wp_schedule_event(time(), 'daily', $task);
+            }
+        }
     }
 
 }

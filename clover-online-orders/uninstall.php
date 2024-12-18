@@ -102,14 +102,15 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
             // @codingStandardsIgnoreEnd
 
-            update_option( 'moo_settings','');
-            update_option( 'moo_pakms_key', '');
-            update_option( 'moo_onlineOrders_version', '');
-            update_option( 'moo_merchant_pubkey', '');
-            update_option( 'moo_next_order_number', '');
-            update_option( 'moo_slug', '');
-            update_option( 'moo_new_checkout_enabled', '');
-            update_option( 'moo_old_checkout_enabled', '');
+            delete_option( 'moo_settings');
+            delete_option( 'moo_pakms_key');
+            delete_option( 'moo_onlineOrders_version');
+            delete_option( 'moo_merchant_pubkey');
+            delete_option( 'moo_next_order_number');
+            delete_option( 'moo_slug');
+            delete_option( 'moo_new_checkout_enabled');
+            delete_option( 'moo_old_checkout_enabled');
+            delete_option( 'moo_merchant_uuid');
         }
         switch_to_blog($old_blog);
     } else {
@@ -179,13 +180,14 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
         // @codingStandardsIgnoreEnd
 
-        update_option( 'moo_settings', '');
-        update_option( 'moo_pakms_key', '');
-        update_option( 'moo_onlineOrders_version', '');
-        update_option( 'moo_merchant_pubkey', '');
-        update_option( 'moo_next_order_number', '');
-        update_option( 'moo_slug', '');
-        update_option( 'moo_new_checkout_enabled', '');
-        update_option( 'moo_old_checkout_enabled', '');
+        delete_option( 'moo_settings');
+        delete_option( 'moo_pakms_key');
+        delete_option( 'moo_onlineOrders_version');
+        delete_option( 'moo_merchant_pubkey');
+        delete_option( 'moo_next_order_number');
+        delete_option( 'moo_slug');
+        delete_option( 'moo_new_checkout_enabled');
+        delete_option( 'moo_old_checkout_enabled');
+        delete_option( 'moo_merchant_uuid');
     }
 }

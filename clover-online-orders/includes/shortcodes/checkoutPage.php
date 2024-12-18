@@ -728,7 +728,7 @@ class checkoutPage extends sooShortCode
                                     <div class="moo-checkout-bloc-content">
                                         <?php
                                         if (isset($this->pluginSettings['text_under_special_instructions']) && $this->pluginSettings['text_under_special_instructions']!=='') {
-                                            echo '<div class="moo-special-instruction-title">'.$this->pluginSettings['text_under_special_instructions'].'</div>';
+                                            echo '<div class="moo-special-instruction-title">'.wp_kses_post(wp_unslash($this->pluginSettings['text_under_special_instructions'])).'</div>';
                                         }
                                         if (isset($this->pluginSettings['special_instructions_required']) && $this->pluginSettings['special_instructions_required']==='yes') {
                                             echo '<textarea class="moo-form-control" cols="100%" rows="5" id="Mooinstructions" required></textarea>';
@@ -741,7 +741,7 @@ class checkoutPage extends sooShortCode
                                 <?php
                             }
                             //Check if coupons are enabled
-                            if ($this->pluginSettings['use_coupons']=="enabled") {
+                            if ($this->pluginSettings['use_coupons'] == "enabled" ) {
                                 ?>
                                 <div class="moo_checkout_border_bottom"></div>
                                 <div id="moo-checkout-form-coupon">
@@ -1284,8 +1284,10 @@ class checkoutPage extends sooShortCode
             "cashUponDelivery"=>$this->pluginSettings['payment_cash_delivery'] === 'on',
             "cashInStore"=>$this->pluginSettings['payment_cash'] === 'on',
             "creditCard"=>$this->pluginSettings['clover_payment_form'] === 'on',
-            "giftCards"=>(!empty(SOO_ACCEPT_GIFTCARDS) && !empty($this->pluginSettings['clover_giftcards']) && $this->pluginSettings['clover_giftcards'] === 'on'),
+            "giftCards"=>(!empty($this->pluginSettings['clover_giftcards']) && $this->pluginSettings['clover_giftcards'] === 'on'),
             "googlePay"=>(!empty($this->pluginSettings['clover_googlepay']) && $this->pluginSettings['clover_googlepay'] === 'on'),
+            "applePay"=> $this->isApplePayEnabled(),
+            "merchantUuid"=> $this->getMerchantUuid(),
             "pickupTimes"=>(!empty($oppening_status["pickup_time"])) ? $oppening_status["pickup_time"]:null,
             "deliveryTimes"=>(!empty($oppening_status_d["pickup_time"])) ? $oppening_status_d["pickup_time"] : null,
             "fbAppId"=>$this->pluginSettings['fb_appid'],
@@ -1977,9 +1979,14 @@ class checkoutPage extends sooShortCode
                                 </svg>
                             </div>
                             <div id="moo-cloverGooglePay" class=""></div>
+                            <div id="moo-cloverApplePay" class="moo-col-md-12"></div>
                             <button type="submit"  id="moo_btn_submit_order" onclick="mooCheckout.finalizeOrder(event);" class="sooCheckoutPrimaryButtonInput moo-finalize-order-btn moo-checkoutText-finalizeOrder">
                                 <?php _e("FINALIZE ORDER", "moo_OnlineOrders"); ?>
                             </button>
+                            <div style="margin-top: 10px">
+                                <div class="moo-row"><div class="moo-col-md-12"><span style="font-size: 12px">All transactions are encrypted and secure</span></div></div>
+                                <div class="moo-row"><div class="moo-col-md-12"><img style="height: 15px;margin-top: 5px;" src="<?php echo SOO_PLUGIN_URL .'/public/img/cards-icons.png'; ?>"  alt="Visa, MC, Amex"/></div></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2106,7 +2113,6 @@ class checkoutPage extends sooShortCode
     private function enqueueScripts($isAdvancedCheckout = false)
     {
         $cloverSkd = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/sdk.js' : 'https://checkout.clover.com/sdk.js';
-
         //Clover iframe SDK
         wp_register_script('sooCloverSdk', $cloverSkd, array('jquery'));
         wp_enqueue_script('sooCloverSdk');
@@ -2116,12 +2122,12 @@ class checkoutPage extends sooShortCode
             $this->enqueueSweetAlerts11Js();
 
             //New Checkout JS
-            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array(), SOO_VERSION);
-            wp_enqueue_script('sooCheckoutScript',array('jquery','sooCloverSdk','SooSweetalerts'));
+            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array('jquery','sooCloverSdk','SooSweetalerts'), SOO_VERSION);
+            wp_enqueue_script('sooCheckoutScript');
 
             //Soo Auth Module
-            wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array(), SOO_VERSION);
-            wp_enqueue_script('sooAuthScript',array('sooCheckoutScript'));
+            wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery','sooCheckoutScript'), SOO_VERSION);
+            wp_enqueue_script('sooAuthScript');
 
             //Add Google reCAPTCHA
             $googleReCAPTCHADisabled = (bool) get_option('sooDisableGoogleReCAPTCHA',false);
@@ -2139,10 +2145,10 @@ class checkoutPage extends sooShortCode
         }
 
         //Google Maps
-        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc');
+        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc',array('jquery'));
         wp_enqueue_script('moo-google-map');
 
-        wp_register_script('display-merchant-map', SOO_PLUGIN_URL . '/public/js/dist/moo_map.min.js',array(), SOO_VERSION);
+        wp_register_script('display-merchant-map', SOO_PLUGIN_URL . '/public/js/dist/moo_map.min.js',array('jquery'), SOO_VERSION);
         wp_enqueue_script('display-merchant-map');
     }
 
@@ -2162,6 +2168,7 @@ class checkoutPage extends sooShortCode
         $ccNotAvailable = true;
         $giftCardNotAvailable = true;
         $googlePayNotAvailable = true;
+        $applePayNotAvailable = true;
 
         $html = '<div id="moo-checkout-form-payments" tabindex="0" aria-label="the payments method">';
         $html .=  '<div class="moo_checkout_border_bottom"></div>';
@@ -2170,6 +2177,11 @@ class checkoutPage extends sooShortCode
         $html .=  '</div>';
         $html .=  '<div class="moo-checkout-bloc-content">';
         $html .=  '';
+
+        if ($this->isApplePayEnabled()) {
+            $html .=  $this->applePaySelector();
+            $applePayNotAvailable = false;
+        }
 
         if (isset($cloverPakmsKey) && isset($this->pluginSettings['clover_googlepay']) && $this->pluginSettings['clover_googlepay'] == 'on') {
             $html .=  $this->googlePaySelector();
@@ -2181,7 +2193,7 @@ class checkoutPage extends sooShortCode
             $ccNotAvailable = false;
         }
 
-        if (!empty(SOO_ACCEPT_GIFTCARDS) && isset($cloverPakmsKey) && isset($this->pluginSettings['clover_giftcards']) && $this->pluginSettings['clover_giftcards'] == 'on') {
+        if (isset($cloverPakmsKey) && isset($this->pluginSettings['clover_giftcards']) && $this->pluginSettings['clover_giftcards'] == 'on') {
             $html .=  $this->giftCardSelector();
             $giftCardNotAvailable = false;
         }
@@ -2202,7 +2214,10 @@ class checkoutPage extends sooShortCode
         if ( !$googlePayNotAvailable ) {
             $html .= $this->googlePaySection();
         }
-        if( $ccNotAvailable && $cacheNotAvailable && $giftCardNotAvailable && $googlePayNotAvailable){
+        if ( !$applePayNotAvailable ) {
+            $html .= $this->applePaySection();
+        }
+        if( $ccNotAvailable && $cacheNotAvailable && $giftCardNotAvailable && $googlePayNotAvailable&& $applePayNotAvailable){
             $html .=  '<div>There are no payment methods available. Please try again later. Thank you for your understanding and patience.</div>';
         }
         $html .=  '</div></div>';
@@ -2456,12 +2471,17 @@ HTML;
         $dateAndCvv = '<div class="moo-row"><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardDate"></div><div class="date-error"><div class="clover-error"></div></div></div></div><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardCvv"></div><div class="cvv-error"><div class="clover-error"></div></div></div></div></div>';
         $address    = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverStreetAddress"></div><div class="streetAddress-error"><div class="clover-error"></div></div></div></div></div>';
         $zip        = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardZip"></div><div class="zip-error"><div class="clover-error"></div></div></div></div></div>';
+        $encrypted  = '<div class="moo-row"><div class="moo-col-md-12"><span>All transactions are encrypted and secure</span></div></div>';
+        $cardsIcons  = '<div class="moo-row"><div class="moo-col-md-12"><img style="height: 25px;margin-top: 5px;" src="'. SOO_PLUGIN_URL .'/public/img/cards-icons.png"  alt="Visa, MC, Amex"/></div></div>';
 
-        $html = $htmBegin . $cardNumber . $dateAndCvv;
+        $html = $htmBegin;
+        $html .= $cardNumber . $dateAndCvv;
         if ($this->showStreetAddressFieldOnPaymentForm) {
             $html .= $address;
         }
         $html .= $zip;
+        //$html .= $encrypted;
+        //$html .= $cardsIcons;
         $html .= $htmEnd;
         $html = apply_filters('moo_filter_checkout_cloverCardSection', $html);
         return $html;
@@ -2491,6 +2511,13 @@ HTML;
         $html    .= ' <div class="mooGooglePaySectionText">Fast and easy checkout with Google! Simply scroll to the bottom to complete your payment</div>';
         $html    .= '</div>';
         return apply_filters('moo_filter_checkout_googlePaySection', $html);
+    }
+    private function applePaySection()
+    {
+        $html    = '<div id="mooApplePaySection">';
+        $html    .= ' <div class="mooApplePaySectionText">Fast and easy checkout with Apple! Simply scroll to the bottom to complete your payment</div>';
+        $html    .= '</div>';
+        return apply_filters('moo_filter_checkout_applePaySection', $html);
     }
     private function creditCardSelector()
     {
@@ -2538,6 +2565,18 @@ HTML;
         </div>
 HTML;
         $html = apply_filters('moo_filter_checkout_googlePaySelector', $html);
+        return  $html;
+    }
+    private function applePaySelector()
+    {
+        $payString = __("Apple Pay", "moo_OnlineOrders");
+        $html = <<<HTML
+        <div class="soo-checkout-radio-input-option" id="soo-applepay-selector">
+            <input onchange="mooCheckout.paymentMethodChanged()" class="soo-checkout-radio-input" type="radio" name="paymentMethod" value="applepay" id="moo-checkout-form-payments-applepay">
+            <label for="moo-checkout-form-payments-applepay" class="moo-checkout-radio-input-label" id="moo-checkout-form-applepay-label">$payString</label>
+        </div>
+HTML;
+        $html = apply_filters('moo_filter_checkout_applePaySelector', $html);
         return  $html;
     }
     private function couponsSection()
@@ -2726,6 +2765,18 @@ HTML;
     private function getCartPageLink() {
         if (!empty( $this->pluginSettings['cart_page'] )){
             return get_page_link($this->pluginSettings['cart_page']);
+        }
+        return null;
+    }
+
+    private function isApplePayEnabled()
+    {
+        return (bool) get_option("moo_apple_pay_enabled",false);
+    }
+
+    private function getMerchantUuid() {
+        if ($this->isApplePayEnabled()) {
+           return $this->api->getMerchantUuid();
         }
         return null;
     }

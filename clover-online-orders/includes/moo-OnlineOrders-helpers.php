@@ -11,10 +11,10 @@ class Moo_OnlineOrders_Helpers
         if (isset($result["Create Table"])){
             preg_match('/CHARSET=([^\s]+)/', $result['Create Table'], $matches);
             if (isset($matches[0])){
-               $matches = explode('=',$matches[0]);
-               if (isset($matches[1])){
-                   return $matches[1];
-               }
+                $matches = explode('=',$matches[0]);
+                if (isset($matches[1])){
+                    return $matches[1];
+                }
             }
         }
         return $wpdb->charset;
@@ -25,10 +25,10 @@ class Moo_OnlineOrders_Helpers
         if (isset($result["Create Table"])){
             preg_match('/ENGINE=([^\s]+)/', $result['Create Table'], $matches);
             if (isset($matches[0])){
-               $matches = explode('=',$matches[0]);
-               if (isset($matches[1])){
-                   return $matches[1];
-               }
+                $matches = explode('=',$matches[0]);
+                if (isset($matches[1])){
+                    return $matches[1];
+                }
             }
         }
         return $wpdb->engine;
@@ -38,122 +38,176 @@ class Moo_OnlineOrders_Helpers
         $results = $wpdb->get_results("SHOW FULL COLUMNS FROM `{$wpdb->prefix}$table_name`",'ARRAY_A');
         foreach ($results as $result) {
             if(isset($result['Field']) && $result['Field'] === $column_name ){
-               if (isset($result['Collation'])){
-                   return $result['Collation'];
-               }
+                if (isset($result['Collation'])){
+                    return $result['Collation'];
+                }
             }
         }
         return $wpdb->collate;
     }
-
     public static function upgradeDatabaseToVersion136($hideErrors = true)
     {
         global $wpdb;
-        if($hideErrors){
+
+        // Hide database errors if requested
+        if ($hideErrors) {
             $wpdb->hide_errors();
         }
-        //Adding new fields in category table
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `image_url` VARCHAR(255) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `alternate_name` VARCHAR(100) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `sort_order` INT NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `show_by_default` INT NOT NULL DEFAULT '1'");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_modifier_group` ADD `sort_order` INT NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `type` INT(1) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `sort_order` INT NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `sort_order` INT NULL");
-        @$wpdb->query("CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_item_order` (
-                          `_id` INT NOT NULL AUTO_INCREMENT,
-                          `item_uuid` VARCHAR(100) NOT NULL,
-                          `order_uuid` VARCHAR(100) NOT NULL,
-                          `quantity` VARCHAR(100) NOT NULL,
-                          `modifiers` TEXT NOT NULL,
-                          `special_ins` VARCHAR(255) NOT NULL,
-                          PRIMARY KEY (`_id`, `item_uuid`, `order_uuid`)
-                            );");
-        //add description to items
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` CHANGE `description` `description` TEXT ");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `minAmount` VARCHAR(100) NULL DEFAULT '0' ");
+
+        // Array of queries to execute
+        $queries = [
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `image_url` VARCHAR(255) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `alternate_name` VARCHAR(100) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `sort_order` INT NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `show_by_default` INT NOT NULL DEFAULT '1'",
+            "ALTER TABLE `{$wpdb->prefix}moo_modifier_group` ADD `sort_order` INT NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `type` INT(1) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `sort_order` INT NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `sort_order` INT NULL",
+            "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_item_order` (
+            `_id` INT NOT NULL AUTO_INCREMENT,
+            `item_uuid` VARCHAR(100) NOT NULL,
+            `order_uuid` VARCHAR(100) NOT NULL,
+            `quantity` VARCHAR(100) NOT NULL,
+            `modifiers` TEXT NOT NULL,
+            `special_ins` VARCHAR(255) NOT NULL,
+            PRIMARY KEY (`_id`, `item_uuid`, `order_uuid`)
+        )",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` CHANGE `description` `description` TEXT",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `minAmount` VARCHAR(100) NULL DEFAULT '0'"
+        ];
+
+        // Loop through queries and execute them
+        foreach ($queries as $query) {
+            try {
+                $wpdb->query($query); // Execute the query
+            } catch (Exception $e) {
+                // Log the error and continue to the next query
+                //error_log("Failed to execute query: $query - Error: " . $e->getMessage());
+            }
+        }
 
     }
     public static function upgradeDatabaseToVersion150($hideErrors = true)
     {
         global $wpdb;
-        if($hideErrors){
+
+        // Hide database errors if requested
+        if ($hideErrors) {
             $wpdb->hide_errors();
         }
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `description` TEXT NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `custom_hours` VARCHAR(100) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `time_availability` VARCHAR(10) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` CHANGE `description` `description` TEXT ");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `minAmount` VARCHAR(100) NULL DEFAULT '0' ");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `custom_hours` VARCHAR(100) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `time_availability` VARCHAR(10) DEFAULT 1");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `use_coupons` INT(1) NULL DEFAULT 1");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `custom_message` VARCHAR(255) NULL DEFAULT 'Not available yet'");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `allow_service_fee` INT(1) NULL DEFAULT 1");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `allow_sc_order` INT(1) NULL DEFAULT 1 ");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `maxAmount` VARCHAR(100) NULL DEFAULT '' ");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `category_uuid` VARCHAR(45) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `custom_hours` VARCHAR(45) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `soo_name` VARCHAR(255) NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `available` INT(1) NULL DEFAULT 1");
-     }
+
+        // Array of queries to execute
+        $queries = [
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `description` TEXT NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `custom_hours` VARCHAR(100) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `time_availability` VARCHAR(10) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` CHANGE `description` `description` TEXT",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `minAmount` VARCHAR(100) NULL DEFAULT '0'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `custom_hours` VARCHAR(100) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `time_availability` VARCHAR(10) DEFAULT '1'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `use_coupons` INT(1) NULL DEFAULT '1'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `custom_message` VARCHAR(255) NULL DEFAULT 'Not available yet'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `allow_service_fee` INT(1) NULL DEFAULT '1'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `allow_sc_order` INT(1) NULL DEFAULT '1'",
+            "ALTER TABLE `{$wpdb->prefix}moo_order_types` ADD `maxAmount` VARCHAR(100) NULL DEFAULT ''",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `category_uuid` VARCHAR(45) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `custom_hours` VARCHAR(45) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `soo_name` VARCHAR(255) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `available` INT(1) NULL DEFAULT '1'"
+        ];
+
+        // Loop through queries and execute them
+        foreach ($queries as $query) {
+            try {
+                $wpdb->query($query); // Execute the query
+            } catch (Exception $e) {
+                // Log the error and continue to the next query
+                //error_log("Failed to execute query: $query - Error: " . $e->getMessage());
+            }
+        }
+
+
+    }
     public static function upgradeDatabaseToVersion158($hideErrors = true)
     {
         global $wpdb;
-        if($hideErrors){
+
+        // Hide database errors if requested
+        if ($hideErrors) {
             $wpdb->hide_errors();
         }
-        // Get current charset
+
+        // Get current charset, engine, and column collation for table moo_item
         $itemTableCharset = self::getCharsetOfDbTable("moo_item");
         $itemTableEngine = self::getEngineOfDbTable("moo_item");
-        $itemUuidColumnCollate = self::getCharsetOfDbColumn("moo_item","uuid");
+        $itemUuidColumnCollate = self::getCharsetOfDbColumn("moo_item", "uuid");
 
+        // Array of queries to execute
+        $queries = [
+            "ALTER TABLE `{$wpdb->prefix}moo_item` ADD `featured` INT(1) NULL DEFAULT 0",
+            "ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `is_pre_selected` INT(1) NULL DEFAULT 0",
+            "ALTER TABLE `{$wpdb->prefix}moo_tax_rate` ADD `taxAmount` INT NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_tax_rate` ADD `taxType` VARCHAR(100) NULL",
+            "ALTER TABLE `{$wpdb->prefix}moo_category` ADD `items_imported` INT(1) NOT NULL DEFAULT 0"
+        ];
 
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_item` ADD `featured` INT(1) NULL DEFAULT 0");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_modifier` ADD `is_pre_selected` INT(1) NULL DEFAULT 0");
-        // Add new fields to tax rate
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_tax_rate` ADD `taxAmount` INT NULL");
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_tax_rate` ADD `taxType` VARCHAR(100) NULL");
-
-        //Add a flag to the category table
-        @$wpdb->query("ALTER TABLE `{$wpdb->prefix}moo_category` ADD `items_imported` INT(1) NOT NULL DEFAULT 0");
-
-
-        //Create a new table for items_categories (many to many)
-        $res = @$wpdb->query("CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_items_categories` (
-                          `item_uuid` VARCHAR(45) NOT NULL,
-                          `category_uuid` VARCHAR(100) NOT NULL,
-                          `sort_order` INT NULL,
-                          PRIMARY KEY (`item_uuid`, `category_uuid`),
-                          INDEX `idx_item_has_categories` (`item_uuid` ASC) ,
-                          INDEX `idx_category_has_items` (`category_uuid` ASC)  ,
-                          CONSTRAINT `{$wpdb->prefix}fk_item_has_categories`
-                            FOREIGN KEY (`item_uuid`)
-                            REFERENCES `{$wpdb->prefix}moo_item` (`uuid`)
-                            ON DELETE CASCADE
-                            ON UPDATE CASCADE,
-                          CONSTRAINT `{$wpdb->prefix}fk_category_has_items`
-                            FOREIGN KEY (`category_uuid`)
-                            REFERENCES `{$wpdb->prefix}moo_category` (`uuid`)
-                            ON DELETE CASCADE
-                            ON UPDATE CASCADE,
-                            UNIQUE(`item_uuid`,`category_uuid`)) ENGINE=$itemTableEngine DEFAULT CHARACTER SET $itemTableCharset COLLATE $itemUuidColumnCollate"
-        );
-        //Remove CONSTRAINT if table not created
-        if (!$res) {
-            @$wpdb->query("CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_items_categories` (
-                          `item_uuid` VARCHAR(45) NOT NULL,
-                          `category_uuid` VARCHAR(100) NOT NULL,
-                          `sort_order` INT NULL,
-                          PRIMARY KEY (`item_uuid`, `category_uuid`),
-                          INDEX `idx_item_has_categories` (`item_uuid` ASC) ,
-                          INDEX `idx_category_has_items` (`category_uuid` ASC)  ,
-                          UNIQUE(`item_uuid`,`category_uuid`)
-                         ) ENGINE=$itemTableEngine DEFAULT CHARACTER SET $itemTableCharset COLLATE $itemUuidColumnCollate"
-            );
+        // Execute all queries in the array
+        foreach ($queries as $query) {
+            try {
+                $wpdb->query($query); // Execute the query
+            } catch (Throwable $e) {
+                // Log the error and continue to the next query
+                error_log("Failed to execute query: $query - Error: " . $e->getMessage());
+            }
         }
+
+        // Create or update the `moo_items_categories` table
+        $createTableQuery = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_items_categories` (
+        `item_uuid` VARCHAR(45) NOT NULL,
+        `category_uuid` VARCHAR(100) NOT NULL,
+        `sort_order` INT NULL,
+        PRIMARY KEY (`item_uuid`, `category_uuid`),
+        INDEX `idx_item_has_categories` (`item_uuid` ASC),
+        INDEX `idx_category_has_items` (`category_uuid` ASC),
+        CONSTRAINT `{$wpdb->prefix}fk_item_has_categories`
+            FOREIGN KEY (`item_uuid`)
+            REFERENCES `{$wpdb->prefix}moo_item` (`uuid`)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+        CONSTRAINT `{$wpdb->prefix}fk_category_has_items`
+            FOREIGN KEY (`category_uuid`)
+            REFERENCES `{$wpdb->prefix}moo_category` (`uuid`)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+        UNIQUE(`item_uuid`, `category_uuid`)
+    ) ENGINE=$itemTableEngine DEFAULT CHARACTER SET $itemTableCharset COLLATE $itemUuidColumnCollate";
+
+        try {
+            $res = $wpdb->query($createTableQuery); // Attempt to create the table
+
+            // Fallback: Remove constraints and try again if creation fails
+            if (!$res) {
+                $fallbackQuery = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}moo_items_categories` (
+                `item_uuid` VARCHAR(45) NOT NULL,
+                `category_uuid` VARCHAR(100) NOT NULL,
+                `sort_order` INT NULL,
+                PRIMARY KEY (`item_uuid`, `category_uuid`),
+                INDEX `idx_item_has_categories` (`item_uuid` ASC),
+                INDEX `idx_category_has_items` (`category_uuid` ASC),
+                UNIQUE(`item_uuid`, `category_uuid`)
+            ) ENGINE=$itemTableEngine DEFAULT CHARACTER SET $itemTableCharset COLLATE $itemUuidColumnCollate";
+
+                $wpdb->query($fallbackQuery); // Execute fallback query
+            }
+        } catch (Exception $e) {
+            // Log the error if the table creation fails
+            //error_log("Failed to create or update table `moo_items_categories` - Error: " . $e->getMessage());
+        }
+
+
     }
+
     public static function getDefaultOptions() {
         return array(
             array("name"=>"api_key","value"=>""),
@@ -264,5 +318,74 @@ class Moo_OnlineOrders_Helpers
             }
         }
         update_option('moo_settings', $currentOptions );
+    }
+    /**
+     * @throws Exception
+     */
+    public static function uploadFileByUrl($image_url) {
+
+        // If the function it's not available, require it.
+        if ( ! function_exists( 'download_url' ) ) {
+            // it allows us to use download_url() and wp_handle_sideload() functions
+            require_once ABSPATH . '/wp-admin/includes/file.php';
+        }
+
+        // download to temp dir
+        $temp_file = download_url( $image_url );
+
+        if( is_wp_error( $temp_file ) ) {
+            return false;
+        }
+        $filetype = wp_check_filetype( $temp_file );
+
+
+        // move the temp file into the uploads directory
+        $file = array(
+            'name'     => basename( $image_url ),
+            'type'     => $filetype['type'],
+            'tmp_name' => $temp_file,
+            'size'     => filesize( $temp_file ),
+        );
+
+        $sideload = wp_handle_sideload(
+            $file,
+            array(
+                'test_form'   => false // no needs to check 'action' parameter
+            )
+        );
+
+        if( ! empty( $sideload[ 'error' ] ) ) {
+            // you may return an error message if you want
+            throw new Exception($sideload[ 'error' ]);
+        }
+
+        // it is time to add our uploaded image into WordPress media library
+        $attachment_id = wp_insert_attachment(
+            array(
+                'guid'           => $sideload[ 'url' ],
+                'post_mime_type' => $sideload[ 'type' ],
+                'post_title'     => basename( $sideload[ 'file' ] ),
+                'post_content'   => '',
+                'post_status'    => 'inherit',
+            ),
+            $sideload[ 'file' ]
+        );
+
+        if( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+            return false;
+        }
+
+        // update metadata, regenerate image sizes
+        require_once( ABSPATH . 'wp-admin/includes/image.php' );
+
+        wp_update_attachment_metadata(
+            $attachment_id,
+            wp_generate_attachment_metadata( $attachment_id, $sideload[ 'file' ] )
+        );
+
+        @unlink( $temp_file );
+
+        return $sideload[ 'url' ];
+
     }
 }

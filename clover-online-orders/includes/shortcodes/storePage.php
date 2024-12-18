@@ -206,8 +206,8 @@ class storePage extends sooShortCode
                     if(strtoupper($file_extension) === "JS")
                     {
                         $jsFileName = 'moo-'.$file.'-js';
-                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, array(), SOO_VERSION);
-                        wp_enqueue_script( $jsFileName  );
+                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, array('jquery'), SOO_VERSION);
+                        wp_enqueue_script( $jsFileName );
                     }
                 }
             }

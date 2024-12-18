@@ -126,10 +126,15 @@ class Moo_OnlineOrders_SooApi
      * Jan 2021
      */
     public function getCategories() {
-        $res = $this->getRequest($this->urlInventoryApi."inventory/categories?expand=items", true);
+        $res = $this->getRequest($this->urlInventoryApi."inventory/categories?expand=menuSection%2Citems%2Citems.menuItem", true);
         if (is_array($res)) {
-            $saved = $this->save_categories($res);
-            return "$saved Categories imported";
+            $count = 0;
+            foreach ($res as $cat) {
+                if ($this->insertOrUpdateCategory($cat)) {
+                    $count++;
+                }
+            }
+            return "$count Categories imported";
         } else {
             return "Please verify your Key in page settings";
         }
@@ -153,13 +158,65 @@ class Moo_OnlineOrders_SooApi
             return "Please verify your Key in page settings";
         }
     }
-    public function getItems() {
-        $res = $this->getRequest($this->urlInventoryApi."inventory/items?expand=tags%2CtaxRates%2CmodifierGroups%2CitemStock", true);
-        if (is_array($res)) {
-            $saved = $this->save_items($res);
-            return "$saved products imported";
+    public function getAndSaveItems() {
+        $page = 0;
+        $saved = 0;
+        $received = 0;
+        $savedWithErrors = 0;
+        $exist = 0;
+        while (true) {
+
+            // Fetch items for the current page
+            $result = $this->getItemsWithoutSaving($page);
+
+            if (!is_array($result)) {
+                // If the result is not an array, log an error and stop processing
+                error_log("Error fetching items on page $page: Invalid data format");
+                break;
+            }
+
+            if (count($result) === 0) {
+                // No more items to process
+                break;
+            }
+
+            $page++;
+
+            // Attempt to save the fetched items
+            $savingResult = $this->save_items($result);
+
+            // Update counters
+            $saved += isset($savingResult['count']) ? $savingResult['count'] : 0;
+            $savedWithErrors += isset($savingResult['errors']) ? $savingResult['errors'] : 0;
+            $exist += isset($savingResult['exist']) ? $savingResult['exist'] : 0;
+            $received += count($result);
+        }
+
+        if ($received === 0) {
+            return "No items were received.";
+        } elseif ($saved > 0 && $savedWithErrors === 0 && $exist === 0) {
+            return sprintf("%d items were successfully imported.", $saved);
+        } elseif ($saved === 0 && $exist === $received && $savedWithErrors === 0) {
+            return "All your items already exist.";
+        } elseif ($saved > 0 && $exist > 0 && $savedWithErrors === 0) {
+            return sprintf(
+                "%d items were successfully imported, and %d items already exist.",
+                $saved,
+                $exist
+            );
+        } elseif ($saved > 0 && $savedWithErrors > 0) {
+            return sprintf(
+                "%d items were successfully imported, %d items already exist, but %d items encountered errors during import.",
+                $saved,
+                $exist,
+                $savedWithErrors
+            );
         } else {
-            return "Please verify your Key in page settings";
+            return sprintf(
+                "%d items received, but %d items encountered errors during import.",
+                $received,
+                $savedWithErrors
+            );
         }
     }
     public function getModifiers() {
@@ -180,8 +237,7 @@ class Moo_OnlineOrders_SooApi
             return "Please verify your Key in page settings";
         }
     }
-    public function getOptions()
-    {
+    public function getOptions() {
         $res = $this->getRequest($this->urlInventoryApi."inventory/options", true);
         if (is_array($res)) {
             $saved = $this->save_options($res);
@@ -190,8 +246,7 @@ class Moo_OnlineOrders_SooApi
             return "Please verify your Key in page settings";
         }
     }
-    public function getTags()
-    {
+    public function getTags() {
         $res = $this->getRequest($this->urlInventoryApi."inventory/tags", true);
 
         if (is_array($res)) {
@@ -201,8 +256,7 @@ class Moo_OnlineOrders_SooApi
             return "Please verify your Key in page settings";
         }
     }
-    public function getTaxRates()
-    {
+    public function getTaxRates() {
         $res = $this->getRequest($this->urlInventoryApi."inventory/tax_rates", true);
         if (is_array($res)) {
             $saved = $this->save_tax_rates($res);
@@ -211,8 +265,7 @@ class Moo_OnlineOrders_SooApi
             return "Please verify your Key in page settings";
         }
     }
-    public function getOrderTypes()
-    {
+    public function getOrderTypes() {
         $res = $this->getRequest($this->urlInventoryApi."inventory/order_types", true);
         if (is_array($res)) {
             $saved = $this->save_order_types($res);
@@ -225,37 +278,35 @@ class Moo_OnlineOrders_SooApi
     /*
      * Advanced Importing functions
      */
-    public function getOneCategory($cat_id) {
-        $res = $this->getRequest($this->urlInventoryApi."inventory/categories/".$cat_id."?expand=items", true);
-        return $res;
-    }
     public function getOneModifierGroups($uuid) {
         global $wpdb;
         $modifier_groups = $this->getRequest($this->urlInventoryApi."inventory/modifier_groups/".$uuid."?expand=modifiers", true);
         if(isset($modifier_groups["id"])) {
-            $wpdb->insert("{$wpdb->prefix}moo_modifier_group", array(
-                'uuid' => $modifier_groups["id"],
-                'name' => $modifier_groups["name"],
-                'alternate_name' => $modifier_groups["alternateName"],
-                'show_by_default' => $modifier_groups["showByDefault"],
-                'min_required' => $modifier_groups["minRequired"],
-                'max_allowd' => $modifier_groups["maxAllowed"],
-            ));
-            $this->save_modifiers($modifier_groups["modifiers"]["elements"]);
-            return true;
+            try {
+                $wpdb->insert("{$wpdb->prefix}moo_modifier_group", array(
+                    'uuid' => $modifier_groups["id"],
+                    'name' => $modifier_groups["name"],
+                    'alternate_name' => $modifier_groups["alternateName"],
+                    'show_by_default' => $modifier_groups["showByDefault"],
+                    'min_required' => $modifier_groups["minRequired"],
+                    'max_allowd' => $modifier_groups["maxAllowed"],
+                ));
+                $this->save_modifiers($modifier_groups["modifiers"]["elements"]);
+                return true;
+            } catch (Exception $e){}
         }
         return false;
 
     }
     //Functions to call the API for make Orders and payments
-    public function getPakmsKey(){
+    public function getPakmsKey() {
         //Get it locally when it's not found get it from Clover
         $localKey =  get_option("moo_pakms_key");
-        if (isset($localKey) && !empty($localKey)){
+        if (!empty($localKey)){
             return $localKey;
         }
         $cloverPubKey = $this->getRequest($this->url_api_v2 ."merchants/pakms", true);
-        if (isset($cloverPubKey["key"]) && !empty($cloverPubKey["key"])){
+        if (!empty($cloverPubKey["key"])){
             update_option("moo_pakms_key",$cloverPubKey["key"]);
             return $cloverPubKey["key"];
         }
@@ -388,6 +439,20 @@ class Moo_OnlineOrders_SooApi
             "hide_menu"=>"false"
         );
     }
+    public function getMerchantUuid() {
+        $uuid = get_option( 'moo_merchant_uuid' );
+        if( ! empty( $uuid ) ) {
+            return $uuid;
+        } else {
+            $endPoint = $this->url_api_v2 . "merchants/uuid";
+            $responseContent = $this->getRequest($endPoint,true);
+            if(!empty($responseContent["uuid"])){
+                update_option( 'moo_merchant_uuid', $responseContent["uuid"] );
+                return $responseContent["uuid"];
+            }
+        }
+        return null;
+    }
 
     public function getMerchantProprietes() {
         if (!$this->session->isEmpty("merchantProp")) {
@@ -405,7 +470,7 @@ class Moo_OnlineOrders_SooApi
 
     public function getTrackingStockStatus()
     {
-        $MooOptions = (array)get_option('moo_settings');
+        $MooOptions = (array) get_option('moo_settings');
         if (isset($MooOptions["track_stock"]) && $MooOptions["track_stock"] == "enabled") {
             return true;
         } else {
@@ -430,7 +495,6 @@ class Moo_OnlineOrders_SooApi
 
     //Function to update existing data
     public function updateItemGroup($uuid) {
-        //TODO : add filter support in backend
         //get attributes by itemGroup
         $endPoint = $this->urlInventoryApi . "inventory/attributes?filter=itemGroup.id%".$uuid;
         $attributes = $this->getRequest($endPoint,true);
@@ -444,7 +508,7 @@ class Moo_OnlineOrders_SooApi
                 }
             }
         }
-        return false;
+        return true;
     }
 
     public function getItemsWithoutSaving($page) {
@@ -453,6 +517,8 @@ class Moo_OnlineOrders_SooApi
             $per_page = intval(SOO_NB_ITEMS_PER_REQUEST);
         }
         $url = $this->urlInventoryApi . "inventory/items?expand=tags%2CtaxRates%2CmodifierGroups%2CitemStock&limit=".$per_page."&page=".$page;
+        //With Image & description
+        $url = $this->urlInventoryApi . "inventory/items?expand=menuItem%2Ctags%2CtaxRates%2CmodifierGroups%2CitemStock&limit=".$per_page."&page=".$page;
         return $this->getRequest($url,true);
     }
     public function getCategoriesWithoutSaving(){
@@ -460,7 +526,7 @@ class Moo_OnlineOrders_SooApi
         return $this->getRequest($url,true);
     }
     public function getItemsPerCategoryWithoutSaving($cat_uuid) {
-        $url = $this->urlInventoryApi  . "inventory/categories/".$cat_uuid."/items";
+        $url = $this->urlInventoryApi  . "inventory/categories/".$cat_uuid."/items?expand=menuItem";
         return $this->getRequest($url, true);
     }
 
@@ -924,23 +990,6 @@ class Moo_OnlineOrders_SooApi
     {
         return $this->callApi_Post('customers/deleteaddress', $this->apiKey, 'token=' . $token . '&address_id=' . $address_id);
     }
-
-    public function moo_DeleteCreditCard($card_token, $Customertoken)
-    {
-        return $this->callApi_Post('remove_card_spreedly', $this->apiKey, 'Customertoken=' . $Customertoken . '&token=' . $card_token);
-
-    }
-
-    public function moo_setDefaultAddresses()
-    {
-
-    }
-
-    public function moo_updateAddresses()
-    {
-
-    }
-
     public function moo_checkCoupon($couponCode)
     {
         return $this->callApi('coupons/' . $couponCode, $this->apiKey);
@@ -997,32 +1046,15 @@ class Moo_OnlineOrders_SooApi
         return $this->callApi_Post('/coupons/' . $code . '/update', $this->apiKey, $params);
     }
 
-    /*
-     * Sync/clean functions
-     * @since 1.0.6
-     */
-    public  function getItem($uuid){
-        if ($uuid == "")
-            return null;
-        $url = $this->urlInventoryApi . "inventory/items/" . $uuid . "?expand=tags%2CtaxRates%2CmodifierGroups%2CitemStock";
-        $res = $this->getRequest($url, true);
-        if ($res) {
-            $this->save_one_item($res);
-        } else {
-            return false;
-        }
-        return true;
-    }
-
     public  function getItemWithoutSaving($uuid)
     {
-        $url = $this->urlInventoryApi . "inventory/items/" . $uuid . "?expand=tags%2CtaxRates%2CmodifierGroups%2CitemStock%2Ccategories";
+        $url = $this->urlInventoryApi . "inventory/items/" . $uuid . "?expand=menuItem%2Ctags%2CtaxRates%2CmodifierGroups%2CitemStock%2Ccategories%2Ccategories.menuSection";
         return $this->getRequest($url, true);
     }
 
     public  function getCategoryWithoutSaving($uuid)
     {
-        $url = $this->urlInventoryApi . "inventory/categories/" . $uuid."?expand=items";
+        $url = $this->urlInventoryApi . "inventory/categories/" . $uuid."?expand=menuSection%2Citems%2Citems.menuItem";
         return $this->getRequest($url, true);
     }
 
@@ -1083,373 +1115,147 @@ class Moo_OnlineOrders_SooApi
 
     }
 
-    public function save_one_item($res)
-    {
-        global $wpdb;
-        $wpdb->query('START TRANSACTION');
-        // $wpdb->show_errors();
-        $item = json_decode(wp_json_encode($res));
-        //print_r($item);
-        if (isset($item->message) && $item->message == 'Not Found') {
-            echo $item->message;
-            return;
-        }
-        /*
-         * I verify if the Item is already in Wordpress DB
-         */
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_item where uuid='{$item->id}'") > 0) {
-            if (isset($item->itemGroup)) {
-                $this->updateItemGroup($item->itemGroup->id);
-            }
-
-            $wpdb->delete("{$wpdb->prefix}moo_item_tax_rate", array('item_uuid' => $item->id));
-            $wpdb->delete("{$wpdb->prefix}moo_item_modifier_group", array('item_id' => $item->id));
-            $wpdb->delete("{$wpdb->prefix}moo_item_tag", array('item_uuid' => $item->id));
-
-            // update the Item
-            $res1 = $wpdb->update("{$wpdb->prefix}moo_item", array(
-                'name' => $item->name,
-                'alternate_name' => $item->alternateName,
-                'price' => $item->price,
-                'code' => $item->code,
-                'price_type' => $item->priceType,
-                'unit_name' => $item->unitName,
-                'default_taxe_rate' => $item->defaultTaxRates,
-                'sku' => $item->sku,
-                'hidden' => $item->hidden,
-                'is_revenue' => $item->isRevenue,
-                'cost' => $item->cost,
-                'modified_time' => $item->modifiedTime,
-            ), array('uuid' => $item->id));
-        } else {
-            if (!isset($item->itemGroup))
-                $res1 = $wpdb->insert("{$wpdb->prefix}moo_item", array(
-                    'uuid' => $item->id,
-                    'name' => substr($item->name, 0, 100),
-                    'alternate_name' => substr($item->alternateName, 0, 100),
-                    'price' => $item->price,
-                    'code' => $item->code,
-                    'price_type' => $item->priceType,
-                    'unit_name' => $item->unitName,
-                    'default_taxe_rate' => $item->defaultTaxRates,
-                    'sku' => $item->sku,
-                    'hidden' => $item->hidden,
-                    'is_revenue' => $item->isRevenue,
-                    'cost' => $item->cost,
-                    'available' => $item->available,
-                    'modified_time' => $item->modifiedTime,
-                ));
-            else
-                $res1 = $wpdb->insert("{$wpdb->prefix}moo_item", array(
-                    'uuid' => $item->id,
-                    'name' => substr($item->name, 0, 100),
-                    'alternate_name' => substr($item->alternateName, 0, 100),
-                    'price' => $item->price,
-                    'code' => $item->code,
-                    'price_type' => $item->priceType,
-                    'unit_name' => $item->unitName,
-                    'default_taxe_rate' => $item->defaultTaxRates,
-                    'sku' => $item->sku,
-                    'hidden' => $item->hidden,
-                    'is_revenue' => $item->isRevenue,
-                    'cost' => $item->cost,
-                    'available' => $item->available,
-                    'modified_time' => $item->modifiedTime,
-                    'item_group_uuid' => $item->itemGroup->id
-                ));
-        }
-
-        //save the taxes rates
-        foreach ($item->taxRates->elements as $tax_rate) {
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tax_rate where uuid='{$tax_rate->id}'") == 0) {
-                $table = array('elements' => array($tax_rate));
-                $this->save_tax_rates(wp_json_encode($table));
-            }
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_item_tax_rate where item_uuid = '{$item->id}' and tax_rate_uuid='{$tax_rate->id}'") == 0) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_tax_rate", array(
-                    'tax_rate_uuid' => $tax_rate->id,
-                    'item_uuid' => $item->id
-                ));
-            }
-
-        }
-
-        //save modifierGroups
-        foreach ($item->modifierGroups->elements as $modifier_group) {
-
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier_group where  uuid='$modifier_group->id'") == 0) {
-                $this->getOneModifierGroups($modifier_group->id);
-            }
-
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_item_modifier_group where item_id = '{$item->id}' and group_id='{$modifier_group->id}'") == 0) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_modifier_group", array(
-                    'group_id' => $modifier_group->id,
-                    'item_id' => $item->id
-                ));
-            }
-
-        }
-
-        //save Tags
-        foreach ($item->tags->elements as $tag) {
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tag where uuid='{$tag->id}'") == 0) {
-                $table = array('elements' => array($tag));
-                $this->save_tags(wp_json_encode($table));
-            }
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_item_tag where item_uuid = '{$item->id}' and tag_uuid='{$tag->id}'") == 0) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_tag", array(
-                    'tag_uuid' => $tag->id,
-                    'item_uuid' => $item->id
-                ));
-            }
-
-        }
-        //save New categories
-        foreach ($item->categories->elements as $category) {
-            //I verify if the category is already saved in Wordpress database
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_category where uuid='{$category->id}'") == 0) {
-                $this->update_category($category);
-            }
-        }
-        if ($res1) {
-            $wpdb->query('COMMIT'); // if the item Inserted in the DB
-        } else {
-            $wpdb->query('ROLLBACK'); // // something went wrong, Rollback
-        }
-    }
-
     /**
-     * This function will take an object item in param then update it in local database
+     * This function will take an object item as a parameter and then update it in the local database.
      * with checking of tax rate categories and modifiers
-     * @param $item Object
+     * @param $item Array
      * @return bool
      */
-    public function update_item($item) {
+    public function syncCloverItem($item) {
         global $wpdb;
-        $wpdb->query('START TRANSACTION');
         // $wpdb->show_errors();
-        /*
-         * I verify if the Item is already in WordPress DB and if it's up to date
-         */
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_item where uuid='{$item['id']}'") > 0) {
-            if (isset($item->itemGroup)) {
-                $this->updateItemGroup($item->itemGroup->id);
-            }
-            $wpdb->delete("{$wpdb->prefix}moo_item_tax_rate", array('item_uuid' => $item['id']));
-            $wpdb->delete("{$wpdb->prefix}moo_item_modifier_group", array('item_id' => $item['id']));
-            $wpdb->delete("{$wpdb->prefix}moo_item_tag", array('item_uuid' => $item['id']));
-            
-            // update the Item
-            $res1 = $wpdb->update("{$wpdb->prefix}moo_item", array(
-                'name' => $item['name'],
-                'alternate_name' => $item['alternateName'],
-                'price' => $item['price'],
-                'code' => $item['code'],
-                'price_type' => $item['priceType'],
-                'unit_name' => $item['unitName'],
-                'default_taxe_rate' => $item['defaultTaxRates'],
-                'sku' => $item['sku'],
-                'hidden' => $item['hidden'],
-                'is_revenue' => $item['isRevenue'],
-                'cost' => $item['cost'],
-                'available' => $item['available'],
-                'modified_time' => $item['modifiedTime'],
-            ), array('uuid' => $item['id']));
-            if ($res1 >= 0)
-                $res1 = true;
-        } else {
-            $item_To_Add = array(
-                'uuid' => $item['id'],
-                'name' => $item['name'],
-                'alternate_name' => $item['alternateName'],
-                'price' => $item['price'],
-                'code' => $item['code'],
-                'price_type' => $item['priceType'],
-                'unit_name' => $item['unitName'],
-                'default_taxe_rate' => $item['defaultTaxRates'],
-                'sku' => $item['sku'],
-                'hidden' => $item['hidden'],
-                'is_revenue' => $item['isRevenue'],
-                'cost' => $item['cost'],
-                'available' => $item['available'],
-                'modified_time' => $item['modifiedTime'],
-            );
-            if (isset($item['itemGroup']))
-                $item_To_Add['item_group_uuid'] = $item['itemGroup']['id'];
+        $withCategories = isset($item["categories"]);
+        $existingSortOrders = [];
+        $wpdb->query('START TRANSACTION');
+        try {
+            $currentItem = $this->getItem($item['id']);
+            if ($currentItem) {
+                $wpdb->delete("{$wpdb->prefix}moo_item_tax_rate", array('item_uuid' => $item['id']));
+                $wpdb->delete("{$wpdb->prefix}moo_item_modifier_group", array('item_id' => $item['id']));
+                $wpdb->delete("{$wpdb->prefix}moo_item_tag", array('item_uuid' => $item['id']));
 
-            $res1 = $wpdb->insert("{$wpdb->prefix}moo_item", $item_To_Add);
-        }
-
-        //save the tax rates
-        if(isset($item['taxRates']) && isset($item['taxRates']['elements']) && count($item['taxRates']['elements'])>0) {
-            foreach ($item['taxRates']['elements'] as $tax_rate) {
-                if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tax_rate where uuid='{$tax_rate['id']}'") == 0) {
-                    $table = array('elements' => array($tax_rate));
-                    $this->save_tax_rates(wp_json_encode($table));
+                if ($withCategories) {
+                    $existingSortOrders = $wpdb->get_results(
+                        $wpdb->prepare(
+                            "SELECT category_uuid, sort_order FROM {$wpdb->prefix}moo_items_categories WHERE item_uuid = %s",
+                            $item['id']
+                        ),
+                        OBJECT_K
+                    );
+                    $wpdb->delete("{$wpdb->prefix}moo_items_categories", array('item_uuid' => $item['id']));
                 }
 
-                $wpdb->insert("{$wpdb->prefix}moo_item_tax_rate", array(
-                    'tax_rate_uuid' => $tax_rate['id'],
-                    'item_uuid' => $item['id']
-                ));
-            }
-        }
+                $itemProps = array(
+                    'name' => isset($item["name"]) ? esc_sql($item["name"]) : $currentItem["name"],
+                    'alternate_name' => isset($item["alternateName"]) ? esc_sql($item["alternateName"]) : $currentItem["alternate_name"],
+                    'price' => isset($item["price"]) ? esc_sql($item["price"]) : $currentItem["price"],
+                    'code' => isset($item["code"]) ? esc_sql($item["code"]) : $currentItem["code"],
+                    'price_type' => isset($item["priceType"]) ? esc_sql($item["priceType"]) : $currentItem["price_type"],
+                    'unit_name' => isset($item["unitName"]) ? esc_sql($item["unitName"]) : $currentItem["unit_name"],
+                    'default_taxe_rate' => isset($item["defaultTaxRates"]) ? esc_sql($item["defaultTaxRates"]) : $currentItem["default_taxe_rate"],
+                    'sku' => isset($item["sku"]) ? esc_sql($item["sku"]) : $currentItem["sku"],
+                    'hidden' => isset($item["hidden"]) ? esc_sql($item["hidden"]) : $currentItem["hidden"],
+                    'is_revenue' => isset($item["isRevenue"]) ? esc_sql($item["isRevenue"]) : $currentItem["is_revenue"],
+                    'cost' => isset($item["cost"]) ? esc_sql($item["cost"]) : $currentItem["cost"],
+                    'available' => isset($item["available"]) ? esc_sql($item["available"]) : $currentItem["available"],
+                    'modified_time' => isset($item["modifiedTime"]) ? esc_sql($item["modifiedTime"]) : $currentItem["modified_time"],
+                );
+                // update the Item
+                 $wpdb->update("{$wpdb->prefix}moo_item", $itemProps, array('uuid' => $item['id']));
+            } else {
+                $itemProps = array(
+                    'uuid' => esc_sql($item['id']),
+                    'name' => esc_sql($item['name']),
+                    'soo_name' => !empty($item['menuItem']['name']) ? esc_sql($item['menuItem']['name']) : null,
+                    'description' => !empty($item['menuItem']['description']) ? esc_sql($item['menuItem']['description']) : null,
+                    'visible' => !empty($item['menuItem']['enabled']) ? esc_sql($item['menuItem']['enabled']) : 1,
+                    'alternate_name' => esc_sql($item['alternateName']),
+                    'price' => esc_sql($item['price']),
+                    'code' => esc_sql($item['code']),
+                    'price_type' => esc_sql($item['priceType']),
+                    'unit_name' => esc_sql($item['unitName']),
+                    'default_taxe_rate' => esc_sql($item['defaultTaxRates']),
+                    'sku' => esc_sql($item['sku']),
+                    'hidden' => esc_sql($item['hidden']),
+                    'is_revenue' => esc_sql($item['isRevenue']),
+                    'cost' => esc_sql($item['cost']),
+                    'available' => esc_sql($item['available']),
+                    'modified_time' => esc_sql($item['modifiedTime']),
+                );
 
-        //save modifierGroups
-        if(isset($item['modifierGroups']) && isset($item['modifierGroups']['elements']) && count($item['modifierGroups']['elements'])>0) {
-            foreach ($item['modifierGroups']['elements'] as $modifier_group) {
-                if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier_group where uuid='{$modifier_group['id']}'") == 0) {
-                    $this->getOneModifierGroups($modifier_group['id']);
+                if (isset($item['itemGroup'])) {
+                    $itemProps['item_group_uuid'] = $item['itemGroup']['id'];
                 }
-                $wpdb->insert("{$wpdb->prefix}moo_item_modifier_group", array(
-                    'group_id' => $modifier_group['id'],
-                    'item_id' => $item['id']
-                ));
+                $wpdb->insert("{$wpdb->prefix}moo_item", $itemProps);
             }
-        }
 
-        //save Tags
-        if(isset($item['tags']) && isset($item['tags']['elements']) && count($item['tags']['elements'])>0) {
-            foreach ($item['tags']['elements'] as $tag) {
-                if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tag where uuid='{$tag['id']}'") == 0) {
-                    $table = array('elements' => array($tag));
-                    $this->save_tags(wp_json_encode($table));
+            //Save the tax rates
+            if(!empty($item['taxRates']['elements'])) {
+                foreach ($item['taxRates']['elements'] as $tax_rate) {
+                    if (!$this->taxRateExists($tax_rate['id'])){
+                        $this->save_one_tax_rate($tax_rate);
+                    }
+
+                    $wpdb->insert("{$wpdb->prefix}moo_item_tax_rate", array(
+                        'tax_rate_uuid' => $tax_rate['id'],
+                        'item_uuid' => $item['id']
+                    ));
                 }
-                $wpdb->insert("{$wpdb->prefix}moo_item_tag", array(
-                    'tag_uuid' => $tag['id'],
-                    'item_uuid' => $item['id']
-                ));
             }
-        }
 
-        if ($res1) {
-            $wpdb->query('COMMIT'); // if the item Inserted in the DB
+            //save modifierGroups
+            if(!empty($item['modifierGroups']['elements'])) {
+                foreach ($item['modifierGroups']['elements'] as $modifier_group) {
+                    if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier_group where uuid='{$modifier_group['id']}'") == 0) {
+                        $this->getOneModifierGroups($modifier_group['id']);
+                    }
+                    $wpdb->insert("{$wpdb->prefix}moo_item_modifier_group", array(
+                        'group_id' => $modifier_group['id'],
+                        'item_id' => $item['id']
+                    ));
+                }
+            }
+
+            //save Tags
+            if(!empty($item['tags']['elements'])) {
+                foreach ($item['tags']['elements'] as $tag) {
+                    if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tag where uuid='{$tag['id']}'") == 0) {
+                        $this->save_one_tag($tag);
+                    }
+                    $wpdb->insert("{$wpdb->prefix}moo_item_tag", array(
+                        'tag_uuid' => $tag['id'],
+                        'item_uuid' => $item['id']
+                    ));
+                }
+            }
+
+            //save Categories
+            if ($withCategories && !empty($item['categories']['elements'])) {
+                foreach ($item['categories']['elements'] as $category) {
+                    if ( ! $this->categoryExists($category['id']) ) {
+                        $cloverCategory = $this->getCategoryWithoutSaving($category['id']);
+                        $this->insertOrUpdateCategory($cloverCategory);
+                    } else {
+                        // Get the preserved sort_order if it exists
+                        $sortOrder = isset($existingSortOrders[$category['id']])
+                            ? $existingSortOrders[$category['id']]->sort_order
+                            : null;
+
+                        $wpdb->query($wpdb->prepare(
+                            "INSERT IGNORE INTO {$wpdb->prefix}moo_items_categories (category_uuid, item_uuid,sort_order) VALUES (%s, %s, %d)",
+                            $category['id'],
+                            $item['id'],
+                            $sortOrder
+                        ));
+                    }
+                }
+            }
+            $wpdb->query('COMMIT');
             return true;
-        } else {
+        } catch (Exception $e){
             $wpdb->query('ROLLBACK'); // // something went wrong, Rollback
             return false;
         }
-    }
-    public function update_category($category) {
-        global $wpdb;
-        $items_ids = "";
-
-        foreach ($category->items->elements as $item)
-            $items_ids .= $item->id . ",";
-
-        //Update Category information
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_category where uuid='{$category->id}'") > 0) {
-            $res = $wpdb->update("{$wpdb->prefix}moo_category", array(
-                'name' => $category->name,
-                'items' => $items_ids
-            ), array('uuid' => $category->id));
-        } else {
-            $res = $wpdb->insert("{$wpdb->prefix}moo_category", array(
-                'uuid' => $category->id,
-                'name' => $category->name,
-                'sort_order' => $category->sortOrder,
-                'show_by_default' => 1,
-                'items' => $items_ids
-            ));
-        }
-        //Update Category items
-
-        //return the result
-        if ($res > 0)
-            return true;
-        return false;
-    }
-    public function update_modifierGroups($modifier_groups)
-    {
-        global $wpdb;
-        $nb = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier_group where uuid='{$modifier_groups->id}'");
-        if($nb>0) {
-            if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier_group where uuid='{$modifier_groups->id}'") > 0)
-                $res = $wpdb->update("{$wpdb->prefix}moo_modifier_group", array(
-                    'name' => $modifier_groups->name,
-                    'min_required' => $modifier_groups->minRequired,
-                    'max_allowd' => $modifier_groups->maxAllowed
-
-                ), array('uuid' => $modifier_groups->id));
-            else
-                $res = $wpdb->insert("{$wpdb->prefix}moo_modifier_group", array(
-                    'uuid' => $modifier_groups->id,
-                    'name' => $modifier_groups->name,
-                    'alternate_name' => $modifier_groups->alternateName,
-                    'show_by_default' => $modifier_groups->showByDefault,
-                    'min_required' => $modifier_groups->minRequired,
-                    'max_allowd' => $modifier_groups->maxAllowed
-
-                ));
-
-            if ($res > 0) return true;
-        }
-        return false;
-    }
-    public function update_modifier($modifier) {
-        global $wpdb;
-        $wpdb->hide_errors();
-
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_modifier where uuid='{$modifier->id}'") > 0) {
-            $res = $wpdb->update("{$wpdb->prefix}moo_modifier", array(
-                'name' => $modifier->name,
-                'price' => $modifier->price,
-                'group_id' => $modifier->modifierGroup->id,
-
-            ), array('uuid' => $modifier->id));
-        } else {
-            $res = $wpdb->insert("{$wpdb->prefix}moo_modifier", array(
-                'uuid' => $modifier->id,
-                'name' => $modifier->name,
-                'alternate_name' => $modifier->alternateName,
-                'price' => $modifier->price,
-                'group_id' => $modifier->modifierGroup->id
-            ));
-        }
-        if ($res > 0)
-            return true;
-        return false;
-    }
-    public function update_taxRate($tax) {
-        global $wpdb;
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_tax_rate where uuid='{$tax->id}'") > 0)
-            $res = $wpdb->update("{$wpdb->prefix}moo_tax_rate", array(
-                'name' => $tax->name,
-                'rate' => $tax->rate,
-                'is_default' => $tax->isDefault
-            ), array('uuid' => $tax->id));
-        else
-            $res = $wpdb->insert("{$wpdb->prefix}moo_tax_rate", array(
-                'uuid' => $tax->id,
-                'name' => $tax->name,
-                'rate' => $tax->rate,
-                'is_default' => $tax->isDefault
-            ));
-        if ($res > 0)
-            return true;
-        return false;
-    }
-    public function update_orderType($orderType) {
-        global $wpdb;
-        if ($wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}moo_order_types where ot_uuid='{$orderType->id}'") > 0)
-            $res = $wpdb->update("{$wpdb->prefix}moo_order_types", array(
-                'label' => $orderType->label,
-                'taxable' => $orderType->taxable,
-            ), array('ot_uuid' => $orderType->id));
-        else
-            $res = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
-                'ot_uuid' => $orderType->id,
-                'label' => $orderType->label,
-                'taxable' => $orderType->taxable,
-                'status' => 0,
-                'show_sa' => 0,
-                'sort_order' => 0,
-                'type' => 0,
-                'minAmount' => '0',
-            ));
-        if ($res > 0)
-            return true;
-        return false;
     }
 
     /*
@@ -1609,59 +1415,101 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         $wpdb->hide_errors();
         $count = 0;
+        $exist = 0;
+        $errors = 0;
         foreach ($items as $item) {
-            if(!$item)
+            if (!$item || !isset($item["id"])) {
                 continue;
-            $itemProps =  array(
-                'uuid' => $item["id"],
-                'name' => $item["name"],
-                'alternate_name' => $item["alternateName"],
-                'price' => $item["price"],
-                'code' => $item["code"],
-                'price_type' => $item["priceType"],
-                'unit_name' => $item["unitName"],
-                'default_taxe_rate' => $item["defaultTaxRates"],
-                'sku' => $item["sku"],
-                'hidden' => $item["hidden"],
-                'is_revenue' => $item["isRevenue"],
-                'cost' => $item["cost"],
-                'available' => $item["available"],
-                'modified_time' => $item["modifiedTime"]
+            }
+            $itemUuid = esc_sql($item["id"]);
+
+            // Check if item already exists
+            $existingItem = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}moo_item WHERE uuid = %s",
+                $itemUuid
+            ));
+            if ($existingItem) {
+                $exist++;
+                continue; // Skip if item already exists
+            }
+
+            $itemProps = array(
+                'uuid' => $itemUuid,
+                'name' => esc_sql(!empty($item["name"]) ? $item["name"] : ''),
+                'soo_name' => esc_sql(!empty($item["menuItem"]["name"]) ? $item["menuItem"]["name"] : null),
+                'description' => esc_sql(!empty($item["menuItem"]["description"]) ? $item["menuItem"]["description"] : null),
+                'visible' => esc_sql(!empty($item["menuItem"]["enabled"]) ? (bool)$item["menuItem"]["enabled"] : true),
+                'alternate_name' => esc_sql(!empty($item["alternateName"]) ? $item["alternateName"] : ''),
+                'price' => esc_sql(!empty($item["price"]) ? $item["price"] : 0),
+                'code' => esc_sql(!empty($item["code"]) ? $item["code"] : ''),
+                'price_type' => esc_sql(!empty($item["priceType"]) ? $item["priceType"] : ''),
+                'unit_name' => esc_sql(!empty($item["unitName"]) ? $item["unitName"] : ''),
+                'default_taxe_rate' => esc_sql(!empty($item["defaultTaxRates"]) ? $item["defaultTaxRates"] : ''),
+                'sku' => esc_sql(!empty($item["sku"]) ? $item["sku"] : ''),
+                'hidden' => esc_sql(!empty($item["hidden"]) ? $item["hidden"] : 0),
+                'is_revenue' => esc_sql(!empty($item["isRevenue"]) ? $item["isRevenue"] : 0),
+                'cost' => esc_sql(!empty($item["cost"]) ? $item["cost"] : 0),
+                'available' => esc_sql(!empty($item["available"]) ? $item["available"] : 0),
+                'modified_time' => esc_sql(!empty($item["modifiedTime"]) ? $item["modifiedTime"] : ''),
             );
 
+
             if (isset($item["itemGroup"])){
-                $itemProps['item_group_uuid'] = $item["itemGroup"]["id"];
+                $itemProps['item_group_uuid'] = esc_sql($item["itemGroup"]["id"]);
             }
-            //Save the item
-            @$wpdb->insert("{$wpdb->prefix}moo_item",$itemProps);
-            if ($wpdb->insert_id != 0) $count++;
+            try {
+                //Save the item
+                $wpdb->insert("{$wpdb->prefix}moo_item",$itemProps);
 
-            //save the taxes rates
-            foreach ($item["taxRates"]["elements"] as $tax_rate) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_tax_rate", array(
-                    'tax_rate_uuid' => $tax_rate["id"],
-                    'item_uuid' => $item["id"]
-                ));
-            }
+                if ($wpdb->insert_id) {
+                    $count++;
+                }
 
-            //save modifierGroups
-            foreach ($item["modifierGroups"]["elements"] as $modifier_group) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_modifier_group", array(
-                    'group_id' => $modifier_group["id"],
-                    'item_id' => $item["id"]
-                ));
-            }
+                //save the tax rates
+                foreach ($item["taxRates"]["elements"] as $tax_rate) {
+                    $wpdb->insert("{$wpdb->prefix}moo_item_tax_rate", array(
+                        'tax_rate_uuid' => $tax_rate["id"],
+                        'item_uuid' => $item["id"]
+                    ));
+                }
 
-            //save Tags
-            foreach ($item["tags"]["elements"]  as $tag) {
-                $wpdb->insert("{$wpdb->prefix}moo_item_tag", array(
-                    'tag_uuid' => $tag["id"],
-                    'item_uuid' => $item["id"]
-                ));
+                //save modifierGroups
+                foreach ($item["modifierGroups"]["elements"] as $modifier_group) {
+                    $wpdb->insert("{$wpdb->prefix}moo_item_modifier_group", array(
+                        'group_id' => $modifier_group["id"],
+                        'item_id' => $item["id"]
+                    ));
+                }
+
+                //save Tags
+                foreach ($item["tags"]["elements"]  as $tag) {
+                    $wpdb->insert("{$wpdb->prefix}moo_item_tag", array(
+                        'tag_uuid' => $tag["id"],
+                        'item_uuid' => $item["id"]
+                    ));
+                }
+
+                //Save Item Image
+                if (!empty($item["menuItem"]["imageFilename"])) {
+                    $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
+                    if($link){
+                        $wpdb->insert("{$wpdb->prefix}moo_images",array(
+                            "item_uuid"=>$item["id"],
+                            "url"=>$link,
+                            "is_default"=>1,
+                            "is_enabled"=>1
+                        ));
+                    }
+                }
+            } catch (Exception $e){
+                $errors++;
             }
         }
-        return $count;
-
+        return [
+            'count' => $count,
+            'exist' => $exist,
+            'errors' => $errors
+        ];
     }
     private function save_tax_rates($taxRates) {
         global $wpdb;
@@ -1669,6 +1517,17 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($taxRates as $tax_rate) {
+            if($this->save_one_tax_rate($tax_rate)){
+                $count++;
+            }
+        }
+        return $count;
+    }
+    private function save_one_tax_rate($tax_rate) {
+        global $wpdb;
+        // $wpdb->show_errors();
+        $wpdb->hide_errors();
+        try {
             $result = $wpdb->insert("{$wpdb->prefix}moo_tax_rate", array(
                 'uuid' => $tax_rate["id"],
                 'name' => $tax_rate["name"],
@@ -1677,11 +1536,9 @@ class Moo_OnlineOrders_SooApi
                 'taxAmount' => $tax_rate["taxAmount"],
                 'taxType' => $tax_rate["taxType"],
             ));
-
-            if ($result > 0) $count++;
-        }
-
-        return $count;
+            return $result > 0;
+        } catch (Exception $e){}
+        return false;
     }
     private function save_tags($tags) {
         global $wpdb;
@@ -1689,15 +1546,28 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($tags as $tag) {
+            try {
+                if ($this->save_one_tag($tag)){
+                    $count++;
+                }
+            } catch (Exception $e){}
+        }
+        return $count;
+    }
+    private function save_one_tag($tag) {
+        global $wpdb;
+        // $wpdb->show_errors();
+        $wpdb->hide_errors();
+        try {
             $result = $wpdb->insert("{$wpdb->prefix}moo_tag", array(
                 'uuid' => $tag["id"],
                 'name' => $tag["name"]
             ));
 
-            if ($result > 0) $count++;
-        }
+            return  $result > 0;
+        } catch (Exception $e){}
 
-        return $count;
+        return false;
     }
     private function save_options($options) {
         global $wpdb;
@@ -1705,13 +1575,14 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($options as $option) {
-            $result = $wpdb->insert("{$wpdb->prefix}moo_option", array(
-                'uuid' => $option["id"],
-                'name' => $option["name"],
-                'attribute_uuid' => $option["attribute"]["id"]
-            ));
-
-            if ($result > 0) $count++;
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_option", array(
+                    'uuid' => $option["id"],
+                    'name' => $option["name"],
+                    'attribute_uuid' => $option["attribute"]["id"]
+                ));
+                if ($result > 0) $count++;
+            } catch (Exception $e){}
         }
 
         return $count;
@@ -1722,15 +1593,15 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($attributes as $attribute) {
-            $result = $wpdb->insert("{$wpdb->prefix}moo_attribute", array(
-                'uuid' => $attribute["id"],
-                'name' => $attribute["name"],
-                'item_group_uuid' => $attribute["itemGroup"]["id"]
-            ));
-
-            if ($result > 0) $count++;
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_attribute", array(
+                    'uuid' => $attribute["id"],
+                    'name' => $attribute["name"],
+                    'item_group_uuid' => $attribute["itemGroup"]["id"]
+                ));
+                if ($result > 0) $count++;
+            } catch (Exception $e){}
         }
-
         return $count;
     }
     private function save_modifiers($modifiers)  {
@@ -1739,15 +1610,17 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($modifiers as $modifier) {
-            $result = $wpdb->insert("{$wpdb->prefix}moo_modifier", array(
-                'uuid' => $modifier["id"],
-                'name' => $modifier["name"],
-                'alternate_name' => (isset($modifier["alternateName"]))?$modifier["alternateName"]:"",
-                'price' => $modifier["price"],
-                'group_id' => $modifier["modifierGroup"]["id"]
-            ));
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_modifier", array(
+                    'uuid' => $modifier["id"],
+                    'name' => $modifier["name"],
+                    'alternate_name' => (isset($modifier["alternateName"]))?$modifier["alternateName"]:"",
+                    'price' => $modifier["price"],
+                    'group_id' => $modifier["modifierGroup"]["id"]
+                ));
+                if ($result > 0) $count++;
+            } catch (Exception $e){}
 
-            if ($result > 0) $count++;
         }
         return $count;
     }
@@ -1756,15 +1629,17 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($modifier_groups as $modifier_group) {
-           $result = $wpdb->insert("{$wpdb->prefix}moo_modifier_group", array(
-                'uuid' => $modifier_group["id"],
-                'name' => $modifier_group["name"],
-                'alternate_name' => $modifier_group["alternateName"],
-                'show_by_default' => $modifier_group["showByDefault"],
-                'min_required' => $modifier_group["minRequired"],
-                'max_allowd' => $modifier_group["maxAllowed"]
-            ));
-            if ($result > 0) $count++;
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_modifier_group", array(
+                    'uuid' => $modifier_group["id"],
+                    'name' => $modifier_group["name"],
+                    'alternate_name' => $modifier_group["alternateName"],
+                    'show_by_default' => $modifier_group["showByDefault"],
+                    'min_required' => $modifier_group["minRequired"],
+                    'max_allowd' => $modifier_group["maxAllowed"]
+                ));
+                if ($result > 0) $count++;
+            } catch (Exception $e){}
         }
         return $count;
 
@@ -1774,79 +1649,98 @@ class Moo_OnlineOrders_SooApi
         $wpdb->hide_errors();
         $count = 0;
         foreach ($item_groups as $item_group) {
-            $result = $wpdb->insert("{$wpdb->prefix}moo_item_group", array(
-                'uuid' => $item_group["id"],
-                'name' => $item_group["name"]
-            ));
-            if ($result > 0) $count++;
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_item_group", array(
+                    'uuid' => $item_group["id"],
+                    'name' => $item_group["name"]
+                ));
+                if ($result > 0) $count++;
+            } catch (Exception $e){}
+
         }
         return $count;
     }
-    private function save_categories($categories) {
+
+    public function insertOrUpdateCategory($cat) {
         global $wpdb;
         $wpdb->hide_errors();
-        $count = 0;
-        foreach ($categories as $cat) {
-
-            if(isset($cat["items"]) && isset($cat["items"]["elements"]) && count($cat["items"]["elements"])>=100) {
-                $items = $this->getItemsPerCategoryWithoutSaving($cat["id"]);
-                $cat["items"] = array("elements"=>$items);
-            }
-
-            $result = $wpdb->insert("{$wpdb->prefix}moo_category", array(
-                'uuid' => $cat["id"],
-                'name' => $cat["name"],
-                'sort_order' => $cat["sortOrder"],
-                'show_by_default' => 1,
-                'items' => null,
-                'items_imported' => 1,
-            ));
-            if ($result > 0) {
-                $count++;
-            }
-            foreach ($cat["items"]["elements"] as $item) {
-                $wpdb->insert("{$wpdb->prefix}moo_items_categories", array(
-                    'category_uuid' => $cat["id"],
-                    'item_uuid' => $item["id"]
+        if(isset($cat["items"]) && isset($cat["items"]["elements"]) && count($cat["items"]["elements"])>=100) {
+            $items = $this->getItemsPerCategoryWithoutSaving($cat["id"]);
+            $cat["items"] = array("elements"=>$items);
+        }
+        try {
+            $currentCategory = $this->getCategory($cat["id"]);
+            if ($currentCategory) {
+                $wpdb->update("{$wpdb->prefix}moo_category", array(
+                    'name' => $cat["name"],
+                    'items' => null,
+                   // 'alternate_name' => (!empty($cat["menuSection"]["name"])) ? $cat["menuSection"]["name"]:$currentCategory['alternate_name'],
+                    'items_imported' => 1,
+                ), array('uuid' => $cat["id"]));
+            } else {
+                $wpdb->insert("{$wpdb->prefix}moo_category", array(
+                    'uuid' => $cat["id"],
+                    'name' => $cat["name"],
+                    'sort_order' => $cat["sortOrder"],
+                    'alternate_name' => (!empty($cat["menuSection"]["name"])) ? $cat["menuSection"]["name"]:null,
+                    'show_by_default' => 1,
+                    'items' => null,
+                    'items_imported' => 1,
                 ));
             }
-        }
-        return $count;
+            foreach ($cat["items"]["elements"] as $item) {
+                try {
+                   if ($this->itemExists($item["id"])) {
+                       $this->insertCategoryItemRelation($cat["id"], $item["id"]);
+                   } else {
+                       $cloverItem = $this->getItemWithoutSaving($item["id"]);
+                       $this->syncCloverItem($cloverItem);
+                   }
+                } catch (Exception $e){}
+            }
+        } catch (Exception $e){}
+        return true;
     }
     private function save_order_types($ordertypes) {
         global $wpdb;
         $wpdb->hide_errors();
         $count = 0;
         foreach ($ordertypes as $ot) {
-            $res = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
-                'ot_uuid' => $ot["id"],
-                'label' => $ot["label"],
-                'taxable' => $ot["taxable"],
-                'minAmount' => 0,
-                'show_sa' => (trim($ot["label"]) == 'Online Order Delivery') ? 1 : 0,
-                'status' => (trim($ot["label"]) == 'Online Order Pick Up') ? 1 : 0
-            ));
-            if ($res == 1)
-                $count++;
+            try {
+                $result = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
+                    'ot_uuid' => $ot["id"],
+                    'label' => $ot["label"],
+                    'taxable' => $ot["taxable"],
+                    'minAmount' => 0,
+                    'show_sa' => (trim($ot["label"]) == 'Online Order Delivery') ? 1 : 0,
+                    'status' => (trim($ot["label"]) == 'Online Order Pick Up') ? 1 : 0
+                ));
+                if ($result > 0)
+                    $count++;
+            } catch (Exception $e){}
+
         }
         return $count;
     }
-
     public function save_One_orderType($uuid, $label, $taxable, $minAmount, $show_sa) {
         global $wpdb;
-        $res = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
-            'ot_uuid' => $uuid,
-            'label' => esc_sql($label),
-            'taxable' => (($taxable == "true") ? "1" : "0"),
-            'status' => 1,
-            'show_sa' => (($show_sa == "true") ? "1" : "0"),
-            'minAmount' => floatval($minAmount),
-        ));
-        return $res;
+        try {
+            $res = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
+                'ot_uuid' => $uuid,
+                'label' => esc_sql($label),
+                'taxable' => (($taxable == "true") ? "1" : "0"),
+                'status' => 1,
+                'show_sa' => (($show_sa == "true") ? "1" : "0"),
+                'minAmount' => floatval($minAmount),
+            ));
+            return $res;
+        } catch (Exception $e){
+            return false;
+        }
+
     }
 
     //Hours endpoints
-
     //get hour
     public function getAllCustomHours($type){
         $url = $this->hours_url_api."allhours?type=".$type;
@@ -2164,4 +2058,71 @@ class Moo_OnlineOrders_SooApi
         }
         return $_SERVER['REMOTE_ADDR'];
     }
+
+    private function taxRateExists($taxRateId)
+    {
+        global $wpdb;
+        $query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}moo_tax_rate WHERE uuid = %s",
+            $taxRateId
+        );
+        return $wpdb->get_var($query) > 0;
+    }
+
+    private function itemExists($itemId)
+    {
+        global $wpdb;
+        $query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}moo_item WHERE uuid = %s",
+            $itemId
+        );
+        return $wpdb->get_var($query) > 0;
+    }
+    private function getItem($itemId) {
+        global $wpdb;
+
+        $query = $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moo_item WHERE uuid = %s",
+            $itemId
+        );
+
+        return $wpdb->get_row($query, ARRAY_A); // Returns the category as an associative array, or null if not found.
+    }
+
+    private function categoryExists($categoryId) {
+        global $wpdb;
+
+        $query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}moo_category WHERE uuid = %s",
+            $categoryId
+        );
+
+        return $wpdb->get_var($query) > 0;
+    }
+
+    private function getCategory($categoryId) {
+        global $wpdb;
+
+        $query = $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moo_category WHERE uuid = %s",
+            $categoryId
+        );
+
+        return $wpdb->get_row($query, ARRAY_A); // Returns the category as an associative array, or null if not found.
+    }
+
+    private function insertCategoryItemRelation($categoryId, $itemId) {
+        global $wpdb;
+
+        $table = "{$wpdb->prefix}moo_items_categories";
+
+        $query = $wpdb->prepare(
+            "INSERT IGNORE INTO {$table} (category_uuid, item_uuid) VALUES (%s, %s)",
+            $categoryId,
+            $itemId
+        );
+
+        return $wpdb->query($query);
+    }
+
 }

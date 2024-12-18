@@ -15,9 +15,6 @@ class Moo_OnlineOrders_Model {
     function getCategories4wigdets(){
         return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_category where show_by_default ='1' ORDER BY 4");
     }
-    function getItems() {
-        return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item");
-    }
     function getCategory($uuid) {
         $uuid = esc_sql($uuid);
         return $this->db->get_row("SELECT *
@@ -43,7 +40,7 @@ class Moo_OnlineOrders_Model {
     }
     function getItemsByCategory($category, $onlyVisibleItems = false, $limit = null) {
         if(empty($category->items) || (isset($category->items_imported) && $category->items_imported) ) {
-           $query = "SELECT items.* FROM {$this->db->prefix}moo_items_categories as items_categories,{$this->db->prefix}moo_item as items WHERE items_categories.item_uuid = items.uuid and items_categories.category_uuid = '{$category->uuid}'";
+           $query = "SELECT items.* FROM {$this->db->prefix}moo_items_categories as items_categories,{$this->db->prefix}moo_item as items WHERE items_categories.item_uuid = items.uuid and items_categories.category_uuid = '{$category->uuid}' and item_group_uuid is null";
            if ($onlyVisibleItems){
                $query .= " AND items.visible = 1 AND items.hidden = 0 AND items.available = 1 and items.price_type != 'VARIABLE' ";
            }
@@ -93,12 +90,12 @@ class Moo_OnlineOrders_Model {
                 AND i.hidden = 0
                 AND i.available = 1
                 AND i.price_type != 'VARIABLE'
+                AND i.item_group_uuid is null
                 ORDER BY i.sort_order asc ";
         if($limit){
             $sql .= "LIMIT {$limit}";
         }
-        $result  = $this->db->get_results($sql);
-        return $result;
+        return $this->db->get_results($sql);
     }
     function getItemsNamesByUuids($string){
        // $string = esc_sql($string);
@@ -116,6 +113,54 @@ class Moo_OnlineOrders_Model {
         $result  = $this->db->get_results($sql);
         return $result;
     }
+    function deleteItem($uuid) {
+        $tables = [
+            "{$this->db->prefix}moo_item_tax_rate"        => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_item_modifier_group" => ['item_id' => $uuid],
+            "{$this->db->prefix}moo_item_tag"            => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_items_categories"    => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_images"              => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_item_order"          => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_item_option"         => ['item_uuid' => $uuid],
+            "{$this->db->prefix}moo_item"                => ['uuid' => $uuid],
+        ];
+
+        try {
+            // Begin transaction
+            $this->db->query('START TRANSACTION');
+
+            foreach ($tables as $table => $conditions) {
+
+                // Check if the table exists
+                $tableExists = $this->db->get_var($this->db->prepare(
+                    "SHOW TABLES LIKE %s", $table
+                ));
+
+                if (!$tableExists) {
+                    continue; // Skip if the table doesn't exist
+                }
+
+
+                $result = $this->db->delete($table, $conditions);
+
+                if ($result === false) {
+                    // Rollback and throw an exception if any deletion fails
+                    $this->db->query('ROLLBACK');
+                    throw new Exception("Failed to delete from table: {$table} with conditions " . json_encode($conditions));
+                }
+            }
+
+            // Commit transaction if all deletions succeed
+            $this->db->query('COMMIT');
+
+            return true;
+        } catch (Exception $e) {
+            // Log the error for debugging
+           // TODO: error_log($e->getMessage());
+            return false;
+        }
+    }
+
     function hideItem($uuid)
     {
         $uuid = esc_sql($uuid);
@@ -206,7 +251,7 @@ class Moo_OnlineOrders_Model {
 
         return $this->db->get_results("SELECT *
                                     FROM {$this->db->prefix}moo_item i
-                                    WHERE i.soo_name like '%{$motCle}%' || i.name like '%{$motCle}%' || i.description like '%{$motCle}%'
+                                    WHERE i.item_group_uuid is null and (i.soo_name like '%{$motCle}%' || i.name like '%{$motCle}%' || i.description like '%{$motCle}%)'
                                     ");
     }
 
@@ -341,12 +386,6 @@ class Moo_OnlineOrders_Model {
                                         WHERE m.uuid = '{$uuid}' and mg.uuid = m.group_id
                                         ");
     }
-    function getItemsWithVariablePrice() {
-        return $this->db->get_results("SELECT *
-                                        FROM `{$this->db->prefix}moo_item` 
-                                        WHERE price_type = 'VARIABLE'
-                                        ");
-    }
     function getOrderTypes()
     {
         return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_order_types order by sort_order,status,label");
@@ -384,86 +423,75 @@ class Moo_OnlineOrders_Model {
     }
 
     function saveNewOrderOfOrderTypes($data){
-        $compteur = 0;
-        //Get the number OrderType
-        $group_number = $this->NbOrderTypes();
-        $group_number = $group_number[0]->nb;
-        $this->db->query('START TRANSACTION');
-        foreach ($data as $key => $value) {
-            $this->db->update("{$this->db->prefix}moo_order_types",
-                array(
-                    'sort_order' => $key
-                ),
-                array( 'ot_uuid' => $value ));
-            $compteur++;
-        }
-        if($compteur == $group_number)
-        {
+        try {
+            // Begin transaction
+            $this->db->query('START TRANSACTION');
+
+            foreach ($data as $key => $value) {
+                $result = $this->db->update(
+                    "{$this->db->prefix}moo_order_types",
+                    ['sort_order' => $key],
+                    ['ot_uuid' => $value]
+                );
+
+                if ($result === false) {
+                    throw new Exception("Failed to update order type with UUID: {$value}");
+                }
+            }
+
+            // Commit transaction
             $this->db->query('COMMIT');
             return true;
-        }
-        else {
+        } catch (Exception $e) {
+            // Rollback transaction on failure
             $this->db->query('ROLLBACK');
             return false;
         }
     }
-    function updateOrderType($uuid,$name,$enable,$taxable,$type,$minAmount,$maxAmount,$customHours,$useCoupons,$customMessage,$allowScOrders,$allowServiceFee)
-    {
-
+    function updateOrderType(
+        $uuid,
+        $label,
+        $status,
+        $taxable,
+        $isDelivery,
+        $minAmount,
+        $maxAmount,
+        $customHours,
+        $useCoupons,
+        $customMessage,
+        $allowScOrders,
+        $allowServiceFee
+    ) {
+        // Ensure the UUID and other critical inputs are sanitized as required
         $uuid = sanitize_text_field($uuid);
-        $label = wp_kses_post(wp_unslash($name));
-        $taxable = esc_sql($taxable);
-        $status = esc_sql($enable);
-        $type = esc_sql($type);
-        $minAmount = esc_sql($minAmount);
-        $maxAmount = esc_sql($maxAmount);
-        $customHours = esc_sql($customHours);
-        $useCoupons = esc_sql($useCoupons);
-        $allowScOrders = esc_sql($allowScOrders);
-        $allowServiceFee = esc_sql($allowServiceFee);
-        $customMessage = wp_kses_post(wp_unslash($customMessage));
 
-        return $this->db->update("{$this->db->prefix}moo_order_types",
+        // Database update with a prepared statement to avoid SQL injection
+        return $this->db->update(
+            "{$this->db->prefix}moo_order_types",
             array(
-                'label' => $label,
-                'taxable' => $taxable,
-                'status' => $status,
-                'minAmount' => $minAmount,
-                'maxAmount' => $maxAmount,
-                'show_sa' => $type,
-                'custom_hours' => $customHours,
-                'use_coupons' => $useCoupons,
-                'custom_message' => $customMessage,
-                'allow_sc_order' => $allowScOrders,
-                'allow_service_fee' => $allowServiceFee,
+                'label'           => $label,            // Already sanitized in the controller
+                'taxable'         => $taxable,          // Boolean validated in the controller
+                'status'          => $status,           // Boolean validated in the controller
+                'minAmount'       => $minAmount,        // Numeric validated in the controller
+                'maxAmount'       => $maxAmount,        // Numeric validated in the controller
+                'show_sa'         => $isDelivery,       // Sanitized in the controller
+                'custom_hours'    => $customHours,      // Sanitized in the controller
+                'use_coupons'     => $useCoupons,       // Boolean validated in the controller
+                'custom_message'  => $customMessage,    // Sanitized in the controller
+                'allow_sc_order'  => $allowScOrders,    // Boolean validated in the controller
+                'allow_service_fee' => $allowServiceFee // Boolean validated in the controller
             ),
-            array( 'ot_uuid' => $uuid )
+            array('ot_uuid' => $uuid)
         );
-    }
-
-    function ChangeModifierGroupName($mg_uuid,$name)
-    {
-        $uuid = esc_sql($mg_uuid);
-        $name = esc_sql($name);
-        return $this->db->update("{$this->db->prefix}moo_modifier_group",
-                                array(
-                                    'alternate_name' => $name
-                                ),
-                                array( 'uuid' => $uuid )
-        );
-        
     }
 
     function ChangeModifierName($m_uuid,$name)
     {
-        $uuid = esc_sql($m_uuid);
-        $name = esc_sql($name);
-
         return $this->db->update("{$this->db->prefix}moo_modifier",
             array(
                 'alternate_name' => $name
             ),
-            array( 'uuid' => $uuid )
+            array( 'uuid' => $m_uuid )
         );
 
     }
@@ -494,29 +522,6 @@ class Moo_OnlineOrders_Model {
         );
 
     }
-    public function update_category($category)
-    {
-        $items_ids = "";
-        foreach ($category["items"]["elements"] as $item) {
-            $items_ids .= $item['id'] . ",";
-        }
-
-        if ($this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_category where uuid='{$category["id"]}'") > 0)
-            $res = $this->db->update("{$this->db->prefix}moo_category", array(
-                'name' => $category["name"],
-                'items' => $items_ids
-            ), array('uuid' => $category["id"]));
-        else
-            $res = $this->db->insert("{$this->db->prefix}moo_category", array(
-                'uuid' => $category["id"],
-                'name' => $category["name"],
-                'sort_order' => $category["sortOrder"],
-                'show_by_default' => 1,
-                'items' => $items_ids
-            ));
-
-        return $res > 0;
-    }
 
     function ChangeCategoryName($cat_uuid,$name) {
         $uuid = esc_sql($cat_uuid);
@@ -531,7 +536,7 @@ class Moo_OnlineOrders_Model {
     }
     function UpdateCategoryStatus($cat_uuid,$status) {
         $uuid = esc_sql($cat_uuid);
-        $st = ($status == "true")? 1:0;
+        $st = ($status == "true" || $status === true)? 1:0;
 
         return $this->db->update("{$this->db->prefix}moo_category",
                                 array(
@@ -549,9 +554,7 @@ class Moo_OnlineOrders_Model {
     }
     function deleteCategory($uuid) {
         $uuid = esc_sql($uuid);
-        return $this->db->delete("{$this->db->prefix}moo_category",
-                                array( 'uuid' => $uuid )
-        );
+        return $this->db->delete("{$this->db->prefix}moo_category", array( 'uuid' => $uuid ));
     }
     function deleteModifierGroup($uuid) {
         $uuid = esc_sql($uuid);
@@ -603,135 +606,6 @@ class Moo_OnlineOrders_Model {
             ));
     }
 
-    function addOrder($uuid,$tax,$total,$name,$address, $city,$zipcode,$phone,$email,$instructions,$state,$country,$deliveryFee,$tipAmount,$shippingFee,$customer_lat,$customer_lng,$ordertype,$datetime){
-        $uuid         = esc_sql($uuid);
-        $tax          = esc_sql($tax);
-        $total        = esc_sql($total);
-        $name         = esc_sql($name);
-        $address      = esc_sql($address);
-        $city         = esc_sql($city);
-        $zipcode      = esc_sql($zipcode);
-        $phone        = esc_sql($phone);
-        $email        = esc_sql($email);
-        $instructions = esc_sql($instructions);
-        $ordertype    = esc_sql($ordertype);
-        $datetime     = esc_sql($datetime);
-        $state        = esc_sql($state);
-        $country      = esc_sql($country);
-
-        $deliveryFee     = esc_sql($deliveryFee);
-        $tipAmount       = esc_sql($tipAmount);
-        $shippingFee     = esc_sql($shippingFee);
-        $customer_lat    = esc_sql($customer_lat);
-        $customer_lng    = esc_sql($customer_lng);
-
-        $date = gmdate('Y/m/d H:i:s', $datetime);
-        $this->db->insert(
-            "{$this->db->prefix}moo_order",
-            array(
-                'uuid' => $uuid,
-                'taxAmount' => $tax,
-                'amount' => $total,
-                'paid' => 0,
-                'refpayment' => null,
-                'ordertype' => $ordertype,
-                'p_name' => $name,
-                'p_address' => $address,
-                'p_city' => $city,
-                'p_state' => $state,
-                'p_country' => $country,
-                'p_zipcode' => $zipcode,
-                'p_phone' => $phone,
-                'p_email' => $email,
-                'p_lat' => $customer_lat,
-                'p_lng' => $customer_lng,
-                'shippingfee' => $shippingFee,
-                'deliveryfee' => $deliveryFee,
-                'tipAmount' => $tipAmount,
-                'instructions' => $instructions,
-                'date' => $date,
-            ));
-        return $this->db->insert_id;
-    }
-    function addOrderV2($order,$body,$orderTypeLabel){
-        $this->db->insert(
-            "{$this->db->prefix}moo_order",
-            array(
-                'uuid' => $order["id"],
-                'taxAmount' => (isset($body["tax_amount"]))?$body["tax_amount"]/100 : 0,
-                'amount' => (isset($body["amount"]))?$body["amount"]/100 : 0,
-                'paid' => 0,
-                'refpayment' => null,
-                'ordertype' => $orderTypeLabel,
-                'p_name' => (isset($body["customer"]["name"]))?$body["customer"]["name"] : ((isset($body["customer"]["full_name"]))?$body["customer"]["full_name"] : ""),
-                'p_address' => (isset($body["customer"]["address"]["address"]))?$body["customer"]["address"]["address"] : "",
-                'p_city' => (isset($body["customer"]["address"]["city"]))?$body["customer"]["address"]["city"] : "",
-                'p_state' => (isset($body["customer"]["address"]["state"]))?$body["customer"]["address"]["state"] : "",
-                'p_country' => (isset($body["customer"]["address"]["country"]))?$body["customer"]["address"]["country"] : "US",
-                'p_zipcode' => (isset($body["customer"]["address"]["zipcode"]))?$body["customer"]["address"]["zipcode"] : "",
-                'p_phone' => (isset($body["customer"]["phone"]))?$body["customer"]["phone"] : "",
-                'p_email' => (isset($body["customer"]["email"]))?$body["customer"]["email"]: "",
-                'p_lat' => (isset($body["customer"]["address"]["lat"]))?$body["customer"]["address"]["lat"] : "",
-                'p_lng' => (isset($body["customer"]["address"]["lng"]))?$body["customer"]["address"]["lng"] : "",
-                'shippingfee' =>  (isset($body["service_fee"]))?$body["service_fee"]/100 : 0,
-                'deliveryfee' =>(isset($body["delivery_amount"]))?$body["delivery_amount"]/100 : 0,
-                'tipAmount' => (isset($body["tip_amount"]))?$body["tip_amount"]/100 : 0,
-                'instructions' => (isset($body["special_instructions"]))?$body["special_instructions"] : "",
-                'date' => date('Y/m/d H:i:s', ($order['createdTime']/1000)),
-            ));
-        return $this->db->insert_id;
-    }
-    function addLinesOrder($order,$items){
-        $order    = esc_sql($order);
-        foreach ($items as $uuid=>$item) {
-            if($item['item']->uuid=="delivery_fees" || $item['item']->uuid=="service_fees")
-                continue;
-
-            $string = "";
-            if(count($item['modifiers'])) {
-                foreach ($item['modifiers'] as $key=>$mod) {
-                    for($i=0;$i<$mod['qty'];$i++)
-                        $string .=$key.",";
-                }
-            }
-
-            $item_id        = esc_sql($item['item']->uuid);
-            $quantity       = esc_sql($item['quantity']);
-            $special_ins    = esc_sql($item['special_ins']);
-            $string         = esc_sql($string);
-
-            $this->db->insert(
-                "{$this->db->prefix}moo_item_order",
-                array(
-                    'item_uuid' => $item_id,
-                    'order_uuid' => $order,
-                    'quantity' => $quantity,
-                    'modifiers' => $string,
-                    'special_ins' => $special_ins,
-                ),
-                array(
-                    '%s',
-                    '%s',
-                    '%s',
-                    '%s',
-                    '%s'
-                ) );
-        }
-       return true;
-    }
-    function updateOrder($uuid,$ref){
-        $uuid      = esc_sql($uuid);
-        $ref       = esc_sql($ref);
-        return $this->db->update(
-                        "{$this->db->prefix}moo_order",
-                        array(
-                            'paid' => 1,
-                            'refpayment' => $ref
-                        ),
-                        array( 'uuid' => $uuid )
-                    );
-    }
-
     function NbCats() {
         return $this->db->get_results("SELECT count(*) as nb FROM {$this->db->prefix}moo_category");
     }
@@ -748,7 +622,7 @@ class Moo_OnlineOrders_Model {
 
     function NbProducts()
     {
-        return $this->db->get_results("SELECT count(*) as nb FROM {$this->db->prefix}moo_item where hidden = 0");
+        return $this->db->get_results("SELECT count(*) as nb FROM {$this->db->prefix}moo_item where item_group_uuid is null");
     }
     function NbGroupModifier()
     {
@@ -776,9 +650,9 @@ class Moo_OnlineOrders_Model {
     }
     function getFeaturedProducts($limit = null) {
        if ($limit){
-           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc limit ".$limit);
+           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc limit ".$limit);
        } else {
-           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc");
+           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc");
        }
     }
     function moo_GetBestItems4Customer($email){
@@ -1111,9 +985,6 @@ class Moo_OnlineOrders_Model {
     }
 
     function saveImageCategory($uuid,$image) {
-        $uuid = esc_sql($uuid);
-        $image = esc_sql($image);
-
         return $this->db->update("{$this->db->prefix}moo_category",
             array(
                 'image_url' => $image
@@ -1148,22 +1019,10 @@ class Moo_OnlineOrders_Model {
 
     }
 
-    function moo_DeleteImgCategorie($uuid) {
-        $uuid = esc_sql($uuid);
+    function moo_DeleteImgCategory($uuid) {
         return $this->db->update("{$this->db->prefix}moo_category",
             array(
                 'image_url' => null
-            ),
-            array( 'uuid' => $uuid )
-        );
-
-    }
-
-    function moo_UpdateNameCategorie($uuid,$newName) {
-        $uuid = esc_sql($uuid);
-        return $this->db->update("{$this->db->prefix}moo_category",
-            array(
-                'alternate_name' => $newName
             ),
             array( 'uuid' => $uuid )
         );
@@ -1289,6 +1148,7 @@ class Moo_OnlineOrders_Model {
         try {
             //Get current items sort order
             $currentSorts = $this->db->get_results("SELECT item_uuid,sort_order from {$this->db->prefix}moo_items_categories where category_uuid = '{$category["id"]}'",'OBJECT_K');
+
             // remove old categories items associations
             $this->db->delete("{$this->db->prefix}moo_items_categories",array('category_uuid'=>$category["id"]));
 
@@ -1298,12 +1158,7 @@ class Moo_OnlineOrders_Model {
                 } else {
                     $sortOrder = null;
                 }
-
-                $this->db->insert("{$this->db->prefix}moo_items_categories", array(
-                    'category_uuid' => $category["id"],
-                    'item_uuid' => $item["id"],
-                    'sort_order' => $sortOrder,
-                ));
+                $this->insertCategoryItemRelation($category["id"],$item["id"],$sortOrder);
             }
 
             if ($this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_category where uuid='{$category["id"]}'") > 0) {
@@ -1330,6 +1185,7 @@ class Moo_OnlineOrders_Model {
             return false;
         }
     }
+
     public function updateOneOrderType($orderType) {
         if ($this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_order_types where ot_uuid='{$orderType["id"]}'") > 0)
             $res = $this->db->update("{$this->db->prefix}moo_order_types", array(
@@ -1408,7 +1264,8 @@ class Moo_OnlineOrders_Model {
      */
     public function updateOneModifierGroup($modifierGroup) {
         $modifierGroupUuid = esc_sql($modifierGroup["id"]);
-        $currentModifierG = $this->db->get_row("SELECT * FROM {$this->db->prefix}moo_modifier_group where uuid='{$modifierGroupUuid}'");
+        $currentModifierG = $this->db->get_row($this->db->prepare("SELECT * FROM {$this->db->prefix}moo_modifier_group WHERE uuid = %s", $modifierGroupUuid));
+
         if ( $currentModifierG ) {
             if(isset($currentModifierG->alternate_name) && !empty($currentModifierG->alternate_name)){
                 $res = $this->db->update("{$this->db->prefix}moo_modifier_group", array(
@@ -1449,6 +1306,7 @@ class Moo_OnlineOrders_Model {
         $inserted = 0;
 
         $currentModifiers = array();
+
         // Get all current modifiers
         $modifiers = $this->db->get_results( $this->db->prepare(
             "SELECT * FROM `{$this->db->prefix}moo_modifier` m WHERE m.group_id = '%s'",
@@ -1458,6 +1316,7 @@ class Moo_OnlineOrders_Model {
         foreach ($modifiers as $item) {
             $currentModifiers[$item["uuid"]] = $item;
         }
+
         // Start Transaction
         $this->db->query('START TRANSACTION');
 
@@ -1467,7 +1326,6 @@ class Moo_OnlineOrders_Model {
         // Add modifiers with custom names and sort order from previous data
         if (!empty($modifierGroup["modifiers"]["elements"])){
             foreach ($modifierGroup["modifiers"]["elements"] as $element) {
-
                 //Restore the custom name
                 if (!empty($currentModifiers[$element['id']]["alternate_name"])){
                     $alternateName = $currentModifiers[$element['id']]["alternate_name"];
@@ -1503,7 +1361,7 @@ class Moo_OnlineOrders_Model {
                     'is_pre_selected' => $isPreSelected,
                     'group_id' => $element["modifierGroup"]["id"]
                 ));
-                if ($res){
+                if ($res > 0){
                     $inserted++;
                 }
             }
@@ -1515,5 +1373,19 @@ class Moo_OnlineOrders_Model {
             $this->db->query('ROLLBACK');
         }
         return $inserted;
+    }
+
+    public function insertCategoryItemRelation($categoryId, $itemId, $sortOrder= null) {
+
+        $table = "{$this->db->prefix}moo_items_categories";
+
+        $query = $this->db->prepare(
+            "INSERT IGNORE INTO {$table} (category_uuid, item_uuid,sort_order) VALUES (%s, %s, %d)",
+            $categoryId,
+            $itemId,
+            $sortOrder
+        );
+
+        return $this->db->query($query);
     }
 }

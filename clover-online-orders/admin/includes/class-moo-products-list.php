@@ -42,8 +42,10 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $sql = "SELECT items.* FROM {$wpdb->prefix}moo_item as items";
         $sql .= $this->getQueryWhereConditions();
         if ( ! empty( $_REQUEST['orderby'] ) ) {
-            $sql .= ' ORDER BY ' . esc_sql( $_REQUEST['orderby'] );
+            $sql .= ' ORDER BY ' . esc_sql( $_REQUEST['orderby'] ).',name';
             $sql .= ! empty( $_REQUEST['order'] ) ? ' ' . esc_sql( $_REQUEST['order'] ) : ' ASC';
+        } else {
+            $sql .= ' ORDER BY soo_name,name';
         }
         $sql .= " LIMIT $per_page";
         $sql .= ' OFFSET ' . ( $page_number - 1 ) * $per_page;
@@ -336,6 +338,20 @@ class Products_List_Moo extends WP_List_Table_MOO {
         );
     }
     /**
+     * Render the Show On POS column
+     *
+     * @param array $item
+     *
+     * @return string
+     */
+    function column_show_on_pos( $item ) {
+        if($item[ "hidden" ]) {
+            return "<span>Yes</span>";
+        } else {
+            return "<span>No</span>";
+        }
+    }
+    /**
      *  Associative array of columns
      *
      * @return array
@@ -351,8 +367,8 @@ class Products_List_Moo extends WP_List_Table_MOO {
             'outofstock' => __( 'Out Of Stock',"moo_OnlineOrders"),
             'visible' => __( 'is Hidden',"moo_OnlineOrders"),
             'available' => __( 'Available',"moo_OnlineOrders"),
+            'show_on_pos' => __( 'Show on POS',"moo_OnlineOrders"),
             'custom_hours' => __( 'Custom Hours',"moo_OnlineOrders"),
-
         );
 
         return $columns;
@@ -368,6 +384,7 @@ class Products_List_Moo extends WP_List_Table_MOO {
             'price' => array( 'price', false ),
             'outofstock' => array( 'outofstock', false ),
             'available' => array( 'available', false ),
+            'hidden' => array( 'hidden', false ),
         );
 
         return $sortable_columns;
@@ -399,7 +416,6 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $hidden = array();
         $sortable = $this->get_sortable_columns();
         $this->_column_headers = array($columns, $hidden, $sortable);
-
         /** Process bulk action */
         //$this->process_bulk_action();
 
@@ -605,7 +621,6 @@ class Products_List_Moo extends WP_List_Table_MOO {
 
         //All Actions
         $class        = ( $current == 'all' ? ' class="current"' : '' );
-        //$all_url      = remove_query_arg( array( 'filter', 's', 'paged', 'alert', 'user' ) );
         $views['all'] = "<a href='{$this->itemsPageUrl}' {$class} >All Items</a>";
         $views_item   = array(
             'featured'   => array( "name" => "Featured Items", "featured" => 1 )
@@ -627,11 +642,12 @@ class Products_List_Moo extends WP_List_Table_MOO {
         if(empty($category->items) || (isset($category->items_imported) && $category->items_imported) ) {
             $result = $wpdb->get_results("SELECT *
                                     FROM {$wpdb->prefix}moo_items_categories
-                                    WHERE category_uuid = '{$category->uuid}'
-                                    ",'ARRAY_A');
+                                    WHERE category_uuid = '{$category->uuid}' order by sort_order asc", 'ARRAY_A');
+
             foreach ($result as $catItem) {
                 $items_uuids_in_query .= "'".$catItem["item_uuid"] . "',";
             }
+
         } else {
             $category_items =  explode(",",$category->items);
             foreach ($category_items as $category_item) {
@@ -652,12 +668,12 @@ class Products_List_Moo extends WP_List_Table_MOO {
         }
         if(!empty($_GET['category'])) {
             if(strlen($items_uuids_in_query)>0) {
-                $where = " where hidden = 0 and items.uuid in ({$items_uuids_in_query}) ";
+                $where = " where item_group_uuid is null and items.uuid in ({$items_uuids_in_query}) ";
             } else {
                 $where = " where 1=-1 ";
             }
         } else {
-            $where = " where hidden = 0 ";
+            $where = " where item_group_uuid is null ";
         }
 
         if ( $featured ) {

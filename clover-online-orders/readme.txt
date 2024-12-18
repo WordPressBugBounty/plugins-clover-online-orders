@@ -1,11 +1,11 @@
-=== Smart Online Order for Clover ===
+﻿=== Smart Online Order for Clover ===
 Contributors: elbanyaoui, khalid995
 Donate link: http://www.zaytech.com/
 Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
-Tested up to: 6.6.2
+Tested up to: 6.7.1
 Requires PHP: 5.2.0
-Stable tag: 1.5.8
+Stable tag: 1.5.9
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -148,6 +148,14 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+
+= 1.5.9 =
+* Added support for Apple Pay.
+* Enhanced auto-sync functionality for better performance.
+* Introduced the ability to import images and descriptions from Clover for new merchants.
+* Improved product listing by displaying the "Shown on POS" attribute for greater clarity.
+* Optimized compatibility with the latest version of WordPress.
+* Implemented various other enhancements to improve the overall user experience.
 
 = 1.5.8 =
 * Enhanced compatibility with the latest WordPress version.

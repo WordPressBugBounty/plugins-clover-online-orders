@@ -10,7 +10,7 @@ require_once "BaseRoute.php";
 
 class DashboardRoutes extends BaseRoute {
     /**
-     * The model of this plugin (For all interaction with the DATABASE ).
+     * The model of this plugin (For all interaction with the DATABASE).
      * @access   private
      * @var      Moo_OnlineOrders_Model    Object of functions that call the Database pr the API.
      */
@@ -42,7 +42,7 @@ class DashboardRoutes extends BaseRoute {
 
 
     // Register our routes.
-    public function register_routes(){
+    public function register_routes() {
         // Update category name and description
         register_rest_route($this->namespace, '/dash/category/(?P<cat_id>[a-zA-Z0-9-]+)', array(
             // Here we register the readable endpoint for collections.
@@ -81,7 +81,7 @@ class DashboardRoutes extends BaseRoute {
             )
         ));
 
-        // get categories hours
+        // get the categories custom hours
         register_rest_route($this->namespace, '/dash/categories_hours', array(
             // Here we register the readable endpoint for collections.
             array(
@@ -108,12 +108,23 @@ class DashboardRoutes extends BaseRoute {
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
-        // Enable the new Checkout
+
+        // Enable back the old Checkout
         register_rest_route($this->namespace, '/dash/enable-old-checkout', array(
             // Here we register the readable endpoint for collections.
             array(
                 'methods' => 'POST',
                 'callback' => array($this, 'enableOldCheckout'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+
+        // Enable or disbale Apple Pay (Beta)
+        register_rest_route($this->namespace, '/dash/enable-apple-pay', array(
+            // Here we register the readable endpoint for collections.
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'enableOrDisableApplePay'),
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
@@ -340,7 +351,6 @@ class DashboardRoutes extends BaseRoute {
 
             $response['items'][] = $final_item;
         }
-        usort($response["items"], array($this,'sortBySortOrder'));
         // Return response data.
         return $response;
     }
@@ -536,6 +546,8 @@ class DashboardRoutes extends BaseRoute {
             $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_tag` ;");
             //-- Table `item_modifier_group` --
             $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_item_modifier_group` ;");
+            //-- Table `items_categories` --
+            $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_items_categories` ;");
             //-- Table `order_types --
             $wpdb->query("DELETE FROM `{$wpdb->prefix}moo_images` ;");
             //-- Table `item` --
@@ -570,6 +582,7 @@ class DashboardRoutes extends BaseRoute {
             update_option('moo_merchant_pubkey', "");
             update_option('moo_pakms_key', "");
             update_option('moo_slug', "");
+            update_option('moo_merchant_uuid', "");
 
             do_action('smart_online_order_import_inventory');
 
@@ -602,6 +615,23 @@ class DashboardRoutes extends BaseRoute {
             //Save on Cloud
             try {
                 $this->api->saveMerchantSettings("old_checkout", $status);
+            } catch (Exception $e){
+                // Silence is golden
+            }
+            return array(
+                "status"=>true
+            );
+        }
+    }
+    function enableOrDisableApplePay( $request ) {
+        if (empty( $request["status"] )) {
+            return new WP_Error( 'status_required', 'An error has occurred', array( 'status' => 400 ) );
+        } else {
+            $status = rest_sanitize_boolean($request["status"]);
+            update_option('moo_apple_pay_enabled', $status);
+            //Save on Cloud
+            try {
+                $this->api->saveMerchantSettings("apple_pay_on_website", $status);
             } catch (Exception $e){
                 // Silence is golden
             }
@@ -751,6 +781,7 @@ class DashboardRoutes extends BaseRoute {
                 update_option("moo_settings",$this->pluginSettings);
                 update_option('moo_merchant_pubkey', "");
                 update_option('moo_pakms_key', "");
+                update_option('moo_merchant_uuid', "");
                 return array(
                     "status"=>"failed",
                     "message"=>"The api key is valid but your site isn't connected to Clover. Please check if the merchant id has changed or contact us."
@@ -781,6 +812,13 @@ class DashboardRoutes extends BaseRoute {
 
         $body = json_decode($request->get_body(),true);
 
+        if (!is_array($body)) {
+            return [
+                "status"  => "failed",
+                "message" => "Invalid request body",
+            ];
+        }
+
         foreach ($body as $item) {
             $this->pluginSettings[$item["name"]] = $item["value"];
         }
@@ -790,7 +828,7 @@ class DashboardRoutes extends BaseRoute {
         $result = $this->api->saveSettings($this->pluginSettings, $homeUrl);
         $error = get_transient( 'soo_error_saving_settings' );
 
-        if ($result || boolval($error)){
+        if ($result || (bool) $error){
             //Save Settings
             if(update_option("moo_settings", $this->pluginSettings)){
 
@@ -802,22 +840,24 @@ class DashboardRoutes extends BaseRoute {
                     "status"=>"success",
                     "message"=>"The settings has been updated"
                 );
-            } else {
-                return array(
-                    "status"=>"failed",
-                    "message"=>"No changes have been made"
-                );
             }
-        } else {
-            set_transient( 'soo_error_saving_settings', true, 60 );
             return array(
                 "status"=>"failed",
-                "message"=>"An error has occurred please, try again"
+                "message"=>"No changes have been made"
             );
+
         }
+        // Handle errors
+        set_transient( 'soo_error_saving_settings', true, 60 );
+
+        return array(
+            "status"=>"failed",
+            "message"=>"An error has occurred please, try again"
+        );
+
     }
     function dashExportSettings( $request, $returnArray = false ){
-        $settings = $this->pluginSettings;
+        $settings = (array) get_option('moo_settings');
 
         unset($settings["api_key"]);
         unset($settings["jwt-token"]);
@@ -1333,7 +1373,6 @@ class DashboardRoutes extends BaseRoute {
 
             $data = json_decode($filecontent,true);
         }
-
         if(isset($data["items"]) && is_array($data["items"])) {
             foreach ($data["items"] as $item) {
                 if(isset($item["url"])){
@@ -1355,7 +1394,8 @@ class DashboardRoutes extends BaseRoute {
 
                         if($cloneImages){
                             try {
-                                $link = $this->uploadFileByUrl($item["url"]);
+                               // $link = $this->uploadFileByUrl($item["url"]);
+                                $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["url"]);
                                 if($link){
                                     $link_image = $link;
                                 } else {
@@ -1390,7 +1430,6 @@ class DashboardRoutes extends BaseRoute {
                 }
             }
         }
-
         if(isset($data["categories"]) && is_array($data["categories"])) {
             foreach ($data["categories"] as $category) {
                 if(isset($category["uuid"]) || isset($category["name"])){
@@ -1551,76 +1590,6 @@ class DashboardRoutes extends BaseRoute {
                 "message"=>"No changes detected"
             );
         }
-
-    }
-
-    /**
-     * @throws Exception
-     */
-    private function uploadFileByUrl($image_url ) {
-
-        // If the function it's not available, require it.
-        if ( ! function_exists( 'download_url' ) ) {
-            // it allows us to use download_url() and wp_handle_sideload() functions
-            require_once ABSPATH . '/wp-admin/includes/file.php';
-        }
-
-        // download to temp dir
-        $temp_file = download_url( $image_url );
-
-        if( is_wp_error( $temp_file ) ) {
-            return false;
-        }
-        $filetype = wp_check_filetype( $temp_file );
-
-
-        // move the temp file into the uploads directory
-        $file = array(
-            'name'     => basename( $image_url ),
-            'type'     => $filetype['type'],
-            'tmp_name' => $temp_file,
-            'size'     => filesize( $temp_file ),
-        );
-
-        $sideload = wp_handle_sideload(
-            $file,
-            array(
-                'test_form'   => false // no needs to check 'action' parameter
-            )
-        );
-
-        if( ! empty( $sideload[ 'error' ] ) ) {
-            // you may return an error message if you want
-            throw new Exception($sideload[ 'error' ]);
-        }
-
-        // it is time to add our uploaded image into WordPress media library
-        $attachment_id = wp_insert_attachment(
-            array(
-                'guid'           => $sideload[ 'url' ],
-                'post_mime_type' => $sideload[ 'type' ],
-                'post_title'     => basename( $sideload[ 'file' ] ),
-                'post_content'   => '',
-                'post_status'    => 'inherit',
-            ),
-            $sideload[ 'file' ]
-        );
-
-        if( is_wp_error( $attachment_id ) || ! $attachment_id ) {
-            return false;
-        }
-
-        // update metadata, regenerate image sizes
-        require_once( ABSPATH . 'wp-admin/includes/image.php' );
-
-        wp_update_attachment_metadata(
-            $attachment_id,
-            wp_generate_attachment_metadata( $attachment_id, $sideload[ 'file' ] )
-        );
-
-        @unlink( $temp_file );
-
-        return $sideload[ 'url' ];
 
     }
 

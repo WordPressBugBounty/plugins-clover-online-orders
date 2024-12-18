@@ -32,7 +32,6 @@ document.addEventListener("keydown", function(e) {
             if ( activeForm[0].name === 'mooDeliveryAreas'){
                 mooSaveDeliveryAreas(e,activeForm[0]);
             }
-
         }
     }
 }, false);
@@ -540,18 +539,6 @@ function sooModifierLineInModifierGroup(modifier,modifierG_uuid,min,max) {
 
     return html;
 }
-function validerChangeNameGG(event,id){
-    event.preventDefault();
-    var newName = jQuery("#newName_"+id).val();
-    //
-    jQuery("#label_"+id+" .getname").css("display","block");
-    jQuery("#label_"+id+" .change-name").css("display","none");
-    jQuery("#label_"+id+" .getname").text(newName);
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_change_modifiergroup_name',"mg_uuid":id,"mg_name":newName}, function (data) {
-        //console.log(data);
-        }
-    );
-}
 function annulerChangeNameGG(event,id) {
     event.preventDefault();
     jQuery("#label_"+id+" .getname").css("display","block");
@@ -591,37 +578,6 @@ function annulerChangeNameModifier(event,id,name){
     jQuery("#label_"+id+" .change-name-modifier").css("display","none");
 }
 /* --- Modifier Group --- */
-function vald_change_name(event,uuid,v) {
-    event.preventDefault();
-    var name = jQuery("#name_"+uuid).val();
-    var newname = jQuery("#newName"+uuid).val();
-    if ( v=="D" ){jQuery("td#name_"+uuid).html(newname);}
-    else{
-        jQuery("#newName"+uuid).prop('disabled', true);
-        jQuery("#bt_MV_"+uuid).remove();
-        jQuery("#bt_MA_"+uuid).remove();
-    }
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_change_name_category','newName':newname,"id_cat":uuid}, function(response){
-        if(response == 1){
-           // console.log(response);
-        }
-        else{
-            jQuery("td#name_"+uuid).html(name_cat);
-        }
-    });
-}
-
-
-function annuler_change_name(event,uuid,v,lastname){
-    event.preventDefault();
-    if (v == "D"){jQuery("td#name_"+uuid).html(name_cat);}
-    else{
-        jQuery("#newName"+uuid).val(lastname);
-        jQuery("#newName"+uuid).prop('disabled', true);
-        jQuery("#bt_MV_"+uuid).remove();
-        jQuery("#bt_MA_"+uuid).remove();
-    }
-}
 
 function MooChangeM_Status(uuid)
 {
@@ -632,147 +588,10 @@ function MooChangeM_Status(uuid)
     );
 }
 
-function delete_img_category(event,uuid,responsive){
-    event.preventDefault();
-    var image = "";
-    if(responsive == 'D'){
-        tr_new(uuid,image);
-    } else {
-        img_row(uuid,image)
-    }
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_delete_img_category',"uuid":uuid}, function(data){
-     if (data == 1) {
-         //console.log(data);
-     }
-     });
-}
-
-function img_row(uuid,img){
-    var html="<label>Operation</label>";
-    html +='<div class="bt bt-upload">';
-    html +='<a href="#" onclick="uploader_image_category(event,&quot;'+uuid+'&quot;,&quot;M&quot;)">';
-    html +="<img src='"+moo_params.plugin_url+"public/img/upload.png' style='width: 20px;'>";
-    html +='</a>';
-    html +='</div>';
-    html +='<div class="bt bt-edit">';
-    html +='<a href="#" onclick="edit_name_mobil(event,&quot;'+uuid+'&quot;)">';
-    html +="<img src='"+moo_params.plugin_url+"public/img/edit.png' style='width: 20px;'>";
-    html +='</a>';
-    html +='</div>';
-    if(img == ""){
-        jQuery("#id_img_M_"+uuid).html("<label>Pecture</label><img src='"+moo_params.plugin_url+"/public/img/no-image.png' style='width: 50px;'>")
-        jQuery("#id_bt_M"+uuid).html(html);
-    }
-    else{
-        html +='<div class="bt bt-delete">';
-        html +='<a href="#" onclick="delete_img_category(event,&quot;'+uuid+'&quot;,&quot;M&quot;)">';
-        html +="<img src='"+moo_params.plugin_url+"public/img/delete.png' style='width: 20px;'>";
-        html +='</a>';
-        html +='</div>';
-        jQuery("#id_img_M_"+uuid).html("<label>Pecture</label><img src='"+img+"' style='width: 50px;'>");
-        jQuery("#id_bt_M"+uuid).html(html);
-    }
-}
-function edit_name_mobil(event,uuid){
-    event.preventDefault();
-    var name = jQuery("#newName"+uuid).val();
-    var htmlC = "";
-    htmlC +='<a href="#" class="vald-change-name" onclick="vald_change_name(event,&quot;'+uuid+'&quot;,&quot;M&quot;)" id="bt_MV_'+uuid+'">';
-    htmlC +="<img src='"+moo_params.plugin_url+"/public/img/valider.png'  alt='Validate change' style='width: 18px;'>";
-    htmlC +="</a>";
-    htmlC +='<a href="#" class="annuler-change-name" onclick="annuler_change_name(event,&quot;'+uuid+'&quot;,&quot;M&quot;,&quot;'+name+'&quot;)" id="bt_MA_'+uuid+'">';
-    htmlC +="<img src='"+moo_params.plugin_url+"/public/img/annuler.png' alt='annuler change' style='width: 18px;margin-left: 2px;'>";
-    htmlC +="</a>";
-    jQuery("#bt_MV_"+uuid).remove();
-    jQuery("#bt_MA_"+uuid).remove();
-    jQuery("#newName"+uuid).prop('disabled', false);
-    jQuery("#name_cat_Mobil"+uuid).append(htmlC);
-}
-
 // add parametre ,image,name,visibility
-function tr_new(uuid,img){
-    var nameCat = jQuery("td#name_"+uuid).text();
-    var visib_cat = jQuery(".visib_cat"+uuid).is(":checked")? true : false;
-    var input_check = "";
-    if (visib_cat == true){
-        input_check = '<input type="checkbox" name="onoffswitch[]" id="myonoffswitch_Visibility_'+uuid+'" class="moo-onoffswitch-checkbox visib_cat'+uuid+'" onclick="visibility_cat(&quot;'+uuid+'&quot;)" checked>';
-    }
-    else{
-        input_check = '<input type="checkbox" name="onoffswitch[]" id="myonoffswitch_Visibility_'+uuid+'" class="moo-onoffswitch-checkbox visib_cat'+uuid+'" onclick="visibility_cat(&quot;'+uuid+'&quot;)">';
-    }
-    var cont_html = "";
-    cont_html +="<td style='display:none;'><span id='id_cat'>"+uuid+"</span></td>";
-    cont_html +="<td class='img-cat'' style='width: 50px;' id='"+uuid+"'>";
-    if(img == ""){
-        cont_html +="<img src='"+moo_params.plugin_url+"/public/img/no-image.png' style='width: 50px;'>";
-    }
-    else {
-        cont_html +="<img src='"+img+"' style='width: 50px;'>";
-    }
-    cont_html +="</td>";
-    cont_html +="<td class='name_cat' id='name_"+uuid+"'>";
-    cont_html +=nameCat;
-    cont_html +="</td>";
-    cont_html +="<td class='show-cat'>";
-    cont_html +='<div class="moo-onoffswitch" title="Visibility Category">';
-    cont_html +=input_check;
-    cont_html +='<label class="moo-onoffswitch-label" for="myonoffswitch_Visibility_'+uuid+'"><span class="moo-onoffswitch-inner"></span>';
-    cont_html +='<span class="moo-onoffswitch-switch"></span>';
-    cont_html +='</label>';
-    cont_html +="</div>";
-    cont_html +="</td>";
-    if (img == ""){
-        cont_html +="<td class='bt-cat'>";
-        cont_html +='<a href="#" onclick="uploader_image_category(event,&quot;'+uuid+'&quot;,&quot;D&quot;)" title="Uploader Image">';
-        cont_html +="<img src='"+moo_params.plugin_url+"/public/img/upload.png'>";
-        cont_html +="</a>";
-        cont_html +="</td>";
-        cont_html +="<td colspan='2' class='bt-cat'>";
-    cont_html +="<a href='#' class='edit_name' title='Edite Name'>";
-    cont_html +="<img src='"+moo_params.plugin_url+"/public/img/edit.png' alt='Edite Name' >";
-    cont_html +="</a>";
-    cont_html +="</td>";
-    }
-    else{
-        cont_html +="<td class='bt-cat'>";
-        cont_html +='<a href="#" onclick="uploader_image_category(event,&quot;'+uuid+'&quot;,&quot;D&quot;)" title="Change Image">';
-        cont_html +="<img src='"+moo_params.plugin_url+"/public/img/upload.png'>";
-        cont_html +="</a>";
-        cont_html +="</td>";
-        cont_html +="<td class='bt-cat'>";
-        cont_html +="<a href='#' class='edit_name' title='Edite Name'>";
-        cont_html +="<img src='"+moo_params.plugin_url+"/public/img/edit.png'>";
-        cont_html +="</a>";
-        cont_html +="</td>";
-        cont_html +="<td class='bt-cat'>";
-        cont_html +='<a href="#" onclick="delete_img_category(event,&quot;'+uuid+'&quot;,&quot;D&quot;)" title="Delete Image">'
-        cont_html +="<img src='"+moo_params.plugin_url+"/public/img/delete.png'>";
-        cont_html +="</a>";
-        cont_html +="</td>";
-    }
-    cont_html +="<td class='items_cat'>";
-    cont_html +="<a href='#detailCat"+uuid+"' class='moo-open-popupItems'>";
-    cont_html +="<img src='"+moo_params.plugin_url+"/public/img/plusIT.png' style='width: 20px;'>";
-    cont_html +="</a>";
-    cont_html +="</td>";
-    jQuery("tr#row_id_"+uuid).html(cont_html);
-    if(typeof jQuery.magnificPopup !== 'undefined' ) {
-        jQuery('.moo-open-popupItems').magnificPopup({
-            type:'inline',
-            midClick: true // Allow opening popup on middle mouse click. Always set it to true if you don't provide alternative source in href.
-        });
-    }
 
-    jQuery("tr#row_id_"+uuid).html(cont_html);
-}
 function visibility_cat(uuid) {
     var check = jQuery(".visib_cat"+uuid).is(":checked")? true : false;
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_visiblite_category','visiblite':check,"id_cat":uuid}, function(response){
-        //console.log(response);
-    });
-}
-function visibility_cat_mobile(uuid) {
-    var check = jQuery("#visib"+uuid).is(":checked")? true : false;
     jQuery.post(moo_params.ajaxurl,{'action':'moo_update_visiblite_category','visiblite':check,"id_cat":uuid}, function(response){
         //console.log(response);
     });
@@ -1121,7 +940,7 @@ function makeOrderTypesSortable() {
             });
             jQuery.post(moo_params.ajaxurl,{'action':'moo_reorder_ordertypes','newtable':tabNew},function(data){
                 if(data===false)
-                    swal('Sort Order Not Changed, please contact us to fix that');
+                    swal('','No changes have been made');
             })
         }
     });
@@ -1903,30 +1722,6 @@ function MooSendFeedBack(e)
 }
 /* Modifiers Panel */
 
-function Moo_changeModifierGroupName(uuid)
-{
-    var mg_name = jQuery('#Moo_ModifierGroupNewName_'+uuid).val();
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_change_modifiergroup_name',"mg_uuid":uuid,"mg_name":mg_name}, function (data) {
-           jQuery('#Moo_ModifierGroupSaveName_'+uuid).show();
-        }
-    );
-    setTimeout(function () {
-        jQuery('#Moo_ModifierGroupSaveName_'+uuid).hide();
-    }, 5000);
-
-}
-function Moo_changeModifierGroupName_Mobile(uuid)
-{
-    var mg_name = jQuery('#Moo_ModifierGroupNewName_mobile_'+uuid).val();
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_change_modifiergroup_name',"mg_uuid":uuid,"mg_name":mg_name}, function (data) {
-            console.log(data);
-            jQuery('#Moo_ModifierGroupSaveName_mobile_'+uuid).show();
-        }
-    );
-    setTimeout(function () {
-        jQuery('#Moo_ModifierGroupSaveName_mobile_'+uuid).hide();
-    }, 5000);
-}
 function MooChangeModifier_Status(uuid) {
     var mg_status = jQuery('#myonoffswitch_'+uuid).prop('checked');
     jQuery.post(moo_params.ajaxurl,{'action':'moo_update_modifiergroup_status',"mg_uuid":uuid,"mg_status":mg_status}, function (data) {
@@ -1997,22 +1792,6 @@ function MooChangeCategory_Status_Mo(uuid)
         }
     );
 }
-function MooShowCategoriesImages(id)
-{
-    var status = jQuery('#'+id).prop('checked');
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_category_images_status',"status":status}, function (data) {
-            console.log(data);
-        }
-    );
-}
-function MooShowCategoriesImages_Mobile(id)
-{
-    var status = jQuery('#myonoffswitch_Visibility_Mobile').prop('checked');
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_category_images_status',"status":status}, function (data) {
-            console.log(data);
-        }
-    );
-}
 function MooChangeCategory_Status_Mobile(uuid)
 {
     var cat_status = jQuery('#myonoffswitch_mobile_'+uuid).prop('checked');
@@ -2029,22 +1808,6 @@ var moo_item_options = [];// {"name": "", "min": "", "max": "","modifiers":[]}
 
 var moo_category_images;
 
-function uploader_image_category(event,id,responsive){
-    event.preventDefault();
-    media_uploader = wp.media({
-        frame:    "post",
-        state:    "insert",
-        multiple: false
-    });
-    // insert image
-    media_uploader.on("insert", function(){
-        var json = media_uploader.state().get("selection").first().toJSON();
-        var image_url = json.url;
-        moo_category_images = image_url;
-        moo_save_category_images(id,responsive);
-    });
-    media_uploader.open();
-}
 function mooUploadImageForCategory(event,uuid){
     event.preventDefault();
     media_uploader = wp.media({
@@ -2105,31 +1868,6 @@ function mooDeleteCategoryImage(event,uuid){
     });
 }
 
-function moo_save_category_images(uuid,response)
-{
-    if(Object.keys(moo_category_images).length>0)
-    {
-        image = moo_category_images;
-        if(response == 'D'){
-            tr_new(uuid,image);
-        }
-       else {
-            img_row(uuid,image);
-        }
-        jQuery.post(moo_params.ajaxurl,{'action':'moo_save_category_image',"category_uuid":uuid,"image":moo_category_images},function(ret){
-            if (ret == 1) {
-                //console.log(ret);
-            }
-            else
-                swal("Error","Error when saving your changes, please try again","error");
-
-        });
-    }
-    else
-    {
-        history.back();
-    }
-}
 function open_media_uploader_image() {
     media_uploader = wp.media({
         frame:    "post",
@@ -2947,9 +2685,9 @@ function moo_createDefaultTipChooserSection() {
  * @version 1.2.8
  */
 
-function MooPanel_CleanInventory(e)
-{
+function sooCleanInventory(e) {
     e.preventDefault();
+
     swal.setDefaults({
         confirmButtonText: 'Next &rarr;',
         allowOutsideClick: false,
@@ -3008,10 +2746,13 @@ function MooPanel_CleanInventory(e)
             swal.resetDefaults();
             swal({
                 title: 'All Done!',
+                type: "success",
                 html:
                     "The clean up process has been successfully completed. If you have added additional items to your Clover inventory, you will need to do a manual sync. Clean inventory feature only removes old items",
                 confirmButtonText: 'ok'
             })
+        } else {
+            swal.resetDefaults();
         }
     }, function () {
         swal.resetDefaults()
@@ -3022,53 +2763,53 @@ function MooPanel_CleanInventory(e)
  * Repair the database issues
  * @version 1.5.8
  */
-
-function sooRepairDatabase(e)
-{
+async function sooRepairDatabase(e) {
     e.preventDefault();
+
+    // Show initial loading alert
     swal({
         title: 'Repairing your database',
         text: 'Please wait...',
-        showConfirmButton: false
+        showConfirmButton: false,
+        allowOutsideClick: false
     });
-    jQuery.ajax({
-        type: 'GET',
-        url: moo_RestUrl+"moo-clover/v1/tools/repair_database",
-        beforeSend: function(jqXhr) {
-            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce)
-        }
-    }).fail(function (data) {
-        //Change butn text
-        swal({
-            title: "Error",
-            text: 'An has occurred, please refresh the page or contact us',
-            type: "error",
-            confirmButtonText: "ok"
+
+    try {
+        // Send the AJAX request
+        const response = await jQuery.ajax({
+            type: 'GET',
+            url: `${moo_RestUrl}moo-clover/v1/tools/repair_database`,
+            beforeSend: function (jqXhr) {
+                jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce);
+            }
         });
-    }).done(function (data) {
-        if(data.status === "success"){
-            swal({
-                title: "All Done!",
-                text: 'Your database has been repaired.',
-                type: "success",
-                confirmButtonText: "ok"
-            });
+
+        // Handle success
+        if (response?.status === "success") {
+            showAlert("All Done!", "Your database has been repaired.", "success");
         } else {
-            swal({
-                title: "Error",
-                text: 'Database repair was not completed successfully. Please verify your data or contact support if the issue persists',
-                type: "error",
-                confirmButtonText: "ok"
-            });
+            showAlert(
+                "Error",
+                "Database repair was not completed successfully. Please verify your data or contact support if the issue persists.",
+                "error"
+            );
         }
-    });
+    } catch (error) {
+        // Handle failure
+        console.error("Database repair failed:", error);
+        showAlert(
+            "Error",
+            "An error has occurred. Please refresh the page or contact support.",
+            "error"
+        );
+    }
 }
+
 /*
- * This function to Clean the inventory, we set teh typOfdate wich may take (order_tyes,tax_rates,categories,items..)
- * The default number of data per page is 10, then we send an other request using the recursive loop CleanByPage
+* This function cleans the inventory; we set the type of data which may take (order_types, tax_rates, categories, items..)
+* The default number of data per page is 10, then we send another request using the recursive loop CleanByPage.
  */
-function mooClean(event,typeOfDate)
-{
+function mooClean(event,typeOfDate)  {
     event.preventDefault();
     jQuery(event.target).hide();
     var id = "#mooClean_"+typeOfDate;
@@ -3116,8 +2857,6 @@ function mooClean(event,typeOfDate)
             jQuery(".swal2-popup .swal2-styled.swal2-confirm").css("background-color","#3085d6");
         }
     });
-
-
 }
 function mooCleanByPage(page,pbar,typeOfDate) {
     var id = "#mooClean_"+typeOfDate;
@@ -3143,34 +2882,6 @@ function mooCleanByPage(page,pbar,typeOfDate) {
         }
     });
 }
-
-function mooImportOneCategory(cat_id) {
-    swal({
-        html:
-        '<div class="moo-msgPopup">Checking the items</div>' +
-        '<img src="'+ moo_params['plugin_img']+'/loading.gif" class="moo-imgPopup" width="80px"/>',
-        showConfirmButton: false
-    });
-    jQuery.get(moo_RestUrl+'moo-clover/v1/inventory/categories/'+cat_id,function (data) {
-        if(data.status =='success'){
-            swal({
-                title:"Update Completed",
-                text:"You may need to refresh the page to see the changes",
-                type:"success"
-            });
-            if(typeof Moo_SetupEditCategorySection === 'function')
-                Moo_SetupEditCategorySection(null,cat_id);
-        } else {
-            swal({
-                title:"An error has occurred",
-                text:"try again",
-                type:"error"
-            });
-        }
-
-
-    });
-}
 function mooSyncOneCategory(cat_id) {
     swal({
         html:
@@ -3188,30 +2899,6 @@ function mooSyncOneCategory(cat_id) {
             type:"success"
         });
 
-    });
-}
-function mooUpdateOneCategory( cat_id ) {
-    swal({
-        html:
-        '<div class="moo-msgPopup">Checking the items</div>' +
-        '<img src="'+ moo_params['plugin_img']+'/loading.gif" class="moo-imgPopup"/>',
-        showConfirmButton: false
-    });
-    jQuery.get(moo_RestUrl+'moo-clover/v1/inventory/categories/'+cat_id,function (data) {
-        if(data.status == 'success'){
-            swal({
-                title:"Successfully Updated",
-               // text:"You have "+data.clover_nb_items+" in your Clover account, and "+data.nb_items+" in your website, don't forget to refresh the page",
-                text:"You may need to refresh the page to see the changes",
-                type:"success"
-            });
-        } else {
-            swal({
-                title:"An error has occurred",
-                text:"try again",
-                type:"error"
-            });
-        }
     });
 }
 function mooGetOpeningHours( event, sync = false ) {
@@ -3271,6 +2958,7 @@ function mooGetOpeningHours( event, sync = false ) {
         }
     });
 }
+
 function enableOrDisableOldCheckout() {
     const enable = jQuery('#sooOldCheckoutPage').is(":checked");
     if(enable){
@@ -3330,6 +3018,63 @@ function enableOrDisableOldCheckout() {
     });
 }
 
+function enableOrDisableApplePay() {
+    const $elm = jQuery('#sooApplePayFeature');
+   // const enable = elm.is(":checked");
+    const isEnabled = $elm.is(":checked");
+
+    // Display the appropriate loading message based on the toggle state
+    swal({
+        title: isEnabled ? 'Enabling Apple Pay...' : 'Please wait...',
+        showConfirmButton: false
+    });
+
+    // Construct the endpoint URL with nonce handling
+    let endpoint = moo_RestUrl + 'moo-clover/v2/dash/enable-apple-pay';
+    endpoint += moo_RestUrl.includes("?rest_route") ? '&_wpnonce=' + moo_params.nonce : '?_wpnonce=' + moo_params.nonce;
+
+    // Data payload
+    const requestData = { status: isEnabled };
+
+    jQuery.post(endpoint, requestData)
+        .done(function (response) {
+            if(response.status){
+                swal({
+                    type: "success",
+                    title: isEnabled ? "Apple Pay is Now Enabled" : "Apple Pay is Disabled",
+                    text: isEnabled
+                        ? "Apple Pay is active! Please verify your domain on the Clover dashboard to ensure smooth and secure payment processing. Contact us if you need assistance."
+                        : "Apple Pay is a convenient way to accept payments. If you're experiencing any issues, please contact us via email, and we will assist you in resolving them."
+                });
+            } else {
+                handleToggleError();
+                elm.prop('checked',!enable)
+                swal({
+                    type:"error",
+                    text:'Error Occurred: Please Refresh and Retry'
+                });
+            }
+
+        })
+        .fail(function () {
+            handleToggleError();
+            elm.prop('checked',!enable)
+            swal({
+                text: 'Error Occurred: Please Refresh and Retry'
+            });
+        });
+    // Handle toggle state and error message
+    function handleToggleError() {
+        $elm.prop('checked', !isEnabled);
+        swal({
+            type: "error",
+            text: 'Error Occurred: Please Refresh and Retry'
+        });
+    }
+
+}
+
+
 function expandSection(element) {
     jQuery(element).parent().toggleClass("MooPanelItemExpanded")
 }
@@ -3349,6 +3094,7 @@ function expandAllSections(element) {
     }
 
 }
+
 function mooSaveChanges(event, element) {
     mooShowWaitMessage();
     event.preventDefault();
@@ -3392,47 +3138,40 @@ function mooSaveChanges(event, element) {
     });
     return false;
 }
-function mooSaveDeliveryAreas(event, el)
-{
-    var zones =  new Array();
-    for (var i in moo_delivery_areas ) {
-        var element = moo_delivery_areas[i];
-        var zone = {};
-        zone.id        = element.id;
-        zone.name      = element.name;
-        zone.minAmount = element.minAmount;
-        zone.fee       = element.fee;
-        zone.type      = element.type;
-        zone.color     = element.color;
-        zone.center    = null;
-        zone.radius    = null;
-        zone.path      = null;
+function mooSaveDeliveryAreas(event, el) {
+    const zones = moo_delivery_areas.map(function (element) {
+        const zone = {
+            id: element.id,
+            name: element.name,
+            minAmount: element.minAmount,
+            fee: element.fee,
+            type: element.type,
+            color: element.color,
+            center: null,
+            radius: null,
+            path: null,
+            feeType: element.feeType === "percent" ? "percent" : "value" // Assign "percent" or default to "value"
+        };
 
-        if(element.type == 'circle') {
-            var radius = element.shape.getRadius();
-            var center = element.shape.getCenter();
-            zone.center = center;
-            zone.radius = radius;
+        if (element.type === "circle") {
+            zone.center = element.shape.getCenter();
+            zone.radius = element.shape.getRadius();
         } else {
-            var vertices = element.shape.getPath();
-            zone.path =  new Array();
-            for (var i =0; i < vertices.getLength(); i++) {
-                var xy = vertices.getAt(i);
-                zone.path.push({lat:xy.lat(),lng:xy.lng()})
+            const vertices = element.shape.getPath();
+            zone.path = [];
+            for (let i = 0; i < vertices.getLength(); i++) {
+                const xy = vertices.getAt(i);
+                zone.path.push({ lat: xy.lat(), lng: xy.lng() });
             }
         }
 
-        if(typeof element.feeType != 'undefined' && element.feeType != null && element.feeType == "percent")
-        //Select percent in Type
-            zone.feeType = "percent";
-        else
-        //Select value in Type
-            zone.feeType = "value";
-
-        zones.push(zone);
-    }
-    var zones_txt = JSON.stringify(zones);
+        return zone;
+    });
+    // Convert zones to JSON and save
+    const zones_txt = JSON.stringify(zones);
     jQuery('#moo_zones_json').val(zones_txt);
+
+    // Trigger save changes
     mooSaveChanges(event, el);
 }
 function mooShowWaitMessage() {
@@ -3645,6 +3384,11 @@ function mooCheckApiKeyOnLoading() {
                 jQuery("#moo-keyValid-section .moo-merchant-address").text(response.address);
                 moo_merchantAddress = response.address;
             }
+            //Show ApplePay Section
+            if(response.isApplePaySupported){
+                jQuery("#moo-apple-pay-section").show();
+            }
+
             //Show recaptcha
             if (response.blackoutStatus === "close") {
                 jQuery("#sooBlackoutSection").show();
@@ -3663,10 +3407,7 @@ function mooCheckApiKeyOnLoading() {
             }
 
             //Check if Clover Hours already configured
-
             if (response.cloverOpeningHoursExist === false){
-                jQuery("#scheduledOrdersSectionDisabled").show()
-                jQuery("#scheduledOrdersSection").hide()
                 jQuery("#sooCloverHoursSection").hide()
                 jQuery("#sooCloverHoursNotFoundSection").show()
             }
@@ -4084,7 +3825,6 @@ function mooAutoSyncDetailsSectionChangeItemsUuidByNames(items) {
 
 function mooEditImageOnItemsPage(e, itemUuid, itemName) {
     e.preventDefault();
-    console.log("Editing the img of the item" + itemUuid);
     //Get Item
     media_uploader = wp.media({
         title: 'Select an Image for "'+itemName+'" Placeholder',
@@ -4099,11 +3839,17 @@ function mooEditImageOnItemsPage(e, itemUuid, itemName) {
 
     media_uploader.on("select", function(){
         var image = media_uploader.state().get("selection").first().toJSON();
+        console.log(image);
         if (image.url){
             mooShowWaitMessage();
             //Change Item Img
             var images = [
-                {"image_url": image.url, "image_default": 1, "image_enabled": 1}
+                {
+                    "image_url": image.url,
+                    "image_default": 1,
+                    "image_enabled": 1,
+                    "sizes": image.sizes ? image.sizes : null
+                }
             ];
             jQuery.post(moo_params.ajaxurl,{'action':'moo_save_items_with_images',"item_uuid":itemUuid,"description":'',"images":images}, function (data) {
                     if(data.status === 'Success') {
@@ -4770,5 +4516,14 @@ function reImportInventory() {
     } else {
         moveProgress(progress,100);
     }
+}
 
+// Function to show SweetAlert2 messages
+function showAlert(title, text, type, confirmButtonText = "OK") {
+    swal({
+        title,
+        text,
+        type,
+        confirmButtonText
+    });
 }

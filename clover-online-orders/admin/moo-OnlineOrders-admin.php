@@ -221,281 +221,277 @@ class moo_OnlineOrders_Admin {
             $this->listOfOrderSection($orders);
         }
     }
-    public function page_coupons()
-    {
-        $d = new DateTime('today');
-        if(isset($_GET['action']) && ($_GET['action'] == 'add_coupon' || $_GET['action'] == "edit_coupon") ) {
-            $action = sanitize_text_field($_GET['action']);
-            require_once plugin_dir_path( dirname(__FILE__))."/includes/moo-OnlineOrders-sooapi.php";
-            $api = new Moo_OnlineOrders_SooApi();
-            $message="";
-            $header_message = "Add New coupon";
-            if(isset($_POST['submit'])) {
-                //Check the nonce
-                if( ! wp_verify_nonce( $_POST['couponNonce'], 'soo-addOrEditCoupon' ) ){
-                    die( 'You are not permitted to perform this action' );
+    public function page_coupons() {
+        // Include API class
+        require_once plugin_dir_path(dirname(__FILE__)) . "/includes/moo-OnlineOrders-sooapi.php";
+        $api = new Moo_OnlineOrders_SooApi();
+
+        // Current action and coupon code
+        $action = isset($_GET['action']) ? sanitize_text_field($_GET['action']) : '';
+        $coupon_id = isset($_GET['coupon']) ? sanitize_text_field($_GET['coupon']) : '';
+
+        // If we are adding or editing a coupon
+        if ($action === 'add_coupon' || $action === 'edit_coupon') {
+            $is_edit = ($action === 'edit_coupon');
+            $header_message = $is_edit ? "Edit a coupon" : "Add New Coupon";
+            $message = "";
+            $class = "error";
+
+            // Load existing coupon if editing
+            if ($is_edit && !empty($coupon_id)) {
+                $coupon_data = json_decode($api->getCoupon($coupon_id));
+                if (isset($coupon_data->status) && $coupon_data->status === "success") {
+                    $c = $coupon_data->coupon;
+                    // Create DateTime objects from the stored dates
+                    $couponStartDate = !empty($c->startdate) ? DateTime::createFromFormat('Y-m-d', $c->startdate) : null;
+                    $couponExpiryDate = !empty($c->expirationdate) ? DateTime::createFromFormat('Y-m-d', $c->expirationdate) : null;
+
+                    $theCoupon = array(
+                        "CouponName"      => $c->name,
+                        "CouponCode"      => $c->code,
+                        "CouponType"      => $c->type,
+                        "CouponValue"     => $c->value,
+                        "CouponMinAmount" => $c->minAmount,
+                        "CouponMaxUses"   => $c->maxuses,
+                        "CouponExpiryDate"=> ($couponExpiryDate) ? $couponExpiryDate->format('m-d-Y') : '',
+                        "CouponStartDate" => ($couponStartDate) ? $couponStartDate->format('m-d-Y') : ''
+                    );
+                } else {
+                    wp_die(isset($coupon_data->message) ? $coupon_data->message : 'Invalid coupon data');
+                }
+            } else {
+                // Default values when adding a new coupon
+                $theCoupon = array(
+                    "CouponName"      => '',
+                    "CouponCode"      => '',
+                    "CouponType"      => 'amount',
+                    "CouponValue"     => '',
+                    "CouponMinAmount" => '',
+                    "CouponMaxUses"   => '0',
+                    "CouponExpiryDate"=> '',
+                    "CouponStartDate" => ''
+                );
+            }
+
+            // Handle form submission
+            if (isset($_POST['submit'])) {
+                // Security check
+                check_admin_referer('soo-addOrEditCoupon', 'couponNonce');
+
+                // Sanitize inputs
+                $couponName      = isset($_POST['CouponName'])      ? trim(sanitize_text_field($_POST['CouponName'])) : '';
+                $couponCode      = isset($_POST['CouponCode'])      ? trim(sanitize_text_field($_POST['CouponCode'])) : '';
+                $couponType      = isset($_POST['CouponType'])      ? trim(sanitize_text_field($_POST['CouponType'])) : '';
+                $couponValue     = isset($_POST['CouponValue'])     ? trim($_POST['CouponValue']) : '';
+                $couponMinAmount = isset($_POST['CouponMinAmount']) ? trim($_POST['CouponMinAmount']) : '';
+                $couponMaxUses   = isset($_POST['CouponMaxUses'])   ? trim($_POST['CouponMaxUses']) : '';
+                $couponStart = isset($_POST['CouponStartDate']) ? sanitize_text_field($_POST['CouponStartDate']) : '';
+                $couponExpiry = isset($_POST['CouponExpiryDate']) ? sanitize_text_field($_POST['CouponExpiryDate']) : '';
+
+                $validStartDate = DateTime::createFromFormat('m-d-Y', $couponStart);
+                $validExpiryDate = DateTime::createFromFormat('m-d-Y', $couponExpiry);
+
+                if (empty($couponName)) {
+                    $message = "Please enter the coupon name";
+                } elseif (empty($couponCode) || preg_match('/\s/', $couponCode)) {
+                    $message = "Please enter a valid coupon code (no spaces allowed)";
+                } elseif (empty($couponType) || !in_array($couponType, ['amount', 'percentage'], true)) {
+                    $message = "Please select a valid discount type";
+                } elseif (empty($couponValue) || !is_numeric($couponValue) || $couponValue <= 0) {
+                    $message = "Please enter a valid coupon value (must be a positive number)";
+                } elseif ($couponType === 'percentage' && $couponValue > 100) {
+                    $message = "Percentage value cannot exceed 100%";
+                } elseif ($couponMinAmount !== '' && (!is_numeric($couponMinAmount) || $couponMinAmount < 0)) {
+                    $message = "Please enter a valid minimum amount (must be a non-negative number)";
+                } elseif (!is_numeric($couponMaxUses) || $couponMaxUses < -1) {
+                    $message = "Please enter a valid maximum usage value (must be a non-negative number)";
+                } elseif (empty($couponExpiry)) {
+                    $message = "The expiration date is required";
+                } elseif (empty($couponStart)) {
+                    $message = "The start date is required";
+                } else {
+                    // All validations passed
+                    $message = "";
                 }
 
-                $theCoupon = array(
-                    "CouponName"=> esc_attr($_POST['CouponName']),
-                    "CouponCode"=>esc_attr($_POST['CouponCode']),
-                    "CouponType"=>esc_attr($_POST['CouponType']),
-                    "CouponValue"=>esc_attr($_POST['CouponValue']),
-                    "CouponMinAmount"=>esc_attr($_POST['CouponMinAmount']),
-                    "CouponMaxUses"=>esc_attr($_POST['CouponMaxUses']),
-                    "CouponStartDate"=>esc_attr($_POST['CouponStartDate']),
-                    "CouponExpiryDate"=>esc_attr($_POST['CouponExpiryDate']),
-                );
-                $couponStartDate = DateTime::createFromFormat('m-d-Y', $theCoupon["CouponStartDate"]);
-                $couponExpiryDate = DateTime::createFromFormat('m-d-Y', $theCoupon["CouponExpiryDate"]);
+                // If no errors, proceed to add or update coupon
+                if ($message === "") {
+                    $coupon_data = array(
+                        "name"           => $couponName,
+                        "code"           => $couponCode,
+                        "value"          => $couponValue,
+                        "type"           => $couponType,
+                        "minAmount"      => $couponMinAmount,
+                        "maxuses"        => $couponMaxUses,
+                        "expirationdate" => $validExpiryDate->format('m-d-Y'),
+                        "startdate"      => $validStartDate->format('m-d-Y')
+                    );
 
-
-                if(!isset($_POST['CouponName']) || $_POST['CouponName'] == "")
-                    $message = "Please enter the coupon name";
-                else
-                    if(!isset($_POST['CouponCode']) || $_POST['CouponCode'] == "" || preg_match('/\s/',$_POST['CouponCode']))
-                        $message =" Please enter a valid coupon Code";
-                    else
-                        if(!isset($_POST['CouponType']) || $_POST['CouponType'] == "" || ($_POST['CouponType'] != "amount" && $_POST['CouponType'] != "percentage" ))
-                            $message =" Please select the discount type";
-                        else
-                            if(!isset($_POST['CouponValue']) || $_POST['CouponValue']=="" || $_POST['CouponValue'] <= 0 )
-                                $message =" Please enter a valid value (should be a positive number)";
-                            else
-                                if(!isset($_POST['CouponMinAmount']) || ($_POST['CouponMinAmount'] != "" && $_POST['CouponMinAmount'] < 0) )
-                                    $message =" Please enter a valid minAmount value (should be a positive number)";
-                                else
-                                    if(!isset($_POST['CouponMaxUses']) || $_POST['CouponMaxUses']=="" || $_POST['CouponMaxUses'] < 0 )
-                                        $message =" Please enter a valid max use value (should be a positive number)";
-                                    else
-                                        if(!isset($_POST['CouponExpiryDate']) || $_POST['CouponExpiryDate']== "")
-                                            $message =" The Expiration date is required";
-                                        else
-                                            if(!isset($_POST['CouponStartDate']) || $_POST['CouponStartDate']== "")
-                                                $message =" The Starting date is required";
-
-                $class = 'error';
-                if($message == "") {
-                    if($_POST['submit'] == "Add") {
-                        $d = new DateTime('today');
-                        $coupon = array(
-                            "name"=>esc_attr($_POST['CouponName']),
-                            "code"=>esc_attr($_POST['CouponCode']),
-                            "value"=>esc_attr($_POST['CouponValue']),
-                            "type"=>esc_attr($_POST['CouponType']),
-                            "expirationdate"=>esc_attr($_POST['CouponExpiryDate']),
-                            "minAmount"=>esc_attr($_POST['CouponMinAmount']),
-                            "maxuses"=>esc_attr($_POST['CouponMaxUses']),
-                            "startdate"=>esc_attr($_POST['CouponStartDate'])
-                        );
-                        $couponStartDate = DateTime::createFromFormat('m-d-Y', $coupon["startdate"]);
-                        $couponExpiryDate = DateTime::createFromFormat('m-d-Y', $coupon["expirationdate"]);
-                        $res = json_decode($api->addCoupon($coupon));
-                        if($res->status=="success") {
-                            $message = 'The coupon was added';
-                            $class="success";
-
+                    if (!$is_edit && $_POST['submit'] === "Add") {
+                        // Add new coupon
+                        $res = json_decode($api->addCoupon($coupon_data));
+                        if ($res->status === "success") {
+                            $message = 'The coupon was added successfully.';
+                            $class = "success";
                         } else {
                             $message = $res->message;
                         }
-                    } else {
-                        if($_POST['submit'] == "Save") {
-                            $coupon = array(
-                                "name"=>esc_attr($_POST['CouponName']),
-                                "code"=>esc_attr($_POST['CouponCode']),
-                                "value"=>esc_attr($_POST['CouponValue']),
-                                "type"=>esc_attr($_POST['CouponType']),
-                                "expirationdate"=>esc_attr($_POST['CouponExpiryDate']),
-                                "minAmount"=>esc_attr($_POST['CouponMinAmount']),
-                                "maxuses"=>esc_attr($_POST['CouponMaxUses']),
-                                "startdate"=>esc_attr($_POST['CouponStartDate'])
-                            );
-                            $couponId = esc_attr($_GET['coupon']);
-                            $res = json_decode($api->updateCoupon($couponId,$coupon));
-                            if($res->status == "success") {
-                                if($_GET['coupon'] !== $_POST['CouponCode'])
-                                    $message = 'The coupon was updated. You are updated the coupon code, any other changes on this page will not affect the coupon please go back to coupons page';
-                                else
-                                    $message = 'The coupon was updated';
-
-                                $class="success";
-
+                    } elseif ($is_edit && $_POST['submit'] === "Save") {
+                        // Update existing coupon
+                        $res = json_decode($api->updateCoupon($coupon_id, $coupon_data));
+                        if ($res->status === "success") {
+                            $newCode = esc_attr($_POST['CouponCode']);
+                            // If the coupon code was updated, redirect to the new edit page
+                            if ($coupon_id !== $newCode) {
+                                wp_redirect(add_query_arg(array(
+                                    'page'   => 'moo_coupons',
+                                    'action' => 'edit_coupon',
+                                    'message' => 'The coupon was updated successfully.',
+                                    'coupon' => $newCode
+                                ), admin_url('admin.php')));
+                                exit; // Always call exit after a redirect
                             } else {
-                                $message = $res->message;
+                                $message = 'The coupon was updated successfully.';
+                                $class = "success";
                             }
-                            $header_message = 'Edit a coupon';
-                            $couponStartDate = DateTime::createFromFormat('m-d-Y', $coupon["startdate"]);
-                            $couponExpiryDate = DateTime::createFromFormat('m-d-Y', $coupon["expirationdate"]);
+                        } else {
+                            $message = $res->message;
                         }
                     }
+
+                    // Refresh $theCoupon array with new data
+                    $theCoupon = array(
+                        "CouponName"      => $couponName,
+                        "CouponCode"      => $couponCode,
+                        "CouponType"      => $couponType,
+                        "CouponValue"     => $couponValue,
+                        "CouponMinAmount" => $couponMinAmount,
+                        "CouponMaxUses"   => $couponMaxUses,
+                        "CouponExpiryDate"=> $couponExpiry,
+                        "CouponStartDate" => $couponStart
+                    );
                 }
             } else {
-                if($action=="edit_coupon") {
-                    $coupon_code = esc_attr($_GET['coupon']);
-                    $coupon = json_decode($api->getCoupon($coupon_code));
-                    if(isset($coupon->status)) {
-                        if($coupon->status=="success") {
-                            $c = $coupon->coupon;
-                            $theCoupon = array(
-                                "CouponName"=>$c->name,
-                                "CouponCode"=>$c->code,
-                                "CouponType"=>$c->type,
-                                "CouponValue"=>$c->value,
-                                "CouponMinAmount"=>$c->minAmount,
-                                "CouponMaxUses"=>$c->maxuses,
-                                "CouponExpiryDate"=>$c->expirationdate,
-                                "CouponStartDate"=>$c->startdate
-                            );
-                            $header_message = 'Edit a coupon';
-                            $couponStartDate = new  DateTime($theCoupon["CouponStartDate"]);
-                            $couponExpiryDate = new  DateTime($theCoupon["CouponExpiryDate"]);
-                        } else {
-                            die($coupon->message);
-                        }
-                    } else {
-                        die($coupon);
-                    }
+                if (isset($_GET['message'])){
+                    $message = sanitize_text_field($_GET['message']);
+                    $class = "success";
                 }
             }
-                ?>
-                <div class="wrap">
-                    <h2><?php echo $header_message;?></h2>
-                    <?php
-                    if($message!="") {
-                        echo '<div class="notice notice-'.$class.' is-dismissibl" style="min-height: 33px;line-height: 33px;">'.$message.'</div>';
-                    }
-                    $nonce = wp_create_nonce('soo-addOrEditCoupon');
-                    ?>
-                    <form method="post" action="#">
-                        <input type="hidden" name="couponNonce" value="<?php echo $nonce ?>" />
-                        <table class="form-table">
-                            <tbody>
-                            <tr>
-                                <th scope="row">
-                                    <label for="couponName">Coupon name</label>
-                                </th>
-                                <td>
-                                    <input name="CouponName" type="text" id="CouponName" class="regular-text" value="<?php echo (isset($theCoupon['CouponName']))?stripslashes($theCoupon['CouponName']):'';?>" required>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponCode">Coupon Code</label>
-                                </th>
-                                <td>
-                                    <input name="CouponCode" type="text" id="CouponCode" aria-describedby="CouponCode-description" class="regular-text" value="<?php echo (isset($theCoupon['CouponCode']))?stripslashes($theCoupon['CouponCode']):'';?>" required>
-                                    <p class="description" id="CouponCode-description">This  coupon code will be used by customers during checkout to receive a discount (please do not use spaces and special characters)</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponType">Type of discount</label>
-                                </th>
-                                <td>
-                                    <select name="CouponType" id="CouponType">
-                                        <option <?php echo (isset($theCoupon['CouponType']) && $theCoupon['CouponType']=='amount')?'selected="selected"':'';?> value="amount">Amount</option>
-                                        <option <?php echo (isset($theCoupon['CouponType']) && $theCoupon['CouponType']=='percentage')?'selected="selected"':'';?> value="percentage">Percentage</option>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponValue">Coupon value</label>
-                                </th>
-                                <td>
-                                    <input name="CouponValue" type="number" min="0" step="0.01" id="CouponValue" value="<?php echo (isset($theCoupon['CouponValue']))?$theCoupon['CouponValue']:'';?>" required>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponMinAmount">Minimum Amount</label>
-                                </th>
-                                <td>
-                                    <input name="CouponMinAmount" type="number" min="0" step="0.01" id="CouponMinAmount" aria-describedby="CouponMinAmount-description" value="<?php echo (isset($theCoupon['CouponMinAmount']))?$theCoupon['CouponMinAmount']:'';?>">
-                                    <p class="description" id="CouponMinAmount-description">The coupon will be valid only if the subtotal is greater than the min amount</p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponStartDate">Starting date</label>
-                                </th>
-                                <td>
-                                    <input autocomplete="off" name="CouponStartDate" type="text" id="CouponStartDate" value="<?php echo (isset($theCoupon['CouponStartDate']) && !empty($theCoupon['CouponStartDate']))?$couponStartDate->format('m-d-Y'):'';?>" >
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponExpiryDate">Expiration date</label>
-                                </th>
-                                <td>
-                                    <input autocomplete="off" name="CouponExpiryDate" type="text" id="CouponExpiryDate" value="<?php echo (isset($theCoupon['CouponExpiryDate']) && !empty($theCoupon['CouponExpiryDate']))?$couponExpiryDate->format('m-d-Y'):'';?>" >
-                                </td>
-                            </tr>
-
-                            <tr>
-                                <th scope="row">
-                                    <label for="CouponMaxUses">Number of uses</label>
-                                </th>
-                                <td>
-                                    <input name="CouponMaxUses" type="number" id="CouponMaxUses" aria-describedby="CouponMaxUses-description" value="<?php echo (isset($theCoupon['CouponMaxUses']))?$theCoupon['CouponMaxUses']:'0';?>">
-                                    <p class="description" id="CouponMaxUses-description">Enter 0 for unlimited uses. This is for total number of uses for all customers.</p>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
-                        <p>After adding coupon, make sure it is enabled by going to clover orders, settings, checkout settings. You can also  <a href="<?php echo (esc_url((admin_url('admin.php?page=moo_index#checkout')))); ?>">click here</a></p>
-                        <p class="submit">
-                            <?php
-                            if($action == "add_coupon"){ ?>
-                                <input type="submit" name="submit" id="submit" class="button button-primary" value="Add">
-                            <?php } ?>
-                            <?php if($action == "edit_coupon"){ ?>
-                                <input type="submit" name="submit" id="submit" class="button button-primary" value="Save">
-                            <?php } ?>
-                        </p>
-                    </form>
-                </div>
-                <?php
-            }
-        else
-        {
-            require_once plugin_dir_path( dirname(__FILE__))."admin/includes/class-moo-coupons-list.php";
-            $orders = new Coupons_List_Moo();
-            $orders->prepare_items();
-
-            $message="";
-            if(isset($_GET['enabled']) && $_GET['enabled'] ==="1")
-                $message = '<div class="update-nag" style="display: block;">The coupon have been enabled</div>';
-            else
-                if(isset($_GET['disabled']) && $_GET['disabled'] ==="1")
-                    $message = '<div class="update-nag" style="display: block;">The coupon have been disabled</div>';
-                else
-                    if(isset($_GET['deleted']) && $_GET['deleted'] ==="1")
-                        $message = '<div class="update-nag" style="display: block;">The coupon was removed</div>';
             ?>
             <div class="wrap">
-                <?php if($message!="") echo $message; ?>
-                <h1 style="float: left;">List of coupons</h1>
-                <a href="<?php
-                echo add_query_arg(array("action"=>"add_coupon"),admin_url('admin.php?page=moo_coupons'));
-                ?>" class="page-title-action" style="float: left;top: 11px;margin-left: 18px;">Add Coupon</a>
-                <div id="poststuff">
-                    <div id="post-body" class="metabox-holder">
-                        <div id="post-body-content">
-                            <div class="meta-box-sortables ui-sortable">
-                                <form method="post">
-                                    <?php $orders->display(); ?>
-                                </form>
-                            </div>
-                        </div>
+                <h2><?php echo esc_html($header_message); ?></h2>
+                <?php if (!empty($message)): ?>
+                    <div class="notice notice-<?php echo esc_attr($class); ?> is-dismissible">
+                        <p><?php echo esc_html($message); ?></p>
                     </div>
-                    <br class="clear">
-                </div>
+                <?php endif; ?>
+                <form method="post" action="#">
+                    <?php wp_nonce_field('soo-addOrEditCoupon', 'couponNonce'); ?>
+                    <table class="form-table">
+                        <tbody>
+                        <tr>
+                            <th scope="row"><label for="CouponName">Coupon name</label></th>
+                            <td>
+                                <input name="CouponName" type="text" id="CouponName" class="regular-text"
+                                       value="<?php echo esc_attr(stripslashes($theCoupon['CouponName'])); ?>" required>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponCode">Coupon Code</label></th>
+                            <td>
+                                <input name="CouponCode" type="text" id="CouponCode" class="regular-text"
+                                       value="<?php echo esc_attr(stripslashes($theCoupon['CouponCode'])); ?>" required>
+                                <p class="description">This coupon code will be used by customers at checkout (no spaces or special characters).</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponType">Type of discount</label></th>
+                            <td>
+                                <select name="CouponType" id="CouponType">
+                                    <option value="amount" <?php selected($theCoupon['CouponType'], 'amount'); ?>>Amount</option>
+                                    <option value="percentage" <?php selected($theCoupon['CouponType'], 'percentage'); ?>>Percentage</option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponValue">Coupon value</label></th>
+                            <td>
+                                <input name="CouponValue" type="number" min="0" step="0.01" id="CouponValue"
+                                       value="<?php echo esc_attr($theCoupon['CouponValue']); ?>" required>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponMinAmount">Minimum Amount</label></th>
+                            <td>
+                                <input name="CouponMinAmount" type="number" min="0" step="0.01" id="CouponMinAmount"
+                                       value="<?php echo esc_attr($theCoupon['CouponMinAmount']); ?>">
+                                <p class="description">The coupon will be valid only if the subtotal is greater than this amount.</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponStartDate">Starting date</label></th>
+                            <td>
+                                <input autocomplete="off" name="CouponStartDate" type="text" id="CouponStartDate"
+                                       value="<?php echo esc_attr($theCoupon['CouponStartDate']); ?>">
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponExpiryDate">Expiration date</label></th>
+                            <td>
+                                <input autocomplete="off" name="CouponExpiryDate" type="text" id="CouponExpiryDate"
+                                       value="<?php echo esc_attr($theCoupon['CouponExpiryDate']); ?>">
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponMaxUses">Number of uses</label></th>
+                            <td>
+                                <input name="CouponMaxUses" type="number" id="CouponMaxUses"
+                                       value="<?php echo esc_attr($theCoupon['CouponMaxUses']); ?>">
+                                <p class="description">Enter 0 for unlimited uses (applies to all customers).</p>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <p>After adding the coupon, ensure it is enabled in the Clover Orders checkout settings.
+                        You can also <a href="<?php echo esc_url(admin_url('admin.php?page=moo_index#checkout')); ?>">click here</a>.</p>
+                    <p class="submit">
+                        <?php if (!$is_edit): ?>
+                            <input type="submit" name="submit" id="submit" class="button button-primary" value="Add">
+                        <?php else: ?>
+                            <input type="submit" name="submit" id="submit" class="button button-primary" value="Save">
+                        <?php endif; ?>
+                    </p>
+                </form>
             </div>
+            <?php
+        } else {
+            // Show the coupon list
+            require_once plugin_dir_path(dirname(__FILE__)) . "admin/includes/class-moo-coupons-list.php";
+            $coupons = new Coupons_List_Moo();
+            $coupons->prepare_items();
 
-<?php
+            $message = '';
+            if (isset($_GET['enabled']) && $_GET['enabled'] === "1") {
+                $message = '<div class="updated"><p>The coupon has been enabled.</p></div>';
+            } elseif (isset($_GET['disabled']) && $_GET['disabled'] === "1") {
+                $message = '<div class="updated"><p>The coupon has been disabled.</p></div>';
+            } elseif (isset($_GET['deleted']) && $_GET['deleted'] === "1") {
+                $message = '<div class="updated"><p>The coupon was removed.</p></div>';
+            }
+            ?>
+            <div class="wrap">
+                <?php if ($message) echo $message; ?>
+                <h1 class="wp-heading-inline">List of coupons</h1>
+                <a href="<?php echo esc_url(add_query_arg(array("action" => "add_coupon"), admin_url('admin.php?page=moo_coupons'))); ?>" class="page-title-action">Add Coupon</a>
+                <hr class="wp-header-end">
+                <form method="post">
+                    <?php $coupons->display(); ?>
+                </form>
+            </div>
+            <?php
         }
     }
+
     public function old_page_reports()
     {
         require_once plugin_dir_path( dirname(__FILE__))."/includes/moo-OnlineOrders-sooapi.php";
@@ -868,15 +864,15 @@ class moo_OnlineOrders_Admin {
                 <div id="MooPanel_tabContent1">
 
                 <?php
-                //show custom section based on query param or the default section
+                //show a custom section based on query param or the default section
                 if(isset($_GET['moo_section']) && $_GET['moo_section']=='update_apikey') {
                     $this->moo_update_token();
                 } else {
                     if(isset($_GET['moo_section']) && $_GET['moo_section']=='update_address'){
                         $this->moo_update_address();
                     } else {
-
-                ?>
+                        $isApplePayEnabled = get_option('moo_apple_pay_enabled', false);
+                        ?>
                     <h2>My store</h2>
                     <hr>
                     <div id="moo-checking-section" style="<?php if(!isset($mooOptions['api_key']) || $mooOptions['api_key'] === ''){echo 'display:none;';}?>" >
@@ -902,7 +898,9 @@ class moo_OnlineOrders_Admin {
                                     </g>
                                 </svg>
                             </div>
-                            <p><?php _e("Checking your Api Key","moo_OnlineOrders"); ?></p>
+                            <p>
+                                <?php _e("Checking your Api Key","moo_OnlineOrders"); ?>
+                            </p>
                         </div>
                     </div>
                     <div id="moo-keyValid-section" style="display: none">
@@ -995,6 +993,27 @@ class moo_OnlineOrders_Admin {
                                     </div>
                                 </div>
                         <?php } ?>
+                        <div class="moo-row moo-subSection" id="moo-apple-pay-section" style="display: none">
+                            <div class="moo-col-md-2 moo-centred">
+                                <img  width="80px" src="<?php echo plugin_dir_url(dirname(__FILE__))."admin/img/iconSooNew.svg";?>" alt=""/>
+                            </div>
+                            <div class="moo-col-md-8">
+                                <h3>You're Now Eligible for Apple Pay!</h3>
+                                <p>
+                                    Enhance your checkout experience by enabling Apple Pay. With Apple Pay already active on your Clover account, the next step is to integrate it on your website. Simply verify your domain in the Clover dashboard to get started.
+                                    For more details, <a href="https://docs.zaytech.com/knowledge/how-to-verify-website-domain-apple-pay" target="_blank">click here</a>
+                                </p>
+                            </div>
+                            <div class="moo-col-md-2">
+                                <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right;margin-top: 38px;margin-right: 20px;">
+                                    <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
+                                    <label class="soo-onoffswitch-label" for="sooApplePayFeature">
+                                        <span class="soo-onoffswitch-inner"></span>
+                                        <span class="soo-onoffswitch-switch"></span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                         <div class="moo-row moo-subSection">
                             <div class="moo-col-md-12">
                                 <!--[if lte IE 8]>
@@ -1179,7 +1198,7 @@ class moo_OnlineOrders_Admin {
                             <div id="moo_progressbar_container"></div>
                             <div class="Moo_option-item">
                                 <div class="button_center">
-                                    <a href="#" onclick="MooPanel_CleanInventory(event)" class="button button-secondary moo-form-inline"  style="margin: 0 auto">Clean Inventory</a>
+                                    <a href="#" onclick="sooCleanInventory(event)" class="button button-secondary moo-form-inline"  style="margin: 0 auto">Clean Inventory</a>
                                 </div>
                             </div>
 
@@ -1342,11 +1361,6 @@ class moo_OnlineOrders_Admin {
                                 </div>
                                     <div class="moo-col-sm-8 moo-col-xs-10 label_name" id="label_<?php echo $mg->uuid?>">
                                         <div class="getname"><?php echo stripslashes($name) . stripslashes($label); ?></div>
-                                        <span class="change-name" style="display: none;">
-                                        <input style="width: 80%" type="text" value="<?php echo stripslashes($name);?>" class="nameGGroup" id="newName_<?php echo $mg->uuid?>">
-                                        <a href="#" onclick="validerChangeNameGG(event,'<?php echo $mg->uuid?>')"> <img src="<?php echo plugin_dir_url(dirname(__FILE__))."public/img/valider.png" ?>" style="width: 18px;vertical-align: middle;"></a>
-                                        <a href="#" onclick="annulerChangeNameGG(event,'<?php echo $mg->uuid?>')"> <img src="<?php echo plugin_dir_url(dirname(__FILE__))."public/img/annuler.png" ?>" style="width: 18px;vertical-align: middle;"></a>
-                                    </span>
                                     </div>
                                     <div class="moo-col-sm-3 moo-col-xs-12" style="text-align: right;">
                                         <div class="moo-onoffswitch show_group" onchange="MooChangeModifier_Status('<?php echo $mg->uuid?>')" title="Show/Hide this Modifier Group">
@@ -1598,7 +1612,7 @@ class moo_OnlineOrders_Admin {
                                 </span>
                             </div>
                             <div  id="sooAdditionalPaymentMethods" class="<?php echo get_option('moo_old_checkout_enabled') === 'yes' ? 'soo-display-none':'soo-display-block'; ?>">
-                                <div class="Moo_option-item <?php echo (!empty(SOO_ACCEPT_GIFTCARDS))?"soo-display-block":"soo-display-none"; ?>" >
+                                <div class="Moo_option-item" >
                                     <div style="margin-bottom: 14px;" class="label">Accept Clover Gift Cards</div>
                                     <div class="moo-onoffswitch"  title="Accept Clover Gift Cards">
                                         <input type="hidden" name="moo_settings[clover_giftcards]" value="off">
@@ -2139,15 +2153,6 @@ class moo_OnlineOrders_Admin {
                                 </div>
                             </div>
                         </div>
-
-                        <!-- scheduled orders Disabled -->
-                        <div class="MooPanelItem MooPanelItemExpanded" id="scheduledOrdersSectionDisabled" style="display: none">
-                            <h3 onclick="expandSection(this)" style="color: gray">Scheduled Orders ( You need to set up Clover Hours first )</h3>
-                            <div class="Moo_option-item">
-                                To accept Scheduled Orders you need to configure your Clover hours first, then refresh this page <br>
-                                To change your Clover Business Hours, go to Clover.com from a computer, then go to Setup, then Business information
-                            </div>
-                        </div>
                         <!-- scheduled orders -->
                         <div class="MooPanelItem MooPanelItemExpanded" id="scheduledOrdersSection" >
                             <h3 onclick="expandSection(this)">Scheduled Orders</h3>
@@ -2590,7 +2595,7 @@ class moo_OnlineOrders_Admin {
                             </div>
                             <div class="Moo_option-item" >
                                 <div class="normal_text">
-                                    <strong>Fixed Delivery Amount for all Zones</strong> :  This fee will be applied towards any delivered order (order types with shipping address must be enabled) Keep empty if you don"t want to charge a fixed delivery fee.<b style="color: red">This will override any delivery fees you added when drawing the map. </b> Recommended to leave blank
+                                    <strong>Fixed Delivery Amount for all Zones</strong> : This fee will be applied towards any delivered order (order types with shipping address must be enabled) Keep empty if you don"t want to charge a fixed delivery fee.<b style="color: red">This will override any delivery fees you added when drawing the map. </b> Recommended to leave blank
                                 </div>
                                 <div class="iwl_holder">
                                     <div class="iwl_label_holder"><label for="fixeddeliveryamount">Fixed Delivery Amount</label></div>
@@ -2611,7 +2616,7 @@ class moo_OnlineOrders_Admin {
                             </div>
                             <div class="Moo_option-item" >
                                 <div class="normal_text">
-                                    <strong>Delivery fee name</strong> :  The name of the delivery charge to appear on the receipt
+                                    <strong>Delivery fee name</strong> : The name of the delivery charge to appear on the receipt
                                 </div>
                                 <div class="iwl_holder">
                                     <div class="iwl_label_holder"><label for="delivery_fees_name">name</label></div>
@@ -2621,7 +2626,7 @@ class moo_OnlineOrders_Admin {
                             </div>
                             <div class="Moo_option-item" >
                                 <div class="normal_text">
-                                    <strong>Error message</strong> :  Customize The error message that your customers will see if the delivery zone isn't supported
+                                    <strong>Error message</strong> : Customize The error message that your customers will see if the delivery zone isn't supported
                                 </div>
                                 <div class="iwl_holder">
                                     <div class="iwl_label_holder"><label for="delivery_errorMsg"></label></div>
@@ -2836,47 +2841,7 @@ class moo_OnlineOrders_Admin {
         <!-- End of HubSpot Embed Code -->
         <?php
     }
-    public function dashboard_widgets(){
-        wp_add_dashboard_widget(
-            'moo_dashboard_widget_news',                          // Widget slug.
-            esc_html__( 'Smart Online Order Latest Updates', 'moo_OnlineOrders' ), // Title.
-            array($this, 'render_dashboard_widgetNews' )                   // Display function.
-        );
-        wp_add_dashboard_widget(
-            'moo_dashboard_widget_announcements',                          // Widget slug.
-            esc_html__( 'Smart Online Order Announcements', 'moo_OnlineOrders' ), // Title.
-            array($this, 'render_dashboard_widgetAnnouncements' )                   // Display function.
-        );
 
-    }
-    public function render_dashboard_widgetNews(){
-        ?>
-        <!--[if lte IE 8]>
-        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2-legacy.js"></script>
-        <![endif]-->
-        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2.js"></script>
-        <script>
-            hbspt.forms.create({
-                portalId: "7182906",
-                formId: "0fb22630-4931-4eb4-a206-49d2001bd7b6"
-            });
-        </script>
-        <?php
-    }
-    public function render_dashboard_widgetAnnouncements(){
-        ?>
-        <!--[if lte IE 8]>
-        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2-legacy.js"></script>
-        <![endif]-->
-        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2.js"></script>
-        <script>
-            hbspt.forms.create({
-                portalId: "7182906",
-                formId: "ca2c3d93-f276-4446-b541-42439ea5968c"
-            });
-        </script>
-        <?php
-    }
     function toolbar_link_to_settings( $wp_admin_bar ) {
         $args = array(
             'id'    => 'Clover_Orders',
@@ -3042,28 +3007,28 @@ class moo_OnlineOrders_Admin {
         wp_register_script('moo-tooltip-js', plugins_url( 'js/tooltip.min.js', __FILE__ ),array(), $this->version);
         wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ));
 
-        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array(), $this->version);
-        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array(), $this->version);
+        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->version);
+        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), $this->version);
 
-        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js");
-        wp_enqueue_script('moo-magnific-modal',array('jquery'));
+        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'));
+        wp_enqueue_script('moo-magnific-modal');
 
         //Promise for IE
         wp_register_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js',array(), $this->version);
         wp_enqueue_script('moo-bluebird');
 
-        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js");
-        wp_enqueue_script('moo-sweetalert-js',array('jquery'));
+        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js",array('jquery'));
+        wp_enqueue_script('moo-sweetalert-js');
 
-        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js");
-        wp_enqueue_script('moo-introjs-js',array('jquery'));
+        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js",array('jquery'));
+        wp_enqueue_script('moo-introjs-js');
 
         wp_enqueue_script('moo-progressbar-js',array('jquery'));
         wp_enqueue_script("moo-tooltip-js",array('jquery'));
 
         //Modifiers Scripts
-        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array(), SOO_VERSION);
-        wp_enqueue_script('sooModifiersPopUp',array('jquery'));
+        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION);
+        wp_enqueue_script('sooModifiersPopUp');
 
         wp_enqueue_script('moo-publicAdmin-js',array('jquery','wp-color-picker','jquery-ui-datepicker','jquery-ui-sortable','sooModifiersPopUp'));
 
@@ -3165,13 +3130,8 @@ class moo_OnlineOrders_Admin {
 
     }
 
-    public function displayUpdateNotice(){
-        if( get_transient( 'moo_updated' ) ) {
-            echo '<div class="notice notice-success">Thanks for updating</div>';
-            // Delete the transient so we don't keep displaying the update message
-            delete_transient( 'moo_updated' );
-        }
-    }
+    public function displayUpdateNotice(){}
+
     private function listOfOrderSection($orders){
     ?>
         <div class="wrap">

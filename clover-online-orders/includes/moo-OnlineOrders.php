@@ -157,8 +157,8 @@ class moo_OnlineOrders {
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'public/moo-OnlineOrders-public.php';
 
         $this->loader = new Moo_OnlineOrders_Loader();
-        $this->api  = new Moo_OnlineOrders_SooApi();
         $this->model = new Moo_OnlineOrders_Model();
+        $this->api  = new Moo_OnlineOrders_SooApi();
         $this->session = MOO_SESSION::instance();
 	}
 
@@ -213,8 +213,6 @@ class moo_OnlineOrders {
 		$this->loader->add_action( 'wpmu_new_blog', $plugin_admin, 'activate_plugin_in_network',10,6 );
 		$this->loader->add_action( 'delete_blog', $plugin_admin, 'delete_plugin_in_network',10,1 );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'displayUpdateNotice' );
-		//widgets
-		//$this->loader->add_action( 'wp_dashboard_setup', $plugin_admin, 'dashboard_widgets' );
 
 	}
 
@@ -227,7 +225,7 @@ class moo_OnlineOrders {
 	 */
 	private function define_public_hooks() {
 
-		$plugin_public = new Moo_OnlineOrders_Public( $this->get_plugin_name(), $this->get_version(),$this->getApi(),$this->getModel() );
+		$plugin_public = new Moo_OnlineOrders_Public( $this->get_plugin_name(), $this->get_version(), $this->getApi(), $this->getModel() );
         // Set session
         $this->loader->add_action( 'init', $this->session, 'myStartSession',1);
 
@@ -236,9 +234,6 @@ class moo_OnlineOrders {
 
         //allow redirection, even if my plugin starts to send output to the browser
         $this->loader->add_action( 'init', $plugin_public, 'do_output_buffer');
-
-        //init cron jobs
-        $this->loader->add_action( 'init', $plugin_public, 'moo_register_daily_jwtTokenUpdate');
 
         // Import inventory when hook fired
         $this->loader->add_action( 'smart_online_order_import_inventory', $plugin_public, 'moo_ImportInventory');
@@ -258,28 +253,9 @@ class moo_OnlineOrders {
         $this->loader->add_action( 'wp_ajax_moo_cart_getTotal', $plugin_public, 'mooGetCartTotal');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_cart_getTotal', $plugin_public, 'mooGetCartTotal');
 
-        //Get the total of one line in the cart
-        $this->loader->add_action( 'wp_ajax_moo_cart_getItemTotal', $plugin_public, 'moo_cart_getItemTotal');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_cart_getItemTotal', $plugin_public, 'moo_cart_getItemTotal');
-
-        //MODIFIERS : get limit for an modifier
-        $this->loader->add_action( 'wp_ajax_moo_modifiergroup_getlimits', $plugin_public, 'moo_modifiergroup_getlimits');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_modifiergroup_getlimits', $plugin_public, 'moo_modifiergroup_getlimits');
-
-        $this->loader->add_action( 'wp_ajax_moo_check_item_modifiers', $plugin_public, 'moo_checkItemModifiers');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_check_item_modifiers', $plugin_public, 'moo_checkItemModifiers');
-
-        //MODIFIERS : delete modifier from the Cart
-        $this->loader->add_action( 'wp_ajax_moo_cart_DeleteItemModifier', $plugin_public, 'moo_cart_DeleteItemModifier');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_cart_DeleteItemModifier', $plugin_public, 'moo_cart_DeleteItemModifier');
-
         //Checkout
         $this->loader->add_action( 'wp_ajax_moo_checkout', $plugin_public, 'moo_checkout');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_checkout', $plugin_public, 'moo_checkout');
-
-        //Checkout : Get orders Types
-        $this->loader->add_action( 'wp_ajax_moo_getodertybes', $plugin_public, 'moo_GetOrderTypes');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_getodertybes', $plugin_public, 'moo_GetOrderTypes');
 
 		//Checkout : Sending sms and verify the code
         $this->loader->add_action( 'wp_ajax_moo_send_sms', $plugin_public, 'moo_SendVerifSMS');
@@ -299,7 +275,6 @@ class moo_OnlineOrders {
         // Import Taxes
         $this->loader->add_action( 'wp_ajax_moo_import_taxes', $plugin_public, 'moo_ImportTaxes');
         // Import Items
-        $this->loader->add_action( 'wp_ajax_moo_import_items', $plugin_public, 'moo_ImportItems');
         $this->loader->add_action( 'wp_ajax_moo_import_items_v2', $plugin_public, 'moo_ImportItemsV2');
         // Import OrderTypes
         $this->loader->add_action( 'wp_ajax_moo_import_ordertypes', $plugin_public, 'moo_ImportOrderTypes');
@@ -331,12 +306,7 @@ class moo_OnlineOrders {
 		//Update Order Type
 		$this->loader->add_action( 'wp_ajax_moo_update_ordertype', $plugin_public, 'moo_UpdateOrdertype');
 
-        //Show or hide images of categories
-		$this->loader->add_action( 'wp_ajax_moo_update_category_images_status', $plugin_public, 'moo_UpdateCategoryImagesStatus');
-
 		/* Manage modifiers */
-        //Change modifier Group name
-		$this->loader->add_action( 'wp_ajax_moo_change_modifiergroup_name', $plugin_public, 'moo_ChangeModifierGroupName');
 
         //Change modifier name
         $this->loader->add_action( 'wp_ajax_moo_change_modifier_name', $plugin_public, 'moo_ChangeModifierName');
@@ -358,17 +328,6 @@ class moo_OnlineOrders {
         $this->loader->add_action( 'wp_ajax_moo_update_qte', $plugin_public, 'moo_UpdateQuantity');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_update_qte', $plugin_public, 'moo_UpdateQuantity');
 
-		// Update the Special_ins for one Item
-        $this->loader->add_action( 'wp_ajax_moo_update_special_ins', $plugin_public, 'moo_UpdateSpecial_ins');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_update_special_ins', $plugin_public, 'moo_UpdateSpecial_ins');
-
-		//get the current quantity and the currant Special instruction of an item i the cart
-		$this->loader->add_action( 'wp_ajax_moo_get_item_options', $plugin_public, 'moo_GetitemInCartOptions');
-		$this->loader->add_action( 'wp_ajax_nopriv_moo_get_item_options', $plugin_public, 'moo_GetitemInCartOptions');
-
-		//verify if the store is open, according to business hours configured in Clover
-		$this->loader->add_action( 'wp_ajax_moo_store_isopen', $plugin_public, 'moo_StoreIsOpen');
-		$this->loader->add_action( 'wp_ajax_nopriv_moo_store_isopen', $plugin_public, 'moo_StoreIsOpen');
 
         /*
          * category visibility
@@ -390,11 +349,6 @@ class moo_OnlineOrders {
          */
         $this->loader->add_action( 'wp_ajax_moo_delete_img_category', $plugin_public, 'delete_img_category');
 
-        /*
-         * change name category
-         */
-        $this->loader->add_action( 'wp_ajax_moo_change_name_category', $plugin_public, 'change_name_category');
-
         // New order Modifiers Group
         $this->loader->add_action( 'wp_ajax_moo_new_order_group_modifier', $plugin_public, 'moo_NewOrderGroupModifier');
 
@@ -413,6 +367,7 @@ class moo_OnlineOrders {
 		$this->loader->add_action( 'wp_ajax_moo_get_items_with_images', $plugin_public, 'moo_getItemWithImages');
 		$this->loader->add_action( 'wp_ajax_moo_save_items_with_images', $plugin_public, 'moo_saveItemWithImages');
 		$this->loader->add_action( 'wp_ajax_moo_save_items_description', $plugin_public, 'moo_saveItemDescription');
+
 
         /*
          * Customer login & sign-up
@@ -439,15 +394,7 @@ class moo_OnlineOrders {
         $this->loader->add_action( 'wp_ajax_moo_customer_deleteAddresses', $plugin_public, 'moo_DeleteAddresses');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_deleteAddresses', $plugin_public, 'moo_DeleteAddresses');
 
-        $this->loader->add_action( 'wp_ajax_moo_customer_setDefaultAddresses', $plugin_public, 'moo_setDefaultAddresses');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_setDefaultAddresses', $plugin_public, 'moo_setDefaultAddresses');
-
-        $this->loader->add_action( 'wp_ajax_moo_customer_updateAddresses', $plugin_public, 'moo_updateAddresses');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_updateAddresses', $plugin_public, 'moo_updateAddresses');
-
-        $this->loader->add_action( 'wp_ajax_moo_customer_deleteCreditCard', $plugin_public, 'moo_DeleteCreditCard');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_deleteCreditCard', $plugin_public, 'moo_DeleteCreditCard');
-		/*
+        /*
         * Coupons apply on checkout page
         */
 
@@ -456,17 +403,6 @@ class moo_OnlineOrders {
 
         $this->loader->add_action( 'wp_ajax_moo_coupon_remove', $plugin_public, 'moo_CouponRemove');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_coupon_remove', $plugin_public, 'moo_CouponRemove');
-
-        /*
-         *  Get Opening hours
-         */
-        $this->loader->add_action( 'wp_ajax_moo_opening_hours', $plugin_public, 'moo_getOpeningHours');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_opening_hours', $plugin_public, 'moo_getOpeningHours');
-
-		/**
-         * Plugin upgrade wp_upe_upgrade_completed
-         */
-        $this->loader->add_action( 'wp_upe_upgrade_completed', $plugin_public, 'moo_pluginUpdated',1,2);
 
         //Filters
 

@@ -25,6 +25,18 @@ class Moo_OnlineOrders_Deactivator {
 	 * @since    1.0.0
 	 */
 	public static function deactivate() {
+        $cron_events = [
+            'smart_online_order_update_inventory',
+            'smart_online_order_import_inventory',
+            'smart_online_order_update_jwttoken'
+        ];
+
+        foreach ($cron_events as $event) {
+            $timestamp = wp_next_scheduled($event);
+            if ($timestamp) {
+                wp_unschedule_event($timestamp, $event);
+            }
+        }
     }
 	public static function deactivateAndClean() {
          global $wpdb;

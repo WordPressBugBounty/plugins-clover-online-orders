@@ -1,6 +1,3 @@
-/*
- * Last upadate at 4:39pm
- */
 window.modifiers_settings;
 window.modifiersHasImage = false;
 window.topPosition = 0;
@@ -363,6 +360,7 @@ function osnLoadCatItemData() {
 }
 
 function osnRenderItems(contentItems, content) {
+    let nbOfCategories = 0;
     if (moo_RestUrl.indexOf("?rest_route") !== -1) {
         if (window.showMore)
             var endpoint = moo_RestUrl + "moo-clover/v1/categories&expand=five_items";
@@ -420,7 +418,7 @@ function osnRenderItems(contentItems, content) {
 
                         contentItems += '</div>';
                         contentItems += '</div>';
-
+                        nbOfCategories++;
                     }
                 });
             }
@@ -434,10 +432,11 @@ function osnRenderItems(contentItems, content) {
             content += '<span id="OsnPanScrollRight" onmouseleave="osnOnMouseLeave(this)" onmouseenter="osnOnMouseEnter(this,\'osnMenu\')" class="panner bounce-right" data-scroll-modifier="1"><i class="soo-icon-arrow-right-alt1"></i></span>';
             content += '<span id="osnSlideIndicator"><i class="soo-icon-two-fingers-resize-out"></i></span>';
 
-            if (data.length > 1) {
+            if (nbOfCategories > 0) {
                 jQuery('#osnCategorieNavigation').html(content);
             } else {
                 jQuery('#osnCategorieNavigation').remove();
+                contentItems += mooObjectL10n.noCategory;
             }
 
             contentItems += '</div>';

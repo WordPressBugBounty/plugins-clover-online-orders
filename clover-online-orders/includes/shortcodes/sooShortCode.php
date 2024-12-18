@@ -59,8 +59,8 @@ class sooShortCode
         wp_enqueue_style(  'moo-sweetalert-css-2' );
 
         //SweetAlerts Scripts
-        wp_register_script('moo-sweetalert-js-2', SOO_PLUGIN_URL .'/public/js/dist/sweetalert2.min.js',array(), SOO_VERSION);
-        wp_enqueue_script('moo-sweetalert-js-2',array('jquery','moo-bluebird'));
+        wp_register_script('moo-sweetalert-js-2', SOO_PLUGIN_URL .'/public/js/dist/sweetalert2.min.js',array('jquery','moo-bluebird'), SOO_VERSION);
+        wp_enqueue_script('moo-sweetalert-js-2');
     }
 
     protected function enqueueSweetAlerts11Css() {
@@ -78,14 +78,19 @@ class sooShortCode
         wp_enqueue_script('SooGoogleRecaptcha');
     }
 
+    protected function enqueueApplePaySDK() {
+        wp_register_script('SooApplePAySdk',  '//applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js',array(),false);
+        wp_enqueue_script('SooApplePAySdk');
+    }
+
     protected function enqueueModifiersPopUp() {
         //Modifiers Styles
         wp_register_style( 'sooModifiersPopUp',SOO_PLUGIN_URL . '/public/css/dist/sooModifiersSelector.min.css', array(), SOO_VERSION);
         wp_enqueue_style( 'sooModifiersPopUp' ,array('moo-grid-css'));
 
         //Modifiers Scripts
-        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array(), SOO_VERSION);
-        wp_enqueue_script('sooModifiersPopUp',array('jquery'));
+        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION);
+        wp_enqueue_script('sooModifiersPopUp');
     }
     protected function enqueueCssGrid() {
         //Soo Css Grid
@@ -99,13 +104,13 @@ class sooShortCode
     }
     protected function enqueueCartJs() {
         //Cart JS
-        wp_register_script('moo-script-cart-v3', SOO_PLUGIN_URL . '/public/js/dist/sooCartPage.min.js',array(), SOO_VERSION);
-        wp_enqueue_script('moo-script-cart-v3', array( 'jquery' ));
+        wp_register_script('moo-script-cart-v3', SOO_PLUGIN_URL . '/public/js/dist/sooCartPage.min.js',array('jquery'), SOO_VERSION);
+        wp_enqueue_script('moo-script-cart-v3');
     }
     protected function enqueueGiftCardsJs() {
         //GiftCards JS
-        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/sooGiftCards.js',array(), SOO_VERSION);
-        wp_enqueue_script('sooGiftCards', array( 'jquery' ));
+        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/sooGiftCards.js',array('jquery'), SOO_VERSION);
+        wp_enqueue_script('sooGiftCards');
     }
     protected function enqueueCloverSDK()
     {

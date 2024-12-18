@@ -46,7 +46,7 @@ class searchBar extends sooShortCode
         wp_register_style( 'mooSearchBar-css',SOO_PLUGIN_URL . '/public/css/dist/sooSearchbar.min.css',array(), SOO_VERSION);
         wp_enqueue_style ( 'mooSearchBar-css' );
 
-        wp_register_script('mooSearchBar-js', SOO_PLUGIN_URL .  '/public/js/dist/sooSearchbar.min.js',array(), SOO_VERSION);
+        wp_register_script('mooSearchBar-js', SOO_PLUGIN_URL .  '/public/js/dist/sooSearchbar.min.js',array('jquery'), SOO_VERSION);
         wp_enqueue_script( 'mooSearchBar-js' );
 
         $this->enqueuePublicCss();

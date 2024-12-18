@@ -337,13 +337,6 @@ class Moo_OnlineOrders_Restapi
         /*
          * Inventory importing & syncing functions
          */
-        register_rest_route( $this->namespace, '/inventory/categories/(?P<cat_id>[a-zA-Z0-9-]+)', array(
-            array(
-                'methods'   => 'GET',
-                'callback'  => array( $this, 'importCategory' ),
-                'permission_callback' => '__return_true'
-            )
-        ) );
 
         register_rest_route( $this->namespace, '/inventory/modifier-groups/(?P<uuid>(.)+)', array(
             array(
@@ -560,6 +553,7 @@ class Moo_OnlineOrders_Restapi
                         "sort_order" => intval($cat->sort_order),
                         "description"   => (isset($cat->description))?$this->stripSlashes($cat->description):"",
                         "custom_hours"   => (isset($cat->custom_hours))?$this->stripSlashes($cat->custom_hours):null,
+                        "items_imported"   => (isset($cat->items_imported))?$cat->items_imported:null,
                         "image_url"=>$this->applyCDN($cat->image_url, $this->cdnLink)
                     );
                     if($this->useAlternateNames && isset($cat->alternate_name) && $cat->alternate_name!==""){
@@ -588,6 +582,7 @@ class Moo_OnlineOrders_Restapi
                     //Return items with the category
                     if(isset($params["expand"])) {
                         $c['items'] = array();
+                        $c['nbOfItems'] = null;
                         $limit = null;
                         $count = 0;
                         if($params["expand"] == 'five_items') {
@@ -599,7 +594,7 @@ class Moo_OnlineOrders_Restapi
                             } else {
                                 $items = $this->model->getItemsByCategory($cat,true,$limit);
                             }
-
+                            $c['nbOfItems'] = count($items);
                             foreach ($items as $item) {
                                 $final_item = array();
                                 //Check the stock
@@ -868,10 +863,6 @@ class Moo_OnlineOrders_Restapi
             }
             array_push($response['items'],$final_item);
         }
-
-
-        usort($response["items"], array('Moo_OnlineOrders_Restapi','moo_sort_items'));
-
         // Return all of our post-response data.
         return $response;
     }
@@ -1897,6 +1888,7 @@ class Moo_OnlineOrders_Restapi
             update_option('moo_merchant_pubkey', "");
             update_option('moo_pakms_key', "");
             update_option('moo_slug', "");
+            update_option('moo_merchant_uuid', "");
 
             update_option("moo_settings",$settings);
             $response = array(
@@ -1952,48 +1944,6 @@ class Moo_OnlineOrders_Restapi
             );
         }
     }
-
-    /*
-     * Importing & syncing functions
-     */
-    public function importCategory( $request ){
-        global $wpdb;
-        $response = array();
-        $nbItemsPerCategory = 0;
-        if (empty( $request["cat_id"] )) {
-            return new WP_Error( 'category_id_required', 'Category id not found', array( 'status' => 404 ) );
-        }
-        $category_uuid = sanitize_text_field($request["cat_id"]);
-        //Get the category details
-        $category = $this->api->getOneCategory($category_uuid);
-        $string_items_ids ="";
-        //Save the items
-        if(isset($category["items"]["elements"])) {
-            $cloverNbItems = @count($category["items"]["elements"]);
-            foreach ($category["items"]["elements"] as $item) {
-                if(isset($item["id"])) {
-                    $string_items_ids .= $item["id"].",";
-                    if($this->model->getItem($item["id"]) == null){
-                        $this->api->getItem($item["id"]);
-                    } else {
-                        $nbItemsPerCategory++;
-                    }
-                }
-            }
-        } else {
-            $cloverNbItems = 0;
-        }
-        $wpdb->update("{$wpdb->prefix}moo_category",array(
-            'items' =>  $string_items_ids
-        ),array('uuid'=>$category->id));
-
-        return array(
-            "status"=>'success',
-            "clover_nb_items"=>$cloverNbItems,
-            "nb_items"=>$nbItemsPerCategory
-        );
-    }
-
     /*
      * Function for customers profils
      */
@@ -2194,9 +2144,6 @@ class Moo_OnlineOrders_Restapi
             array_push($response['items'],$final_item);
         }
 
-
-        usort($response["items"], array('Moo_OnlineOrders_Restapi','moo_sort_items'));
-        // Return all of our post response data.
         return $response;
 
     }
@@ -2514,8 +2461,8 @@ class Moo_OnlineOrders_Restapi
         return $res ;
     }
     public function applyCDN($link, $cdnLink) {
-        if(isset($cdnLink) && !empty($cdnLink)) {
-            return str_replace($this->blogUrl,$cdnLink,$link);
+        if(!empty($link) && !empty($cdnLink)) {
+            return str_replace($this->blogUrl, $cdnLink, $link);
         }
         return $link;
     }
