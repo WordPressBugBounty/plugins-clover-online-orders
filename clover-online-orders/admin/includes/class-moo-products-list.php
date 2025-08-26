@@ -346,9 +346,9 @@ class Products_List_Moo extends WP_List_Table_MOO {
      */
     function column_show_on_pos( $item ) {
         if($item[ "hidden" ]) {
-            return "<span>Yes</span>";
-        } else {
             return "<span>No</span>";
+        } else {
+            return "<span>Yes</span>";
         }
     }
     /**

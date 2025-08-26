@@ -70,8 +70,7 @@ class Moo_OnlineOrders_Model {
         $uuid = esc_sql($uuid);
         return $this->db->get_row("SELECT *
                                     FROM {$this->db->prefix}moo_item i
-                                    WHERE i.hidden = 0 
-                                    and i.uuid = '{$uuid}'
+                                    WHERE i.uuid = '{$uuid}'
                                     ");
     }
     function getItemCategories($uuid) {
@@ -247,12 +246,24 @@ class Moo_OnlineOrders_Model {
     }
     function getItemsBySearch($motCle)
     {
-        $motCle = esc_sql($motCle);
+        // Escape and prepare the search term for a LIKE query
+        $search = '%' . $this->db->esc_like( strtolower( $motCle ) ) . '%';
 
-        return $this->db->get_results("SELECT *
-                                    FROM {$this->db->prefix}moo_item i
-                                    WHERE i.item_group_uuid is null and (i.soo_name like '%{$motCle}%' || i.name like '%{$motCle}%' || i.description like '%{$motCle}%)'
-                                    ");
+        // Prepare the SQL statement to prevent SQL injection
+
+        $query = $this->db->prepare(
+            "SELECT *
+         FROM {$this->db->prefix}moo_item i
+         WHERE i.item_group_uuid IS NULL
+           AND (LOWER(i.soo_name) LIKE %s
+                OR LOWER(i.name) LIKE %s
+                OR LOWER(i.description) LIKE %s)",
+            $search,
+            $search,
+            $search
+        );
+        // Execute the query and return the results
+        return $this->db->get_results($query);
     }
 
     function getItemTax_rate($uuid)

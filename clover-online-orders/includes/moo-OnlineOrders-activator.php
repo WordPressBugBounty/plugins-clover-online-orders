@@ -36,6 +36,7 @@ class Moo_OnlineOrders_Activator {
         // Install DB
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         //$wpdb->show_errors();
 
 /*      -- -----------------------------------------------------
@@ -509,7 +510,7 @@ class Moo_OnlineOrders_Activator {
         }
 
         // Save the version of the plugin in the Database
-         update_option('moo_onlineOrders_version', '159');
+         update_option('moo_onlineOrders_version', '160');
 
         // Enable the new checkout
         update_option("moo_old_checkout_enabled",'no');
@@ -537,7 +538,7 @@ class Moo_OnlineOrders_Activator {
             array("name"=>"custom_sa_content","value"=>""),
             array("name"=>"custom_sa_title","value"=>""),
             array("name"=>"custom_sa_onCheckoutPage","value"=>"off"),
-            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.5.8">Smart Online Order</a>'),
+            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.6.0">Smart Online Order</a>'),
             array("name"=>"default_style","value"=>"onePage"),
             array("name"=>"track_stock","value"=>""),
             array("name"=>"track_stock_hide_items","value"=>"off"),

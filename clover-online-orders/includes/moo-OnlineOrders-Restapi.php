@@ -932,7 +932,9 @@ class Moo_OnlineOrders_Restapi
             }
         }
         //Get Item Modifiers
-        $mg = $this->model->getModifiersGroup($item->uuid);
+        $modifierGroups = $this->model->getModifiersGroup($item->uuid);
+        $mg = apply_filters("moo_filter_modifier_groups",  $modifierGroups);
+
         if($mg) {
             foreach ($mg as $modifierG) {
                 $m = array();
@@ -964,9 +966,9 @@ class Moo_OnlineOrders_Restapi
                         $res["preSelected"] = boolval($modifier->is_pre_selected);
                         $res["price"] = $modifier->price;
                         $res["sort_order"] = $modifier->sort_order;
-                        array_push($m["modifiers"],$res);
+                        $m["modifiers"][] = $res;
                     }
-                    array_push($response["modifier_groups"],$m);
+                    $response["modifier_groups"][] = $m;
                 }
 
             }
@@ -974,9 +976,9 @@ class Moo_OnlineOrders_Restapi
 
         //Get Item Images
         $images = $this->model->getItemImages($item->uuid);
-        if(count($images)>0){
+        if(count($images)>0) {
             foreach ($images as $image) {
-                if($image->is_enabled=="1")
+                if($image->is_enabled == "1")
                 {
                     $res = array();
                     $res["image_url"]  = $this->applyCDN($image->url,$this->cdnLink);
@@ -984,12 +986,13 @@ class Moo_OnlineOrders_Restapi
                     if($image->is_default ===  "1"){
                         $response["image_url"] = $this->applyCDN($image->url,$this->cdnLink);
                     }
-                    array_push($response["images"],$res);
+                    $response["images"][] = $res;
                 }
             }
         }
         //get taxes
         $response['tax_rates']= $this->model->getItemTax_rate( $item->uuid );
+
         // Return all of our post-response data.
         return $response;
     }
@@ -1889,6 +1892,7 @@ class Moo_OnlineOrders_Restapi
             update_option('moo_pakms_key', "");
             update_option('moo_slug', "");
             update_option('moo_merchant_uuid', "");
+            update_option('moo_apple_pay_enabled', false);
 
             update_option("moo_settings",$settings);
             $response = array(

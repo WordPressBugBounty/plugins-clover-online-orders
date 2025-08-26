@@ -143,7 +143,7 @@ class SyncRoutes extends BaseRoute
         }
         $item_id = sanitize_text_field($request["item_id"]);
         $cloverItem = $this->api->getItemWithoutSaving($item_id);
-        if(!empty($cloverItem['id'])){
+        if(!empty($cloverItem['id'])) {
             if($this->api->syncCloverItem($cloverItem)){
                 $this->api->sendEvent([
                     "event"=>"updated-item",

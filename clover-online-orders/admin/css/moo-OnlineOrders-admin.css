@@ -187,6 +187,7 @@
 
 
 /* The Panel CSS */
+
 #MooPanel
 {
     width: 100%;
@@ -349,6 +350,166 @@
     clear: both;
     position: relative;
 }
+.soo-warning-box {
+    background-color: #fefce8;
+    border-left: 4px solid #facc15;
+    padding: 16px;
+    margin-top: 16px;
+}
+.soo-warning-header {
+    color: #b45309;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.soo-warning-text {
+    color: #92400e;
+    font-size: 14px;
+    margin-top: 8px;
+}
+.soo-success-box {
+    background-color: #ecfdf5;
+    border-left: 4px solid #34d399;
+    padding: 16px;
+    margin-top: 16px;
+}
+.soo-success-icon {
+    font-size: 24px;
+    color: #10b981;
+    margin-right: 10px;
+    display: inline-block;
+}
+.soo-success-text {
+    color: #065f46;
+    display: inline-block;
+}
+.enable-auto-sync-button {
+    padding: 6px 12px;
+    background-color: #d1fae5;
+    color: #047857;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+.soo-auto-sync-button-group {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.soo-auto-sync-button  {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.soo-auto-sync-button-disable {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+.soo-auto-sync-button-details {
+    background-color: #fff;
+    color: #1e3a8a;
+    border: 1px solid #1e3a8a;
+}
+.soo-customize-sync-settings {
+    margin-top: 20px;
+}
+.soo-arrow-button {
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: #1e3a8a;
+    display: flex;
+    align-items: center;
+}
+.soo-arrow-button span {
+    margin-left: 6px;
+}
+.soo-customize-sync-toggle-group {
+    background: #f9fafb;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 16px;
+}
+.soo-customize-sync-toggle-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    font-size: 14px;
+    color: #1f2937;
+}
+#soo-customize-sync-settings .soo-customize-sync-toggle-group .soo-customize-sync-toggle-item .soo-customize-sync-toggle {
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    background: #fff;
+    color: #50575e;
+    clear: none;
+    cursor: pointer;
+    display: inline-block;
+    line-height: 0;
+    height: 1rem;
+    margin: -.25rem .25rem 0 0;
+    outline: 0;
+    padding: 0 !important;
+    text-align: center;
+    vertical-align: middle;
+    width: 1rem;
+    min-width: 1rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .1);
+    transition: .05s border-color ease-in-out;
+    position: relative;
+}
+.soo-customize-sync-toggle:checked {
+    background-color: #1e3a8a;
+}
+.soo-customize-sync-toggle::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: white;
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s;
+}
+.soo-customize-sync-toggle:checked::before {
+    transform: translateX(20px);
+}
+.soo-customize-sync-tooltip {
+    position: relative;
+    display: inline-block;
+    cursor: help;
+}
+.soo-customize-sync-tooltip .soo-customize-sync-tooltiptext {
+    visibility: hidden;
+    width: 220px;
+    background-color: #111827;
+    color: #fff;
+    text-align: left;
+    border-radius: 6px;
+    padding: 6px 10px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.soo-customize-sync-tooltip:hover .soo-customize-sync-tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
 #MooPanel_main .MooPanelItem .label {
     width: 220px;
     display: inline-block;
@@ -459,6 +620,22 @@
 /*
     Fin Custom cs for tab settings
  */
+
+#mooAutoSyncDeactivated.warning-box {
+    border: 1px solid #f2a365;
+    background-color: #ffe6d9;
+    color: #a53b00;
+    padding: 1rem;
+    border-radius: 4px;
+    margin: 1rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+#mooAutoSyncDeactivated .warning-box .warning-icon {
+    font-weight: bold;
+    color: #a53b00;
+}
 
 #MooPanel_main .MooPanelItem .Moo_option-item
 {
@@ -2048,7 +2225,7 @@ table.main_table td {
     border-radius: 25px;
     background-color: #e4283d;
     text-align: center;
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 13px;
     font-weight: normal;
     font-style: normal;
@@ -2074,7 +2251,6 @@ table.main_table td {
     background-color: #ffffff;
     padding-top: 20px;
     padding-left: 15px;
-    background-color: #ffffff;
     margin: 3px;
 }
 .moo-categories-edit-section .moo-reorder-category-row .moo-reorder-category:hover {
@@ -2087,7 +2263,7 @@ table.main_table td {
     left: 45px;
 }
 .moo-categories-edit-section .moo-reorder-category-row .moo-reorder-category-title {
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 16px;
     font-weight: normal;
     font-style: normal;
@@ -2108,7 +2284,7 @@ table.main_table td {
 .moo-categories-edit-section .moo-category-sync-row  .moo-category-sync-col1 .moo-category-sync-line1 {
     width: 674px;
     height: 16px;
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 15px;
     font-weight: normal;
     font-style: normal;
@@ -2123,7 +2299,7 @@ table.main_table td {
 .moo-categories-edit-section .moo-category-sync-row  .moo-category-sync-col1 .moo-category-sync-line2 {
     width: 694px;
     height: 16px;
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 15px;
     font-weight: normal;
     font-style: normal;
@@ -2136,7 +2312,7 @@ table.main_table td {
 .moo-categories-edit-section .moo-category-sync-row  .moo-category-sync-col1 .moo-category-sync-line3 {
     width: 674px;
     height: 16px;
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 15px;
     font-weight: normal;
     font-style: normal;
@@ -2161,7 +2337,7 @@ table.main_table td {
     box-shadow: 0 6px 20px 0 rgba(0, 0, 0, 0.25);
     background-color: #1d3a73;
     text-align: center;
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 13px;
     font-weight: normal;
     font-style: normal;
@@ -2228,7 +2404,7 @@ table.main_table td {
     margin-top: -7px;
 }
 .moo-goback-row .moo-goback-text {
-    font-family: Eina03;
+    font-family: Eina03, sans-serif;
     font-size: 17px;
     font-weight: normal;
     font-style: normal;
@@ -2501,6 +2677,7 @@ table.main_table td {
     color: #fff;
     margin: 0 auto;
     cursor: pointer;
+    text-decoration: none;
 }.moo-button-clover:hover {
     background: #068602;
 }

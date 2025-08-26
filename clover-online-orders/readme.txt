@@ -3,9 +3,9 @@ Contributors: elbanyaoui, khalid995
 Donate link: http://www.zaytech.com/
 Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
-Tested up to: 6.7.1
+Tested up to: 6.8.2
 Requires PHP: 5.2.0
-Stable tag: 1.5.9
+Stable tag: 1.6.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -148,6 +148,14 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+
+= 1.6.0 =
+* Enhanced compatibility with the latest WordPress version.
+* Fixed a search issue.
+* improved Sync feature
+* Added support for capturing and storing UTM parameters (e.g., utm_source, utm_medium, utm_campaign, utm_term, utm_content ) to improve marketing attribution and analytics.
+* Introduced one-time coupons to limit redemption to one use per customer.
+* Implemented various other enhancements to improve the overall user experience.
 
 = 1.5.9 =
 * Added support for Apple Pay.

@@ -147,7 +147,7 @@ class Moo_OnlineOrders_Public {
             'moo_RestUrl'  => get_rest_url(),
         ]);
         wp_localize_script("moo_public_js", "moo_params",$params);
-        wp_localize_script( 'moo_public_js', 'mooObjectL10n', SOO_I18N_DEFAULT );
+        wp_localize_script( 'moo_public_js', 'mooObjectL10n', Moo_OnlineOrders_Helpers::getDefaultI18N() );
 	}
 
 

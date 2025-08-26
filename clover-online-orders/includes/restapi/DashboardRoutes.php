@@ -252,6 +252,7 @@ class DashboardRoutes extends BaseRoute {
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
+
         // Get the opening hours (business Hours)
         register_rest_route($this->namespace, '/dash/opening_hours', array(
             array(
@@ -583,6 +584,7 @@ class DashboardRoutes extends BaseRoute {
             update_option('moo_pakms_key', "");
             update_option('moo_slug', "");
             update_option('moo_merchant_uuid', "");
+            update_option('moo_apple_pay_enabled', false);
 
             do_action('smart_online_order_import_inventory');
 
@@ -649,7 +651,6 @@ class DashboardRoutes extends BaseRoute {
                 "version"=>$this->version
             );
             $response = $this->api->checkApiKey($body);
-
             if($response && is_array($response)){
                 if($response["httpCode"] === 400 ||  $response["httpCode"] === 500 ){
                     return array(
@@ -665,14 +666,15 @@ class DashboardRoutes extends BaseRoute {
                 }
                 if($response["httpCode"] === 401 ) {
                     $result = json_decode($response["responseContent"], true);
-                    if (!empty($result["name"])){
-                        $message = $result["name"] . "'s api key is valid but your site isn't connected to Clover. Please check if the merchant id has changed or contact us.";
+                    if (!empty($result["name"]) && !empty($result["uuid"])){
+                        $message = $result["name"] . " is no longer connected to Clover, possibly due to an expired connection or a small technical issue. Please click the button below to reconnect your Clover account and restore access.";
                     } else {
-                        $message = "The api key is valid but your site isn't connected to Clover. Please check if the merchant id has changed or contact us.";
+                        $message = "The api key is valid but your site is no longer connected to Clover, possibly due to an expired connection or a small technical issue. Please Log in to Clover.com go to More Tools Open Smart Online Order (choose Option 1), wait a few seconds, and then close it.";
                     }
                     return array(
                         "status"=>"failed",
-                        "message"=>$message
+                        "message"=>$message,
+                        "uuid"=> isset($result["uuid"]) ? $result["uuid"] : null
                     );
                 }
                 if($response["httpCode"] === 200 ){
@@ -782,6 +784,7 @@ class DashboardRoutes extends BaseRoute {
                 update_option('moo_merchant_pubkey', "");
                 update_option('moo_pakms_key', "");
                 update_option('moo_merchant_uuid', "");
+                update_option('moo_apple_pay_enabled', false);
                 return array(
                     "status"=>"failed",
                     "message"=>"The api key is valid but your site isn't connected to Clover. Please check if the merchant id has changed or contact us."

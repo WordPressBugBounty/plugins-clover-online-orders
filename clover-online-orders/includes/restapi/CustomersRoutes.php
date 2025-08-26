@@ -193,20 +193,7 @@ class CustomersRoutes extends BaseRoute {
                 'permission_callback' => '__return_true'
             )
         ) );
-        register_rest_route( $this->namespace, '/guests/send-code', array(
-            array(
-                'methods'   => 'POST',
-                'callback'  => array( $this, 'sendCodeToVerifyGuestPhone' ),
-                'permission_callback' => '__return_true'
-            )
-        ) );
-        register_rest_route( $this->namespace, '/guests/check-code', array(
-            array(
-                'methods'   => 'POST',
-                'callback'  => array( $this, 'checkCodeToVerifyGuestPhone' ),
-                'permission_callback' => '__return_true'
-            )
-        ) );
+
         register_rest_route( $this->namespace, '/customers/orders', array(
             array(
                 'methods'   => 'GET',
@@ -214,10 +201,36 @@ class CustomersRoutes extends BaseRoute {
                 'permission_callback' => '__return_true'
             )
         ) );
+
         register_rest_route( $this->namespace, '/customers/orders/(?P<uuid>[a-zA-Z0-9-]+)', array(
             array(
                 'methods'   => 'GET',
                 'callback'  => array( $this, 'getOneOrder' ),
+                'permission_callback' => '__return_true'
+            )
+        ) );
+
+        //Check discounts for customers and guests
+        register_rest_route( $this->namespace, '/customers/check-discount', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'checkDiscount' ),
+                'permission_callback' => '__return_true'
+            )
+        ) );
+
+        register_rest_route( $this->namespace, '/guests/send-code', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'sendCodeToVerifyGuestPhone' ),
+                'permission_callback' => '__return_true'
+            )
+        ) );
+
+        register_rest_route( $this->namespace, '/guests/check-code', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'checkCodeToVerifyGuestPhone' ),
                 'permission_callback' => '__return_true'
             )
         ) );
@@ -229,7 +242,7 @@ class CustomersRoutes extends BaseRoute {
      * @return array
      */
     public function getAddresses( $request ) {
-        $fromSession=false;
+        $fromSession = false;
         // check if token sent in body
         if(isset($request["moo_customer_token"]) && !empty($request["moo_customer_token"])){
             $token = $request["moo_customer_token"];
@@ -564,10 +577,12 @@ class CustomersRoutes extends BaseRoute {
             array( 'status' => 400 )
         );
     }
+
     public function geoCodeAnAddress( $request ) {
         $endPoint = 'merchants/guests/geocode-address';
         return $this->sendRequest($request, $endPoint);
     }
+
     public function createDeliveryEstimate( $request ) {
         $endPoint = 'merchants/delivery-estimate';
         return $this->sendRequest($request, $endPoint);
@@ -577,10 +592,12 @@ class CustomersRoutes extends BaseRoute {
         $endPoint = 'merchants/customers/addresses';
         return $this->sendRequest($request, $endPoint);
     }
+
     public function addAddressV2( $request ) {
         $endPoint = 'merchants/customers/addresses';
         return $this->sendRequest($request, $endPoint);
     }
+
     public function deleteAddressV2( $request ) {
         if ( empty( $request["address_id"] ) ) {
             return new WP_Error( 'address_id_required', 'Address Id not found', array( 'status' => 400 ) );
@@ -589,11 +606,19 @@ class CustomersRoutes extends BaseRoute {
         return $this->sendRequest($request, $endPoint,true);
     }
 
+    public function checkDiscount( $request ) {
+        if ( !empty( $request->get_header("authorization") ) ) {
+            $endPoint = 'merchants/customers/check-discount';
+        } else {
+            $endPoint = 'merchants/guests/check-discount';
+        }
+        return $this->sendRequest($request, $endPoint);
+    }
+
     private function sendRequest($request, $endPoint, $isDelete = false) {
         $authorization = $request->get_header("authorization");
         $request_body = $request->get_json_params();
         $res = $this->api->customerRequestsWrapper($endPoint, $request_body, $authorization, $isDelete);
-        //var_dump($this->api->last_error);
         if ( $res === false ){
             if ( isset($this->api->last_error['httpCode']) && $this->api->last_error['httpCode'] >= 400  && $this->api->last_error['httpCode'] <= 499) {
                 $errorMessage = "An error has occurred, Please check your submission";

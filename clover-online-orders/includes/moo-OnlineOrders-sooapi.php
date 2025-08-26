@@ -644,6 +644,7 @@ class Moo_OnlineOrders_SooApi
         if (isset($authorization)){
             $headers["customer_token"] = $authorization;
         }
+
         if (isset($payload)){
             return $this->apiPost($endPoint,true, $headers, wp_json_encode($payload));
         } else {
@@ -1096,6 +1097,7 @@ class Moo_OnlineOrders_SooApi
             return false;
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $wpdb->query('START TRANSACTION');
 
         $wpdb->delete("{$wpdb->prefix}moo_item_tax_rate", array('item_uuid' => $uuid));
@@ -1126,10 +1128,13 @@ class Moo_OnlineOrders_SooApi
         // $wpdb->show_errors();
         $withCategories = isset($item["categories"]);
         $existingSortOrders = [];
+        $syncImages = !empty($this->settings['soo_sync_images']);;
+        $syncOnlineName = !empty($this->settings['soo_sync_names']);
         $wpdb->query('START TRANSACTION');
         try {
             $currentItem = $this->getItem($item['id']);
             if ($currentItem) {
+                //Delete the old data to get preprared for the Sync
                 $wpdb->delete("{$wpdb->prefix}moo_item_tax_rate", array('item_uuid' => $item['id']));
                 $wpdb->delete("{$wpdb->prefix}moo_item_modifier_group", array('item_id' => $item['id']));
                 $wpdb->delete("{$wpdb->prefix}moo_item_tag", array('item_uuid' => $item['id']));
@@ -1145,23 +1150,57 @@ class Moo_OnlineOrders_SooApi
                     $wpdb->delete("{$wpdb->prefix}moo_items_categories", array('item_uuid' => $item['id']));
                 }
 
-                $itemProps = array(
-                    'name' => isset($item["name"]) ? esc_sql($item["name"]) : $currentItem["name"],
-                    'alternate_name' => isset($item["alternateName"]) ? esc_sql($item["alternateName"]) : $currentItem["alternate_name"],
-                    'price' => isset($item["price"]) ? esc_sql($item["price"]) : $currentItem["price"],
-                    'code' => isset($item["code"]) ? esc_sql($item["code"]) : $currentItem["code"],
-                    'price_type' => isset($item["priceType"]) ? esc_sql($item["priceType"]) : $currentItem["price_type"],
-                    'unit_name' => isset($item["unitName"]) ? esc_sql($item["unitName"]) : $currentItem["unit_name"],
-                    'default_taxe_rate' => isset($item["defaultTaxRates"]) ? esc_sql($item["defaultTaxRates"]) : $currentItem["default_taxe_rate"],
-                    'sku' => isset($item["sku"]) ? esc_sql($item["sku"]) : $currentItem["sku"],
-                    'hidden' => isset($item["hidden"]) ? esc_sql($item["hidden"]) : $currentItem["hidden"],
-                    'is_revenue' => isset($item["isRevenue"]) ? esc_sql($item["isRevenue"]) : $currentItem["is_revenue"],
-                    'cost' => isset($item["cost"]) ? esc_sql($item["cost"]) : $currentItem["cost"],
-                    'available' => isset($item["available"]) ? esc_sql($item["available"]) : $currentItem["available"],
-                    'modified_time' => isset($item["modifiedTime"]) ? esc_sql($item["modifiedTime"]) : $currentItem["modified_time"],
-                );
-                // update the Item
-                 $wpdb->update("{$wpdb->prefix}moo_item", $itemProps, array('uuid' => $item['id']));
+                //Delete images as well if users choose to sync them.
+                if ($syncImages){
+                    $wpdb->delete("{$wpdb->prefix}moo_images", array('item_uuid' => $item['id']));
+                }
+               // Update the item when it's changed.
+                if ($item['modifiedTime'] != $currentItem['modified_time']){
+                    $itemProps = array(
+                        'name' => isset($item["name"]) ? esc_sql($item["name"]) : $currentItem["name"],
+                        'alternate_name' => isset($item["alternateName"]) ? esc_sql($item["alternateName"]) : $currentItem["alternate_name"],
+                        'price' => isset($item["price"]) ? esc_sql($item["price"]) : $currentItem["price"],
+                        'code' => isset($item["code"]) ? esc_sql($item["code"]) : $currentItem["code"],
+                        'price_type' => isset($item["priceType"]) ? esc_sql($item["priceType"]) : $currentItem["price_type"],
+                        'unit_name' => isset($item["unitName"]) ? esc_sql($item["unitName"]) : $currentItem["unit_name"],
+                        'default_taxe_rate' => isset($item["defaultTaxRates"]) ? esc_sql($item["defaultTaxRates"]) : $currentItem["default_taxe_rate"],
+                        'sku' => isset($item["sku"]) ? esc_sql($item["sku"]) : $currentItem["sku"],
+                        'hidden' => isset($item["hidden"]) ? esc_sql($item["hidden"]) : $currentItem["hidden"],
+                        'is_revenue' => isset($item["isRevenue"]) ? esc_sql($item["isRevenue"]) : $currentItem["is_revenue"],
+                        'cost' => isset($item["cost"]) ? esc_sql($item["cost"]) : $currentItem["cost"],
+                        'available' => isset($item["available"]) ? esc_sql($item["available"]) : $currentItem["available"],
+                        'modified_time' => isset($item["modifiedTime"]) ? esc_sql($item["modifiedTime"]) : time(),
+                    );
+                    //Sync online name and descriptions if the user prefers to sync them.
+                    if ($syncOnlineName) {
+                        if ( !empty($item['menuItem']['name']) ){
+                            $itemProps['soo_name'] = esc_sql($item['menuItem']['name']);
+                        }
+                        if ( !empty($item['menuItem']['description']) ){
+                            $itemProps['description'] = esc_sql($item['menuItem']['description']);
+                        }
+                    }
+
+                    // update the Item
+                    $wpdb->update("{$wpdb->prefix}moo_item", $itemProps, array('uuid' => $item['id']));
+
+                    //Sync images as well if the user prefers to sync them.
+                    if ($syncImages){
+                        //Save Item Image
+                        if (!empty($item["menuItem"]["imageFilename"])) {
+                            $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
+                            if($link){
+                                $wpdb->insert("{$wpdb->prefix}moo_images",array(
+                                    "item_uuid"=>$item["id"],
+                                    "url"=>$link,
+                                    "is_default"=>1,
+                                    "is_enabled"=>1
+                                ));
+                            }
+                        }
+                    }
+                }
+
             } else {
                 $itemProps = array(
                     'uuid' => esc_sql($item['id']),
@@ -1187,6 +1226,18 @@ class Moo_OnlineOrders_SooApi
                     $itemProps['item_group_uuid'] = $item['itemGroup']['id'];
                 }
                 $wpdb->insert("{$wpdb->prefix}moo_item", $itemProps);
+
+                if (!empty($item["menuItem"]["imageFilename"])) {
+                    $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
+                    if($link){
+                        $wpdb->insert("{$wpdb->prefix}moo_images",array(
+                            "item_uuid"=>$item["id"],
+                            "url"=>$link,
+                            "is_default"=>1,
+                            "is_enabled"=>1
+                        ));
+                    }
+                }
             }
 
             //Save the tax rates
@@ -1414,6 +1465,7 @@ class Moo_OnlineOrders_SooApi
     public function save_items($items) {
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         $exist = 0;
         $errors = 0;
@@ -1515,6 +1567,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         // $wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($taxRates as $tax_rate) {
             if($this->save_one_tax_rate($tax_rate)){
@@ -1527,6 +1580,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         // $wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         try {
             $result = $wpdb->insert("{$wpdb->prefix}moo_tax_rate", array(
                 'uuid' => $tax_rate["id"],
@@ -1541,9 +1595,6 @@ class Moo_OnlineOrders_SooApi
         return false;
     }
     private function save_tags($tags) {
-        global $wpdb;
-        // $wpdb->show_errors();
-        $wpdb->hide_errors();
         $count = 0;
         foreach ($tags as $tag) {
             try {
@@ -1558,6 +1609,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         // $wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         try {
             $result = $wpdb->insert("{$wpdb->prefix}moo_tag", array(
                 'uuid' => $tag["id"],
@@ -1573,6 +1625,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         //$wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($options as $option) {
             try {
@@ -1591,6 +1644,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         //$wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($attributes as $attribute) {
             try {
@@ -1608,6 +1662,7 @@ class Moo_OnlineOrders_SooApi
         global $wpdb;
         // $wpdb->show_errors();
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($modifiers as $modifier) {
             try {
@@ -1627,6 +1682,7 @@ class Moo_OnlineOrders_SooApi
     private function save_modifier_groups($modifier_groups) {
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($modifier_groups as $modifier_group) {
             try {
@@ -1647,6 +1703,7 @@ class Moo_OnlineOrders_SooApi
     private function save_item_groups($item_groups) {
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($item_groups as $item_group) {
             try {
@@ -1704,6 +1761,7 @@ class Moo_OnlineOrders_SooApi
     private function save_order_types($ordertypes) {
         global $wpdb;
         $wpdb->hide_errors();
+        $wpdb->suppress_errors( true );
         $count = 0;
         foreach ($ordertypes as $ot) {
             try {

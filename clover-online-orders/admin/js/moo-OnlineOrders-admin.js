@@ -56,6 +56,7 @@ jQuery(document).ready(function($){
         e.preventDefault();
         $("#MooPanel_main>#menu_for_mobile>ul").toggle();
     });
+
     // check if we are on settings page
     if(document.getElementById("MooPanel") !== null) {
         moo_Update_stats();
@@ -262,8 +263,60 @@ jQuery(document).ready(function($){
             mooCheckAutoSyncStatus();
         }
     }
+
+    $('.soo-feature-toggle').on('change', function () {
+        const $checkbox = $(this);
+        const settingName = $checkbox.data('setting');
+        const settingValue = $checkbox.is(':checked') ? '1' : '0';
+
+        const settings = [{
+            name: settingName,
+            value: settingValue
+        }];
+        postSettingsData(settings);
+    });
 });
 
+function sooHandleFeatureToggle() {
+    const $elm = jQuery(this);
+    const isEnabled = $elm.is(':checked');
+    const toggleId = $elm.attr('id');
+
+    swal({
+        title: isEnabled ? 'Enabling feature...' : 'Disabling feature...',
+        showConfirmButton: false
+    });
+
+    const endpoint = `${moo_RestUrl}moo-clover/v2/dash/update-feature-toggle${moo_RestUrl.includes("?rest_route") ? '&' : '?'}_wpnonce=${moo_params.nonce}`;
+    const requestData = {
+        id: toggleId,
+        status: isEnabled
+    };
+
+    jQuery.post(endpoint, requestData)
+        .done(function (response) {
+            if (response.status) {
+                swal({
+                    icon: "success",
+                    title: isEnabled ? "Feature Enabled" : "Feature Disabled",
+                    text: response.message || "The feature setting has been updated."
+                });
+            } else {
+                sooHandleToggleError($elm, isEnabled);
+            }
+        })
+        .fail(function () {
+            sooHandleToggleError($elm, isEnabled);
+        });
+}
+
+function sooHandleToggleError($elm, isEnabled) {
+    $elm.prop('checked', !isEnabled);
+    swal({
+        icon: "error",
+        text: 'Error occurred. Please refresh the page and try again.'
+    });
+}
 
 /* --- Modifier Group --- */
 function sooStartReOrderModifiers(){
@@ -3094,8 +3147,59 @@ function expandAllSections(element) {
     }
 
 }
-
 function mooSaveChanges(event, element) {
+    event.preventDefault();
+
+    const $form = jQuery(element);
+
+    // Remove unnecessary WordPress inputs
+    $form.find('input[name=option_page], input[name=action], input[name=_wp_http_referer], #_wpnonce').remove();
+
+    // Prepare settings data
+    const formData = $form.serializeArray().map(input => ({
+        name: input.name.substring(13, input.name.length - 1),
+        value: input.value
+    }));
+
+    postSettingsData(formData);
+    return false;
+}
+
+function postSettingsData(data) {
+    mooShowWaitMessage();
+    jQuery.ajax({
+        type: 'POST',
+        url: moo_RestUrl + 'moo-clover/v2/dash/save_settings',
+        contentType: 'application/json; charset=UTF-8',
+        beforeSend: function (jqXhr) {
+            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce);
+        },
+        data: JSON.stringify(data)
+    })
+        .fail(function () {
+            swal({
+                title: "Error",
+                text: "Settings could not be saved. Please refresh the page or contact support.",
+                type: "error",
+                confirmButtonText: "OK"
+            });
+        })
+        .done(function (response) {
+            if (response.status === "success") {
+                sooShowToast("Settings saved successfully")
+                mooHideWaitMessage();
+            } else {
+                swal({
+                    title: "Error",
+                    text: response.message || "An unknown error occurred.",
+                    type: "error",
+                    confirmButtonText: "OK"
+                });
+            }
+        });
+}
+
+function mooSaveChangesOld(event, element) {
     mooShowWaitMessage();
     event.preventDefault();
     jQuery('input[name=option_page]',element).remove();
@@ -3174,6 +3278,60 @@ function mooSaveDeliveryAreas(event, el) {
     // Trigger save changes
     mooSaveChanges(event, el);
 }
+function updatePluginSetting({
+     settingName,
+     value,
+     uiSelectors = {},
+     messages = {}
+ }) {
+    const $toggle = uiSelectors.toggle ? jQuery(uiSelectors.toggle) : null;
+    const endpointBase = moo_RestUrl + `moo-clover/v2/dash/${settingName}`;
+    const endpoint = moo_RestUrl.includes("?rest_route")
+        ? `${endpointBase}&_wpnonce=${moo_params.nonce}`
+        : `${endpointBase}?_wpnonce=${moo_params.nonce}`;
+
+    // Optional: Show loading message
+    swal({
+        title: messages.loading || 'Saving...',
+        showConfirmButton: false
+    });
+
+    jQuery.post(endpoint, { status: value })
+        .done(function (response) {
+            if (response.status === "success" || response.status === true) {
+                // Success message
+                swal({
+                    type: "success",
+                    title: messages.successTitle || "Setting Updated",
+                    text: messages.successText || ""
+                });
+
+                // Toggle UI based on value if provided
+                if (uiSelectors.activated && uiSelectors.deactivated) {
+                    jQuery(uiSelectors.activated).toggle(value === true || value === "enabled");
+                    jQuery(uiSelectors.deactivated).toggle(value !== true && value !== "enabled");
+                }
+
+            } else {
+                handleError();
+            }
+        })
+        .fail(function () {
+            handleError();
+        });
+
+    function handleError() {
+        // Revert toggle state if toggle is passed
+        if ($toggle) $toggle.prop('checked', !value);
+
+        swal({
+            type: "error",
+            title: messages.errorTitle || "Error",
+            text: messages.errorText || "An error occurred. Please refresh and try again."
+        });
+    }
+}
+
 function mooShowWaitMessage() {
     swal({
         title: 'Saving your changes ..',
@@ -3444,6 +3602,17 @@ function mooCheckApiKeyOnLoading() {
                     jQuery("#moo-checking-section").hide();
                     //show the section
                     jQuery("#moo-error-section").show();
+                }
+                if (response.uuid){
+                    console.log('Add Clover button');
+
+                    jQuery("#moo-error-section .moo-errorSection-message").append(
+                        "  <div style=\"text-align: center; margin-bottom: 20px;margin-top: 20px;\">\n" +
+                        "     <a href='https://www.clover.com/oauth/v2/merchants/"+response.uuid+"?client_id=6MWGRRXJD5HMW' type='button' class='moo-button-clover'><img  src='"+moo_params.plugin_url+"/public/img/clover.svg'>" +
+                        "      <span class=\"connect-clv\">Reconnect Clover Account</span>\n" +
+                        "     </a>\n" +
+                        "  </div>"
+                    );
                 }
             }
         }
@@ -3822,7 +3991,18 @@ function mooAutoSyncDetailsSectionChangeItemsUuidByNames(items) {
         }
     });
 }
-
+function mooToggleCustomizeSyncSettings(){
+    const settings = document.getElementById('soo-customize-sync-settings');
+    console.log(settings)
+    const arrow = document.getElementById('soo-sync-arrow-icon');
+    if (settings.style.display === 'none') {
+        settings.style.display = 'block';
+        arrow.textContent = '▲';
+    } else {
+        settings.style.display = 'none';
+        arrow.textContent = '▼';
+    }
+}
 function mooEditImageOnItemsPage(e, itemUuid, itemName) {
     e.preventDefault();
     //Get Item
@@ -4526,4 +4706,36 @@ function showAlert(title, text, type, confirmButtonText = "OK") {
         type,
         confirmButtonText
     });
+}
+
+function sooShowToast(message = 'Done', type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `swal-toast swal-toast-${type}`;
+    toast.innerText = message;
+
+    Object.assign(toast.style, {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        backgroundColor: type === 'success' ? '#4caf50' : '#f44336',
+        color: 'white',
+        padding: '10px 15px',
+        borderRadius: '5px',
+        zIndex: 99999,
+        fontSize: '14px',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+        opacity: '0',
+        transition: 'opacity 0.3s ease-in-out'
+    });
+
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+    });
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 1800);
 }

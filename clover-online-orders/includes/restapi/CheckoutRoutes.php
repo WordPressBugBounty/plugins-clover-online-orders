@@ -251,6 +251,10 @@ class  CheckoutRoutes extends BaseRoute {
         $response["cloverPakmsPaymentKey"] = $this->api->getPakmsKey();
         $response["isApplePayEnabled"] =  (bool) get_option("moo_apple_pay_enabled",false);;
         $response["pubkey"] = $this->api->getMerchantPubKey();
+        $response["recaptchaKey"] = !empty($this->pluginSettings['reCAPTCHA_site_key']) ? $this->pluginSettings['reCAPTCHA_site_key'] : null;
+        $response["allowAsap"] = $this->isAsapAllowed();
+        $response["hideUnavailableItems"] = $this->isHideUnavailableItemsEnabled();
+
 
         return $response;
     }
@@ -600,37 +604,11 @@ class  CheckoutRoutes extends BaseRoute {
         //check the order type
         if(!empty($body["order_type"]) && $body["order_type"] !== "onDemandDelivery") {
             $orderTypeUuid = sanitize_text_field($body['order_type']);
-            $orderType = $this->api->GetOneOrdersTypes($orderTypeUuid);
-            $orderTypeFromClover = json_decode(wp_json_encode($orderType),true);
             $orderTypeFromLocal  = (array)$this->model->getOneOrderTypes($orderTypeUuid);
-
-            if(isset($orderTypeFromClover["code"]) && $orderTypeFromClover["code"] == 998) {
-                return array(
-                    'status'	=> 'failed',
-                    'code'	=> 'maintenance',
-                    'message'=> "Sorry, we are having a brief maintenance. Please check back in a few minutes"
-                );
-            }
-
-            if(isset($orderTypeFromClover["message"]) && $orderTypeFromClover["message"] == "401 Unauthorized") {
-                return array(
-                    'status'	=> 'failed',
-                    'code'	=> '401',
-                    'message'=> "Internal error, please contact us. If you are the site owner, please verify your API Key."
-                );
-            }
-            //TODO : Improve that
-            if( ! isset($orderTypeFromClover["label"]) ) {
-                return array(
-                    'status'	=> 'failed',
-                    'code'	=> 'ordertype_not_found',
-                    'message'=> "Referenced order type does not exist or currently experiencing maintenance. Please try again or contact us."
-                );
-            }
 
             $isDelivery = ( isset($orderTypeFromLocal['show_sa']) && $orderTypeFromLocal['show_sa'] == "1" )?"Delivery":"Pickup";
 
-            $note .= ' | '.$orderTypeFromClover["label"];
+            $note .= ' | '.$orderTypeFromLocal["label"];
 
             if($isDelivery === 'Delivery' && isset($customer["full_address"])) {
                 $note .= ' | '.$customer["full_address"];
@@ -957,7 +935,10 @@ class  CheckoutRoutes extends BaseRoute {
 
     }
     public function checkCouponCode( $request ) {
-
+        if(isset($request["moo_customer_token"]) && !empty($request["moo_customer_token"])){
+            $token = $request["moo_customer_token"];
+        }
+        var_dump($token);
         $body = json_decode($request->get_body(),true);
         $coupon_code = sanitize_text_field($body['code']);
 
@@ -1089,5 +1070,31 @@ class  CheckoutRoutes extends BaseRoute {
             }
         }
         return '';
+    }
+
+    private function isAsapAllowed()
+    {
+        if(isset($this->pluginSettings['order_later_asap_for_p']) && $this->pluginSettings['order_later_asap_for_p'] == 'on')
+        {
+            return true;
+        }
+        if(isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on')
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private function isHideUnavailableItemsEnabled()
+    {
+        if(isset($this->pluginSettings['track_stock_hide_items']) && $this->pluginSettings['track_stock_hide_items'] == 'on')
+        {
+            return true;
+        }
+        if(isset($this->pluginSettings['hide_category_ifnotavailable']) && $this->pluginSettings['hide_category_ifnotavailable'] == 'on')
+        {
+            return true;
+        }
+        return false;
     }
 }

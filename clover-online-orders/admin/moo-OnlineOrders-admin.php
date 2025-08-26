@@ -253,6 +253,7 @@ class moo_OnlineOrders_Admin {
                         "CouponValue"     => $c->value,
                         "CouponMinAmount" => $c->minAmount,
                         "CouponMaxUses"   => $c->maxuses,
+                        "CouponApplyOnce"   => $c->applyonce,
                         "CouponExpiryDate"=> ($couponExpiryDate) ? $couponExpiryDate->format('m-d-Y') : '',
                         "CouponStartDate" => ($couponStartDate) ? $couponStartDate->format('m-d-Y') : ''
                     );
@@ -268,6 +269,7 @@ class moo_OnlineOrders_Admin {
                     "CouponValue"     => '',
                     "CouponMinAmount" => '',
                     "CouponMaxUses"   => '0',
+                    "CouponApplyOnce"   => false,
                     "CouponExpiryDate"=> '',
                     "CouponStartDate" => ''
                 );
@@ -285,6 +287,7 @@ class moo_OnlineOrders_Admin {
                 $couponValue     = isset($_POST['CouponValue'])     ? trim($_POST['CouponValue']) : '';
                 $couponMinAmount = isset($_POST['CouponMinAmount']) ? trim($_POST['CouponMinAmount']) : '';
                 $couponMaxUses   = isset($_POST['CouponMaxUses'])   ? trim($_POST['CouponMaxUses']) : '';
+                $couponApplyOnce   = isset($_POST['CouponApplyOnce']) && rest_sanitize_boolean($_POST['CouponApplyOnce']);
                 $couponStart = isset($_POST['CouponStartDate']) ? sanitize_text_field($_POST['CouponStartDate']) : '';
                 $couponExpiry = isset($_POST['CouponExpiryDate']) ? sanitize_text_field($_POST['CouponExpiryDate']) : '';
 
@@ -323,6 +326,7 @@ class moo_OnlineOrders_Admin {
                         "type"           => $couponType,
                         "minAmount"      => $couponMinAmount,
                         "maxuses"        => $couponMaxUses,
+                        "applyonce"        => $couponApplyOnce,
                         "expirationdate" => $validExpiryDate->format('m-d-Y'),
                         "startdate"      => $validStartDate->format('m-d-Y')
                     );
@@ -367,6 +371,7 @@ class moo_OnlineOrders_Admin {
                         "CouponValue"     => $couponValue,
                         "CouponMinAmount" => $couponMinAmount,
                         "CouponMaxUses"   => $couponMaxUses,
+                        "CouponApplyOnce" => $couponApplyOnce,
                         "CouponExpiryDate"=> $couponExpiry,
                         "CouponStartDate" => $couponStart
                     );
@@ -432,14 +437,14 @@ class moo_OnlineOrders_Admin {
                             <th scope="row"><label for="CouponStartDate">Starting date</label></th>
                             <td>
                                 <input autocomplete="off" name="CouponStartDate" type="text" id="CouponStartDate"
-                                       value="<?php echo esc_attr($theCoupon['CouponStartDate']); ?>">
+                                       value="<?php echo esc_attr($theCoupon['CouponStartDate']); ?>" required>
                             </td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="CouponExpiryDate">Expiration date</label></th>
                             <td>
                                 <input autocomplete="off" name="CouponExpiryDate" type="text" id="CouponExpiryDate"
-                                       value="<?php echo esc_attr($theCoupon['CouponExpiryDate']); ?>">
+                                       value="<?php echo esc_attr($theCoupon['CouponExpiryDate']); ?>" required>
                             </td>
                         </tr>
                         <tr>
@@ -448,6 +453,16 @@ class moo_OnlineOrders_Admin {
                                 <input name="CouponMaxUses" type="number" id="CouponMaxUses"
                                        value="<?php echo esc_attr($theCoupon['CouponMaxUses']); ?>">
                                 <p class="description">Enter 0 for unlimited uses (applies to all customers).</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="CouponApplyOnce">One-Time Coupon</label></th>
+                            <td>
+                                <select name="CouponApplyOnce" id="CouponApplyOnce">
+                                    <option value="0" <?php selected($theCoupon['CouponApplyOnce'], '0'); ?>>No</option>
+                                    <option value="1" <?php selected($theCoupon['CouponApplyOnce'], '1'); ?>>Yes</option>
+                                </select>
+                                <p class="description">Is this coupon code valid only one time for registered users?</p>
                             </td>
                         </tr>
                         </tbody>
@@ -1064,7 +1079,7 @@ class moo_OnlineOrders_Admin {
                             </div>
                             <div class="moo-col-md-12">
                                 <p class="moo-errorSection-message">We couldn't check the api key right now, please try again</p>
-                                <p><a href="#" onclick="MooPanel_RefreshPage(event)" class="button button-secondary" style="margin-bottom: 35px;" >Try Again</a></p>
+                                <p><a href="#" onclick="MooPanel_RefreshPage(event)" class="button button-secondary" style="margin-bottom: 35px;" >Refresh Page</a></p>
                             </div>
                         </div>
                     </div>
@@ -1113,29 +1128,107 @@ class moo_OnlineOrders_Admin {
                         </div>
                         <div class="MooPanelItem">
                             <h3>Automatically sync changes</h3>
-                            <p>
-                                <b>
-                                    Auto Sync updates items, categories and modifier changes in real time. It does not auto sync order types and taxes. If you made changes to taxes and order types, you must do a manual sync below.
-                                </b>
-                            </p>
                             <div id="mooAutoSyncActivated" class="Moo_option-item mooAutoSyncSection"  style="display: none">
-                                <div class="moo-row">
-                                    <div class="moo-col-md-2">
-                                        <div class="mooAutoSyncSectionIcon">
-                                            <img width="70px" src="<?php echo plugin_dir_url(dirname(__FILE__))."public/img/check.png";?>" alt=""/>
+                                <div class="soo-success-box">
+                                    <div class="moo-row">
+                                        <div class="moo-col-md-6">
+                                            <div class="soo-success-icon">✔️</div>
+                                            <div class="soo-success-text">
+                                                <strong>Auto Sync is enabled</strong><br>
+                                                Your changes are being synchronized automatically
+                                            </div>
+                                        </div>
+                                        <div class="moo-col-md-6 mooAutoSyncSectionButtons">
+                                            <div class="soo-auto-sync-button-group">
+                                                <button class="soo-auto-sync-button soo-auto-sync-button-disable" onclick="mooChangeAutoSyncStatus('disabled')" >Disable Auto Sync</button>
+                                                <button class="soo-auto-sync-button soo-auto-sync-button-details" onclick="mooSeeDetailOfAutoSync(event)" >See details</button>
+                                                <button class="soo-arrow-button" onclick="mooToggleCustomizeSyncSettings()">Customize <span id="soo-sync-arrow-icon">▼</span></button>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div class="moo-col-md-6 mooAutoSyncSectionInfos">
-                                        <h3 style="margin-top: 20px">Auto Sync is enabled</h3>
+                                </div>
+                                <div id="soo-customize-sync-settings" class="soo-customize-sync-settings" style="display: none;">
+                                    <div class="soo-customize-sync-toggle-group">
+                                        <div class="soo-customize-sync-toggle-item">
+                                            <span class="soo-customize-sync-tooltip">📝 Sync Names & Descriptions
+                                                <span class="soo-customize-sync-tooltiptext">Enabling this will overwrite any local name or description changes made via the dashboard.</span>
+                                            </span>
+                                            <div class="soo-onoffswitch" title="Enable or disable the auto Sync of names & Descriptions " style="float: right">
+                                                <input
+                                                        data-setting="soo_sync_names"
+                                                        type="checkbox"
+                                                        name="sooCustomizeSyncNames"
+                                                        id="sooCustomizeSyncNames"
+                                                        class="soo-onoffswitch-checkbox soo-feature-toggle"
+                                                    <?php echo (!empty($mooOptions['soo_sync_names'])) ? 'checked' : ''; ?>
+                                                >
+                                                <label class="soo-onoffswitch-label" for="sooCustomizeSyncNames">
+                                                    <span class="soo-onoffswitch-inner"></span>
+                                                    <span class="soo-onoffswitch-switch"></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="soo-customize-sync-toggle-item">
+                                             <span class="soo-customize-sync-tooltip">🖼️ Sync Item Images
+                                                <span class="soo-customize-sync-tooltiptext">Enabling this will overwrite any local image changes made via the dashboard.</span>
+                                            </span>
+                                            <div class="soo-onoffswitch" title="Enable or disable the auto sync for images" style="float: right">
+                                                <input
+                                                        data-setting="soo_sync_images"
+                                                        type="checkbox"
+                                                        name="sooCustomizeSyncImages"
+                                                        id="sooCustomizeSyncImages"
+                                                        class="soo-onoffswitch-checkbox soo-feature-toggle"
+                                                    <?php echo (!empty($mooOptions['soo_sync_images'])) ? 'checked' : ''; ?> >
+                                                <label class="soo-onoffswitch-label" for="sooCustomizeSyncImages">
+                                                    <span class="soo-onoffswitch-inner"></span>
+                                                    <span class="soo-onoffswitch-switch"></span>
+                                                </label>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="moo-col-md-4 mooAutoSyncSectionButtons">
-                                        <button onclick="mooChangeAutoSyncStatus('disabled')" class="button button-primary">Disable Auto Sync</button>
-                                        <button onclick="mooSeeDetailOfAutoSync(event)" class="button button-primary">See details</button>
+                                </div>
+                                <div class="Moo_option-item" style="display: none">
+                                    <div class="moo-col-md-8">
+                                        <h4>Sync Clover Online Names and descriptions</h4>
+                                    </div>
+                                    <div class="moo-col-md-2">
+                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
+                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
+                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
+                                                <span class="soo-onoffswitch-inner"></span>
+                                                <span class="soo-onoffswitch-switch"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="Moo_option-item" style="display: none">
+                                    <div class="moo-col-md-8">
+                                        <h4>Sync Clover Items Images</h4>
+                                    </div>
+                                    <div class="moo-col-md-2">
+                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
+                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
+                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
+                                                <span class="soo-onoffswitch-inner"></span>
+                                                <span class="soo-onoffswitch-switch"></span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                             <div id="mooAutoSyncDeactivated" class="Moo_option-item mooAutoSyncSection"  style="display: none">
-                                <div class="moo-row">
+
+                                <div class="soo-warning-box">
+                                    <div class="soo-warning-header">
+                                        <span>&#9888; Automatically sync changes</span>
+                                        <button class="enable-auto-sync-button" onclick="mooChangeAutoSyncStatus('enabled')">Enable Auto Sync</button>
+                                    </div>
+                                    <div class="soo-warning-text">
+                                        This updates changes in real time based on the Clover inventory
+                                    </div>
+                                </div>
+                                <div class="moo-row" style="display: none">
                                     <div class="moo-col-md-2">
                                         <div class="mooAutoSyncSectionIcon">
                                             <img width="70px" src="<?php echo plugin_dir_url(dirname(__FILE__))."public/img/icon_alert.png";?>" alt=""/>
@@ -3035,7 +3128,7 @@ class moo_OnlineOrders_Admin {
         wp_localize_script("moo-publicAdmin-js", "moo_params",$params);
         wp_localize_script("moo-publicAdmin-js", "moo_custom_hours",$merchantCustomHours);
         wp_localize_script("moo-publicAdmin-js", "moo_custom_hours_for_ot",$merchantCustomHoursForOT);
-        wp_localize_script("moo-publicAdmin-js", "mooObjectL10n", SOO_I18N_DEFAULT );
+        wp_localize_script("moo-publicAdmin-js", "mooObjectL10n", Moo_OnlineOrders_Helpers::getDefaultI18N() );
     }
     public function moo_update_address() {
         $mooOptions = (array)get_option('moo_settings');

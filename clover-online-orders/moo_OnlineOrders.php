@@ -16,7 +16,7 @@
  * Plugin Name:       Smart Online Order for Clover
  * Plugin URI:        https://www.zaytech.com
  * Description:       Start taking orders from your Wordpress website and have them sent to your Clover Station
- * Version:           1.5.9
+ * Version:           1.6.0
  * Author:            Zaytech
  * Author URI:        https://www.zaytech.com
  * License:           GPLv2 or later
@@ -37,7 +37,7 @@ define(
 define('SOO_PLUGIN_PATH', untrailingslashit(plugin_dir_path(__FILE__)));
 define('SOO_ENV', 'PROD');
 define('SOO_DEFAULT_CDN', false);
-define('SOO_VERSION', "1.5.9");
+define('SOO_VERSION', "1.6.0");
 define('SOO_G_RECAPTCHA_URL', 'https://www.google.com/recaptcha/api/siteverify');
 define('SOO_DEBUG', false);
 
@@ -212,7 +212,7 @@ function moo_deactivateAndClean() {
 }
 add_action('admin_init', 'moo_deactivateAndClean');
                  
-if (get_option('moo_onlineOrders_version') != '159') {
+if (get_option('moo_onlineOrders_version') != '160') {
     add_action('plugins_loaded', 'moo_onlineOrders_check_version');
     add_action('plugins_loaded', 'moo_schedule_cron_tasks');
 }
@@ -254,7 +254,7 @@ function moo_onlineOrders_check_version() {
     Moo_OnlineOrders_Helpers::applyDefaultOptions($defaultOptions);
     update_option("moo_settings", $defaultOptions);
     //Upgrade version
-    update_option('moo_onlineOrders_version', '159');
+    update_option('moo_onlineOrders_version', '160');
 }
 
 function moo_schedule_cron_tasks() {

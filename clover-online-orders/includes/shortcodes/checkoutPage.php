@@ -1296,7 +1296,7 @@ class checkoutPage extends sooShortCode
             "feeAmount"=>$serviceFees,
             "calculatedFeeAmount"=>$serviceFeeAmount,
             "pakmsKey"=>$cloverPakmsKey,
-            "specialInstructionsRequired"=>$this->pluginSettings['special_instructions_required'] === 'yes',
+            "specialInstructionsRequired"=>$this->pluginSettings['use_special_instructions'] === 'enabled' && $this->pluginSettings['special_instructions_required'] === 'yes',
             "locale"=>str_replace("_", "-", get_locale()),
             "showStreetAddressField"=>$this->showStreetAddressFieldOnPaymentForm,
             "allowScOrder"=>$this->pluginSettings['order_later'] === 'on',
