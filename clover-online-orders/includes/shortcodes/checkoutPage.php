@@ -11,20 +11,265 @@ class checkoutPage extends sooShortCode
      */
     private $displayPageHeader = true;
 
-    /**
-     * use or not alternateNames
-     * @var bool
-     */
     private $showStreetAddressFieldOnPaymentForm;
+
+    private $showCardNameFieldOnPaymentForm;
+
+
+    private function applyDashboardCheckoutOverrides(array $dashData) {
+        $cs = isset($dashData['checkout_settings']) && is_array($dashData['checkout_settings'])
+            ? $dashData['checkout_settings']
+            : array();
+
+        $this->pluginSettings['tips'] = !empty($cs['tipsEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['tips_selection'] = $this->dashboardListToCsv(
+            isset($cs['tipsSuggested']) ? $cs['tipsSuggested'] : array()
+        );
+        $this->pluginSettings['tips_default'] = $this->dashboardScalarToString(
+            isset($cs['tipsDefault']) ? $cs['tipsDefault'] : null
+        );
+        $this->pluginSettings['service_fees'] = $this->dashboardScalarToString(
+            isset($cs['serviceFeeAmount']) ? $cs['serviceFeeAmount'] : null
+        );
+        $this->pluginSettings['service_fees_type'] = $this->dashboardScalarToString(
+            isset($cs['serviceFeeType']) ? $cs['serviceFeeType'] : 'amount',
+            'amount'
+        );
+        $this->pluginSettings['service_fees_name'] = $this->dashboardScalarToString(
+            isset($cs['serviceFeeName']) ? $cs['serviceFeeName'] : null
+        );
+        $this->pluginSettings['use_sms_verification'] = !empty($cs['smsVerificationEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['use_special_instructions'] = !empty($cs['specialInstructionsEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['special_instructions_required'] = !empty($cs['specialInstructionsRequired']) ? 'yes' : 'no';
+        $this->pluginSettings['text_under_special_instructions'] = $this->dashboardScalarToString(
+            isset($cs['specialInstructionsText']) ? $cs['specialInstructionsText'] : null
+        );
+        $this->pluginSettings['marketing_checkbox_enabled'] = !empty($cs['marketingCheckboxEnabled']) ? 'on' : 'off';
+        $this->pluginSettings['marketing_checkbox_text'] = $this->dashboardScalarToString(
+            isset($cs['marketingCheckboxText']) ? $cs['marketingCheckboxText'] : null
+        );
+        $this->pluginSettings['use_coupons'] = !empty($cs['useCoupons']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['track_stock'] = !empty($cs['enableStockTracking']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['track_stock_hide_items'] = !empty($cs['hideUnavailableItems']) ? 'on' : 'off';
+
+        $announcement = isset($cs['announcement']) && is_array($cs['announcement'])
+            ? $cs['announcement']
+            : array();
+        $announcementEnabled = !array_key_exists('enabled', $announcement) || !empty($announcement['enabled']);
+        if ($announcementEnabled) {
+            $this->pluginSettings['custom_sa_title'] = $this->dashboardScalarToString(
+                isset($announcement['title']) ? $announcement['title'] : null
+            );
+            $this->pluginSettings['custom_sa_content'] = $this->dashboardScalarToString(
+                isset($announcement['content']) ? $announcement['content'] : null
+            );
+            $this->pluginSettings['custom_sa_onCheckoutPage'] = !empty($announcement['showOnCheckout']) ? 'on' : 'off';
+        } else {
+            $this->pluginSettings['custom_sa_title'] = '';
+            $this->pluginSettings['custom_sa_content'] = '';
+            $this->pluginSettings['custom_sa_onCheckoutPage'] = 'off';
+        }
+
+        if (array_key_exists('paymentMethods', $cs)) {
+            $paymentFlags = $this->dashboardPaymentMethodFlags($cs['paymentMethods']);
+            $this->pluginSettings['clover_payment_form'] = $paymentFlags['clover_payment_form'] ? 'on' : 'off';
+            $this->pluginSettings['payment_cash'] = $paymentFlags['payment_cash'] ? 'on' : 'off';
+            $this->pluginSettings['payment_cash_delivery'] = $paymentFlags['payment_cash_delivery'] ? 'on' : 'off';
+            $this->pluginSettings['clover_giftcards'] = $paymentFlags['clover_giftcards'] ? 'on' : 'off';
+            $this->pluginSettings['clover_googlepay'] = $paymentFlags['clover_googlepay'] ? 'on' : 'off';
+            $this->pluginSettings['payment_creditcard'] = 'off';
+            $this->pluginSettings['_dashboard_apple_pay_enabled'] = $paymentFlags['apple_pay'] ? 'on' : 'off';
+        }
+    }
+
+    private function dashboardListToCsv($value) {
+        if (!is_array($value)) {
+            return '';
+        }
+
+        $parts = array();
+        foreach ($value as $oneValue) {
+            if (is_scalar($oneValue) && $oneValue !== '') {
+                $parts[] = (string) $oneValue;
+            }
+        }
+
+        return implode(',', $parts);
+    }
+
+    private function dashboardScalarToString($value, $default = '') {
+        if ($value === null) {
+            return $default;
+        }
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+        return $default;
+    }
+
+    private function dashboardPaymentMethodFlags($paymentMethods) {
+        $flags = array(
+            'clover_payment_form' => false,
+            'payment_cash' => false,
+            'payment_cash_delivery' => false,
+            'clover_giftcards' => false,
+            'clover_googlepay' => false,
+            'apple_pay' => false,
+        );
+
+        if (!is_array($paymentMethods)) {
+            return $flags;
+        }
+
+        $hasGenericCash = false;
+
+        foreach ($paymentMethods as $paymentMethod) {
+            $normalized = $this->normalizeDashboardPaymentMethod($paymentMethod);
+            if ($normalized === '') {
+                continue;
+            }
+
+            if ($normalized === 'applepay') {
+                $flags['apple_pay'] = true;
+                continue;
+            }
+
+            if ($normalized === 'googlepay') {
+                $flags['clover_googlepay'] = true;
+                continue;
+            }
+
+            if ($normalized === 'giftcard' || $normalized === 'giftcards') {
+                $flags['clover_giftcards'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cashondelivery' || $normalized === 'cashdelivery') {
+                $flags['payment_cash_delivery'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cashpickup' || $normalized === 'cashatlocation' || $normalized === 'cashinstore') {
+                $flags['payment_cash'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cash') {
+                $hasGenericCash = true;
+                continue;
+            }
+
+            if ($normalized === 'clover' || $normalized === 'creditcard' || $normalized === 'card' || $normalized === 'online') {
+                $flags['clover_payment_form'] = true;
+            }
+        }
+
+        if ($hasGenericCash) {
+            $flags['payment_cash'] = true;
+            $flags['payment_cash_delivery'] = true;
+        }
+
+        return $flags;
+    }
+
+    private function normalizeDashboardPaymentMethod($paymentMethod) {
+        $raw = '';
+
+        if (is_array($paymentMethod)) {
+            if (array_key_exists('enabled', $paymentMethod) && empty($paymentMethod['enabled'])) {
+                return '';
+            }
+
+            foreach (array('code', 'slug', 'type', 'name', 'label', 'value', 'id') as $key) {
+                if (isset($paymentMethod[$key]) && is_scalar($paymentMethod[$key]) && $paymentMethod[$key] !== '') {
+                    $raw = (string) $paymentMethod[$key];
+                    break;
+                }
+            }
+        } elseif (is_scalar($paymentMethod) && $paymentMethod !== '') {
+            $raw = (string) $paymentMethod;
+        }
+
+        if ($raw === '') {
+            return '';
+        }
+
+        return strtolower(preg_replace('/[^a-z0-9]+/', '', $raw));
+    }
+
+    /**
+     * Convert pickup_slots day-keyed map of rich slot objects into the
+     * {day => [labels]} map the existing checkout JS iterates.
+     * Includes throttled/unavailable slots so they remain visible — they
+     * will be greyed out by the frontend based on the companion throttled map.
+     */
+    private function slotsToPickupTimeMap(array $dash) {
+        $slots = isset($dash['pickup_slots']) ? $dash['pickup_slots'] : array();
+        if (!is_array($slots) || empty($slots)) {
+            return array();
+        }
+        $out = array();
+        foreach ($slots as $dayLabel => $daySlots) {
+            if (!is_array($daySlots)) {
+                continue;
+            }
+            $labels = array();
+            foreach ($daySlots as $slot) {
+                if (isset($slot['local'])) {
+                    $labels[] = $slot['local'];
+                }
+            }
+            if (!empty($labels)) {
+                $out[$dayLabel] = $labels;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Build a day-keyed map of slot labels that are unavailable (throttled
+     * or otherwise blocked). The frontend uses this to add the `disabled`
+     * attribute to the corresponding <option> elements.
+     */
+    private function slotsToThrottledMap(array $dash) {
+        $slots = isset($dash['pickup_slots']) ? $dash['pickup_slots'] : array();
+        if (!is_array($slots) || empty($slots)) {
+            return array();
+        }
+        $out = array();
+        foreach ($slots as $dayLabel => $daySlots) {
+            if (!is_array($daySlots)) {
+                continue;
+            }
+            $blocked = array();
+            foreach ($daySlots as $slot) {
+                if (isset($slot['local']) && empty($slot['available'])) {
+                    $blocked[] = $slot['local'];
+                }
+            }
+            if (!empty($blocked)) {
+                $out[$dayLabel] = $blocked;
+            }
+        }
+        return $out;
+    }
 
 
     public function standardCheckout($atts, $content)
     {
+        // Global mode is only fully supported via advancedCheckout. Reroute
+        // here so Global merchants on a [moo_checkout] (legacy) shortcode get
+        // the same experience as those on the advanced shortcode.
+        if (SooSettingsSource::current() === 'global') {
+            return $this->advancedCheckout($atts, $content);
+        }
+
         $this->enqueueStyles();
         $this->enqueueScripts();
 
         ob_start();
         $session = MOO_SESSION::instance();
+
         //check store availibilty
 
         if (isset($this->pluginSettings['accept_orders']) && $this->pluginSettings['accept_orders'] === "disabled") {
@@ -142,6 +387,7 @@ class checkoutPage extends sooShortCode
         if (!$session->isEmpty("coupon")) {
             $coupon = $session->get("coupon");
             if ($coupon['minAmount']>$totals['sub_total']) {
+                $session->delete("coupon");
                 $coupon = null;
             }
         } else {
@@ -187,7 +433,11 @@ class checkoutPage extends sooShortCode
 
 
         $oppening_status = $this->api->getOpeningStatus($nb_days, $nb_minutes);
-        $this->showStreetAddressFieldOnPaymentForm = $this->checkCloverFraudTools($oppening_status);
+
+        $checkoutSettings = $this->api->getCheckoutSettings();
+        $fraudToolsSource = (is_array($checkoutSettings) && isset($checkoutSettings["fraudTools"])) ? $checkoutSettings : $oppening_status;
+        $this->showStreetAddressFieldOnPaymentForm = $this->checkCloverFraudTools($fraudToolsSource);
+        $this->showCardNameFieldOnPaymentForm = $this->checkCloverFraudToolsForCardName($fraudToolsSource);
 
         if ($nb_days != $nb_days_d || $nb_minutes != $nb_minutes_d) {
             $oppening_status_d = $this->api->getOpeningStatus($nb_days_d, $nb_minutes_d);
@@ -210,7 +460,9 @@ class checkoutPage extends sooShortCode
         }
 
         if (isset($oppening_status_d["pickup_time"])) {
-            if (isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on') {
+            $allowAsapForDelivery = isset($this->pluginSettings['order_later_asap_for_d'])
+                && $this->pluginSettings['order_later_asap_for_d'] == 'on';
+            if ($allowAsapForDelivery) {
                 if (isset($oppening_status_d["pickup_time"]["Today"])) {
                     array_unshift($oppening_status_d["pickup_time"]["Today"], 'ASAP');
                 }
@@ -267,6 +519,20 @@ class checkoutPage extends sooShortCode
         if (!isset($this->pluginSettings['special_instructions_required']) || empty($this->pluginSettings['special_instructions_required'])) {
             $this->pluginSettings['special_instructions_required'] = false;
         }
+        $guestModeEnabled = true;
+        if (is_array($checkoutSettings) && array_key_exists("guestModeEnabled", $checkoutSettings)) {
+            $rawGuestModeEnabled = $checkoutSettings["guestModeEnabled"];
+            if ($rawGuestModeEnabled !== null) {
+                $guestModeEnabled = filter_var($rawGuestModeEnabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($guestModeEnabled === null) {
+                    $guestModeEnabled = (bool) $rawGuestModeEnabled;
+                }
+            }
+        }
+        $convenienceFeeCents = 0;
+        if (is_array($checkoutSettings) && isset($checkoutSettings["convenienceFee"])) {
+            $convenienceFeeCents = intval($checkoutSettings["convenienceFee"]);
+        }
         $mooCheckoutJsOptions = array(
             'moo_RestUrl' =>  get_rest_url(),
             "moo_OrderTypes"=>$orderTypes,
@@ -284,11 +550,13 @@ class checkoutPage extends sooShortCode
             "moo_checkout_login"=>$this->pluginSettings['checkout_login'],
             "moo_save_cards"=>$this->pluginSettings['save_cards'],
             "moo_save_cards_fees"=>$this->pluginSettings['save_cards_fees'],
+            "moo_convenience_fee"=>$convenienceFeeCents,
             "moo_clover_payment_form"=>$this->pluginSettings['clover_payment_form'],
             "moo_clover_key"=>$cloverPakmsKey,
             "special_instructions_required"=>$this->pluginSettings['special_instructions_required'],
             "locale"=>str_replace("_", "-", get_locale()),
             "showStreetAddressField"=>$this->showStreetAddressFieldOnPaymentForm,
+            "showCardNameField"=>$this->showCardNameFieldOnPaymentForm,
         );
         $mooDeliveryJsOptions = array(
             "moo_merchantLat"=>$this->pluginSettings['lat'],
@@ -578,6 +846,17 @@ class checkoutPage extends sooShortCode
                                                 <input class="moo-form-control" name="phone" id="MooContactPhone" onchange="moo_phone_changed()" autocomplete="phone">
                                             </div>
                                         </div>
+                                        <?php if (!isset($this->pluginSettings['marketing_checkbox_enabled']) || $this->pluginSettings['marketing_checkbox_enabled'] === 'on') : ?>
+                                        <div class="moo-row">
+                                            <div class="moo-form-group">
+                                                <label class="soo-marketing-checkbox">
+                                                    <input type="checkbox" id="MooContactMarketingAllowed" checked>
+                                                    <span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>
+                                                    <span class="soo-marketing-label"><?php echo !empty($this->pluginSettings['marketing_checkbox_text']) ? esc_html($this->pluginSettings['marketing_checkbox_text']) : __("I agree to receive marketing emails and promotions", "moo_OnlineOrders"); ?></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <?php endif; ?>
                                         <?php wp_nonce_field('moo-checkout-form');?>
                                     </div>
                                 </div>
@@ -908,6 +1187,15 @@ class checkoutPage extends sooShortCode
                                             ?>
                                         </div>
                                     </div>
+                                    <?php
+                                    $convenienceFee = $convenienceFeeCents / 100;
+                                    ?>
+                                    <div class="moo-totals-item" id="MooConvenienceFeeInTotalsSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
+                                        <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
+                                        <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
+                                            <?php echo '$'.number_format($convenienceFee, 2); ?>
+                                        </div>
+                                    </div>
                                     <?php if ($this->pluginSettings['tips']=='enabled') {?>
                                         <div class="moo-totals-item" id="MooTipsInTotalsSection">
                                             <label class="moo-checkoutText-tipAmount" tabindex="0" ><?php _e("Tip", "moo_OnlineOrders"); ?></label>
@@ -1045,12 +1333,18 @@ class checkoutPage extends sooShortCode
 
         ob_start();
 
-        if (! $this->checkOpenning() ){
-            return ob_get_clean();
-        }
+        //--- Settings source branching (determined early so legacy checks can be skipped) ---
+        $useGlobal = (SooSettingsSource::current() === 'global');
 
-        if (! $this->checkBlackout() ){
-            return ob_get_clean();
+        // In Global mode, the unified endpoint is the single source of truth for
+        // manual-close, blackouts, and hours. Skip these legacy checks entirely.
+        if (!$useGlobal) {
+            if (! $this->checkOpenning() ){
+                return ob_get_clean();
+            }
+            if (! $this->checkBlackout() ){
+                return ob_get_clean();
+            }
         }
 
         //Get Session
@@ -1061,8 +1355,41 @@ class checkoutPage extends sooShortCode
         $nbOfOrderTypes = 0;
         $nbOfUnvailableOrderTypes = null;
 
+        // Defaults for throttling-related variables (populated only in Global mode)
+        $throttledTimes = array();
+        $acceptingAsap = true;
+        $asapUnavailableReason = null;
+        $dashData = null;
+        if ($useGlobal) {
+            $client = SooSettingsSource::instance($this->api)->dashboardClient();
+            $dashData = $client->fetch();
+            if ($dashData === null) {
+                // Dashboard fetch failed in Global mode — render a friendly error
+                echo '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' .
+                    esc_html__('We can\'t reach the ordering system right now. Please try again in a moment.', 'moo_OnlineOrders') .
+                    '</div>';
+                return ob_get_clean();
+            }
+            $dashMapper = new DashboardCheckoutMapper($dashData);
+            $businessSettings      = $dashMapper->mapBusinessSettings();
+            $oppening_status       = $dashMapper->mapOpeningStatus();
+            $oppening_status_d     = $oppening_status; // pickup slots double as delivery in v1
+            $checkoutSettings      = $dashMapper->mapCheckoutSettings();
+            $merchant_address      = $dashMapper->mapMerchantAddress();
+            $cloverPakmsKey        = $dashMapper->mapPubKey();
+            $throttledTimes        = $dashMapper->mapThrottledTimes();
+            $acceptingAsap         = $dashMapper->mapAcceptingAsap();
+            $asapUnavailableReason = $dashMapper->mapAsapUnavailableReason();
+
+            // Override pluginSettings so downstream checkout code keeps reading
+            // the same local keys while Global mode is active.
+            $this->applyDashboardCheckoutOverrides($dashData);
+        }
+
         //Get Settings And Cart Total
-        $businessSettings = $this->api->getBusinessSettings();
+        if (!$useGlobal) {
+            $businessSettings = $this->api->getBusinessSettings();
+        }
 
 
         //Get Totals
@@ -1136,9 +1463,15 @@ class checkoutPage extends sooShortCode
         }
 
         if (isset($this->pluginSettings["clover_payment_form"]) && $this->pluginSettings["clover_payment_form"] == "on") {
-            $cloverPakmsKey = $this->api->getPakmsKey();
+            if (!$useGlobal) {
+                $cloverPakmsKey = $this->api->getPakmsKey();
+            }
+            // In global mode, $cloverPakmsKey was already set from the dashboard response
         } else {
-            $cloverPakmsKey = null;
+            if (!$useGlobal) {
+                $cloverPakmsKey = null;
+            }
+            // In global mode, keep the pubkey from the dashboard response
         }
 
         $custom_js  = $this->pluginSettings["custom_js"];
@@ -1177,8 +1510,13 @@ class checkoutPage extends sooShortCode
             $inserted_nb_days = $this->pluginSettings["order_later_days"];
             $inserted_nb_mins = $this->pluginSettings["order_later_minutes"];
 
-            $inserted_nb_days_d = $this->pluginSettings["order_later_days_delivery"];
-            $inserted_nb_mins_d = $this->pluginSettings["order_later_minutes_delivery"];
+            if ($useGlobal) {
+                $inserted_nb_days_d = $inserted_nb_days;
+                $inserted_nb_mins_d = $inserted_nb_mins;
+            } else {
+                $inserted_nb_days_d = $this->pluginSettings["order_later_days_delivery"];
+                $inserted_nb_mins_d = $this->pluginSettings["order_later_minutes_delivery"];
+            }
 
             if ($inserted_nb_days === "") {
                 $nb_days = 4;
@@ -1211,24 +1549,32 @@ class checkoutPage extends sooShortCode
         }
 
 
-        $oppening_status = $this->api->getOpeningStatus($nb_days, $nb_minutes);
+        if (!$useGlobal) {
+            $oppening_status = $this->api->getOpeningStatus($nb_days, $nb_minutes);
+        }
 
 
 
-        $this->showStreetAddressFieldOnPaymentForm = $this->checkCloverFraudTools($oppening_status);
+        if (!$useGlobal) {
+            $checkoutSettings = $this->api->getCheckoutSettings();
+        }
+        $fraudToolsSource = (is_array($checkoutSettings) && isset($checkoutSettings["fraudTools"])) ? $checkoutSettings : $oppening_status;
+        $this->showStreetAddressFieldOnPaymentForm = $this->checkCloverFraudTools($fraudToolsSource);
+        $this->showCardNameFieldOnPaymentForm = $this->checkCloverFraudToolsForCardName($fraudToolsSource);
 
-
-        if ($nb_days != $nb_days_d || $nb_minutes != $nb_minutes_d) {
-            $oppening_status_d = $this->api->getOpeningStatus($nb_days_d, $nb_minutes_d);
-        } else {
-            $oppening_status_d = $oppening_status;
+        if (!$useGlobal) {
+            if ($nb_days != $nb_days_d || $nb_minutes != $nb_minutes_d) {
+                $oppening_status_d = $this->api->getOpeningStatus($nb_days_d, $nb_minutes_d);
+            } else {
+                $oppening_status_d = $oppening_status;
+            }
         }
 
         $oppening_msg = $this->getOpeningMessage($oppening_status);
 
         //Adding asap to pickup time
         if (isset($oppening_status["pickup_time"])) {
-            if (isset($this->pluginSettings['order_later_asap_for_p']) && $this->pluginSettings['order_later_asap_for_p'] == 'on') {
+            if (isset($this->pluginSettings['order_later_asap_for_p']) && $this->pluginSettings['order_later_asap_for_p'] == 'on' && $acceptingAsap) {
                 if (isset($oppening_status["pickup_time"]["Today"])) {
                     array_unshift($oppening_status["pickup_time"]["Today"], 'ASAP');
                 }
@@ -1236,14 +1582,24 @@ class checkoutPage extends sooShortCode
         }
 
         if (isset($oppening_status_d["pickup_time"])) {
-            if (isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on') {
+            $allowAsapForDelivery = $useGlobal
+                ? (isset($this->pluginSettings['order_later_asap_for_p']) && $this->pluginSettings['order_later_asap_for_p'] == 'on')
+                : (isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on');
+            if ($allowAsapForDelivery && $acceptingAsap) {
                 if (isset($oppening_status_d["pickup_time"]["Today"])) {
                     array_unshift($oppening_status_d["pickup_time"]["Today"], 'ASAP');
                 }
             }
         }
 
-        if ($this->pluginSettings['hours'] != 'all' && $oppening_msg != "") {
+        // Dashboard manual close always blocks the checkout form. The
+        // acceptOrdersWhileClosed flag applies only to hours-based closes
+        // (outside ordering hours) — not to merchant-initiated manual close.
+        $dashCloseGate = SooDashboardSummary::manualCloseState();
+        if ($dashCloseGate !== null) {
+            echo '<div id="moo_CheckoutContainer">' . $oppening_msg . '</div>';
+            return ob_get_clean();
+        } elseif ($this->pluginSettings['hours'] != 'all' && $oppening_msg != "") {
            if ($this->pluginSettings['accept_orders_w_closed'] != 'on' || (!empty($oppening_status["status"] ) && $oppening_status["status"] === 'not_found')){
                echo '<div id="moo_CheckoutContainer">'.$oppening_msg.'</div>';
                return ob_get_clean();
@@ -1251,7 +1607,9 @@ class checkoutPage extends sooShortCode
         }
 
 
-        $merchant_address =  $this->api->getMerchantAddress();
+        if (!$useGlobal) {
+            $merchant_address = $this->api->getMerchantAddress();
+        }
         $store_page_id     = $this->pluginSettings['store_page'];
         $cart_page_id     = $this->pluginSettings['cart_page'];
         $checkout_page_id     = $this->pluginSettings['checkout_page'];
@@ -1276,6 +1634,20 @@ class checkoutPage extends sooShortCode
         if (!isset($this->pluginSettings['special_instructions_required']) || empty($this->pluginSettings['special_instructions_required'])) {
             $this->pluginSettings['special_instructions_required'] = false;
         }
+        $guestModeEnabled = true;
+        if (is_array($checkoutSettings) && array_key_exists("guestModeEnabled", $checkoutSettings)) {
+            $rawGuestModeEnabled = $checkoutSettings["guestModeEnabled"];
+            if ($rawGuestModeEnabled !== null) {
+                $guestModeEnabled = filter_var($rawGuestModeEnabled, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($guestModeEnabled === null) {
+                    $guestModeEnabled = (bool) $rawGuestModeEnabled;
+                }
+            }
+        }
+        $convenienceFeeCents = 0;
+        if (is_array($checkoutSettings) && isset($checkoutSettings["convenienceFee"])) {
+            $convenienceFeeCents = intval($checkoutSettings["convenienceFee"]);
+        }
         $jsOptions = array(
             'restApiUrl' =>  get_rest_url(),
             "orderTypes"=>$orderTypes,
@@ -1290,15 +1662,19 @@ class checkoutPage extends sooShortCode
             "merchantUuid"=> $this->getMerchantUuid(),
             "pickupTimes"=>(!empty($oppening_status["pickup_time"])) ? $oppening_status["pickup_time"]:null,
             "deliveryTimes"=>(!empty($oppening_status_d["pickup_time"])) ? $oppening_status_d["pickup_time"] : null,
+            "throttledTimes"=>$throttledTimes,
             "fbAppId"=>$this->pluginSettings['fb_appid'],
             "useSmsVerification"=>$this->pluginSettings['use_sms_verification'] === 'enabled',
             "feeType"=>$serviceFeesType,
             "feeAmount"=>$serviceFees,
             "calculatedFeeAmount"=>$serviceFeeAmount,
+            "convenienceFee"=>$convenienceFeeCents,
             "pakmsKey"=>$cloverPakmsKey,
             "specialInstructionsRequired"=>$this->pluginSettings['use_special_instructions'] === 'enabled' && $this->pluginSettings['special_instructions_required'] === 'yes',
             "locale"=>str_replace("_", "-", get_locale()),
             "showStreetAddressField"=>$this->showStreetAddressFieldOnPaymentForm,
+            "showCardNameField"=>$this->showCardNameFieldOnPaymentForm,
+            "guestModeEnabled"=>$guestModeEnabled,
             "allowScOrder"=>$this->pluginSettings['order_later'] === 'on',
             "orderingTimeRequired"=>$this->pluginSettings['order_later_mandatory'] === "on" && $this->pluginSettings['order_later'] === 'on',
             "loyaltySetting"=>(isset($businessSettings) && isset($businessSettings['loyaltySetting']) ) ? $businessSettings['loyaltySetting'] : null,
@@ -1389,8 +1765,12 @@ class checkoutPage extends sooShortCode
                                     </ul>
                                 </div>
                             </div>
-                            <div class="moo-col-md-6" tabindex="0">
-                                <div class="moo-row login-social-section">
+                            <?php $showLeftAuthColumn = $guestModeEnabled || (!empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret'])); ?>
+                            <?php $loginColumnClass = $showLeftAuthColumn ? 'moo-col-md-6' : 'moo-col-md-6 moo-col-md-offset-3'; ?>
+                            <div class="moo-row moo-login-columns">
+                                <?php if ($showLeftAuthColumn) { ?>
+                                    <div class="moo-col-md-6" tabindex="0">
+                                        <div class="moo-row login-social-section">
                                     <?php if ( !empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret']) ) { ?>
                                         <p>
                                             <?php _e("Sign in with your Facebook account", "moo_OnlineOrders"); ?>
@@ -1406,47 +1786,54 @@ class checkoutPage extends sooShortCode
                                                     <span>Continue with Facebook</span>
                                                 </button>
                                             </div>
-                                            <div class="moo-col-xs-12" tabindex="0">
-                                                <div class="login-or">
-                                                    <hr class="hr-or">
-                                                    <span class="span-or"><?php _e("or", "moo_OnlineOrders"); ?></span>
+                                            <?php if ($guestModeEnabled) { ?>
+                                                <div class="moo-col-xs-12" tabindex="0">
+                                                    <div class="login-or">
+                                                        <hr class="hr-or">
+                                                        <span class="span-or"><?php _e("or", "moo_OnlineOrders"); ?></span>
+                                                    </div>
+                                                    <button class="sooCheckoutSecondaryButtonInput" onclick="mooCheckout.continueAsGuest(event)" tabindex="0">
+                                                        <?php _e("Continue As Guest", "moo_OnlineOrders"); ?>
+                                                    </button>
                                                 </div>
-                                                <button class="sooCheckoutSecondaryButtonInput" onclick="mooCheckout.continueAsGuest(event)" tabindex="0">
-                                                    <?php _e("Continue As Guest", "moo_OnlineOrders"); ?>
-                                                </button>
-                                            </div>
+                                            <?php } ?>
                                         </div>
                                     <?php } else { ?>
-                                        <p>
-                                            <?php _e("Don't want an account?", "moo_OnlineOrders"); ?>
-                                            <br />
-                                            <small><?php _e("You can checkout without registering", "moo_OnlineOrders"); ?></small>
-                                        </p>
-                                        <div class="moo-row" id="moo-login-left">
-                                            <div class="moo-col-xs-12">
-                                                <button  role="button" tabindex="0" href="#" class="sooContinueAsGuestButton" onclick="mooCheckout.continueAsGuest(event)" style="margin-top: 12px;">
-                                                    <?php _e("Continue As Guest", "moo_OnlineOrders"); ?>
-                                                </button>
-                                            </div>
-                                            <div class="moo-col-xs-12">
-                                                <div class="login-or">
-                                                    <hr class="hr-or">
-                                                    <span class="span-or"><?php _e("or", "moo_OnlineOrders"); ?></span>
+                                        <?php if ($guestModeEnabled) { ?>
+                                            <p>
+                                                <?php _e("Don't want an account?", "moo_OnlineOrders"); ?>
+                                                <br />
+                                                <small><?php _e("You can checkout without registering", "moo_OnlineOrders"); ?></small>
+                                            </p>
+                                            <div class="moo-row" id="moo-login-left">
+                                                <div class="moo-col-xs-12">
+                                                    <button  role="button" tabindex="0" href="#" class="sooContinueAsGuestButton" onclick="mooCheckout.continueAsGuest(event)" style="margin-top: 12px;">
+                                                        <?php _e("Continue As Guest", "moo_OnlineOrders"); ?>
+                                                    </button>
                                                 </div>
-                                                <button  class="sooCreateAnAccountButton" onclick="sooAuth.showOrHideASection('signing-section',true)">
-                                                    <?php _e("Create An Account", "moo_OnlineOrders"); ?>
-                                                </button>
+                                                <div class="moo-col-xs-12">
+                                                    <div class="login-or">
+                                                        <hr class="hr-or">
+                                                        <span class="span-or"><?php _e("or", "moo_OnlineOrders"); ?></span>
+                                                    </div>
+                                                </div>
+                                                <div class="moo-col-xs-12">
+                                                    <button type="button" class="sooCreateAnAccountButton" onclick="sooAuth.showOrHideASection('signing-section',true)">
+                                                        <?php _e("Create An Account", "moo_OnlineOrders"); ?>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        <?php } ?>
+                                    <?php } ?>
+                                        <div class="login-separator moo-hidden-xs moo-hidden-sm">
+                                            <div class="separator">
+                                                <span><?php _e("or", "moo_OnlineOrders"); ?></span>
                                             </div>
                                         </div>
-                                    <?php  } ?>
-                                </div>
-                                <div class="login-separator moo-hidden-xs moo-hidden-sm">
-                                    <div class="separator">
-                                        <span><?php _e("or", "moo_OnlineOrders"); ?></span>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="moo-col-md-6" tabindex="0" >
+                                <?php } ?>
+                                <div class="<?php echo $loginColumnClass; ?>" tabindex="0" >
                                 <div class="sooLoginTitle moo-hidden-md moo-hidden-lg">
                                     <div>Log in</div>
                                 </div>
@@ -1471,10 +1858,23 @@ class checkoutPage extends sooShortCode
                                             <?php _e("Log In", "moo_OnlineOrders"); ?>
                                         </button>
                                     </div>
-                                    <?php if ( !empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret']) ) { ?>
-                                        <p style="padding: 10px"> <?php _e("Don't have an account", "moo_OnlineOrders"); ?><a  class="sooSignUpLinkButton"  href="#" onclick="sooAuth.showOrHideASection('signing-section',true)" aria-label="Don't have an account Sign-up"> <?php _e("Sign-up", "moo_OnlineOrders"); ?></a> </p>
+                                    <?php if (!$guestModeEnabled) { ?>
+                                        <div class="moo-form-group">
+                                            <button type="button" class="sooCreateAnAccountButton" onclick="sooAuth.showOrHideASection('signing-section',true)" style="margin-top: 8px;">
+                                                <?php _e("Create An Account", "moo_OnlineOrders"); ?>
+                                            </button>
+                                        </div>
                                     <?php } ?>
                                 </form>
+                                <?php if ($guestModeEnabled && !empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret'])) { ?>
+                                    <p style="padding: 10px">
+                                        <?php _e("Don't have an account", "moo_OnlineOrders"); ?>
+                                        <a class="sooSignUpLinkButton" href="#" onclick="sooAuth.showOrHideASection('signing-section',true)" aria-label="<?php _e("Don't have an account Sign-up", "moo_OnlineOrders"); ?>">
+                                            <?php _e("Sign-up", "moo_OnlineOrders"); ?>
+                                        </a>
+                                    </p>
+                                <?php } ?>
+                                </div>
                             </div>
                         </div>
                         <!--   Register   -->
@@ -1528,6 +1928,16 @@ class checkoutPage extends sooShortCode
                                             <?php _e("Please confirm your password", "moo_OnlineOrders"); ?>
                                         </span>
                                     </div>
+
+                                    <?php if (!isset($this->pluginSettings['marketing_checkbox_enabled']) || $this->pluginSettings['marketing_checkbox_enabled'] === 'on') : ?>
+                                    <div class="moo-form-group">
+                                        <label class="soo-marketing-checkbox">
+                                            <input type="checkbox" id="sooSignupMarketingAllowed" checked>
+                                            <span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>
+                                            <span class="soo-marketing-label"><?php echo !empty($this->pluginSettings['marketing_checkbox_text']) ? esc_html($this->pluginSettings['marketing_checkbox_text']) : __("I agree to receive marketing emails and promotions", "moo_OnlineOrders"); ?></span>
+                                        </label>
+                                    </div>
+                                    <?php endif; ?>
 
                                     <button class="sooCheckoutPrimaryButtonInput sooSignupButton" type="submit" aria-label="<?php _e("Submit", "moo_OnlineOrders"); ?>">
                                         <?php _e("Submit", "moo_OnlineOrders"); ?>
@@ -1637,6 +2047,17 @@ class checkoutPage extends sooShortCode
                                                 </span>
                                             </div>
                                         </div>
+                                        <?php if (!isset($this->pluginSettings['marketing_checkbox_enabled']) || $this->pluginSettings['marketing_checkbox_enabled'] === 'on') : ?>
+                                        <div class="moo-row">
+                                            <div class="moo-form-group">
+                                                <label class="soo-marketing-checkbox">
+                                                    <input type="checkbox" id="MooContactMarketingAllowed" checked>
+                                                    <span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>
+                                                    <span class="soo-marketing-label"><?php echo !empty($this->pluginSettings['marketing_checkbox_text']) ? esc_html($this->pluginSettings['marketing_checkbox_text']) : __("I agree to receive marketing emails and promotions", "moo_OnlineOrders"); ?></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <?php endif; ?>
                                         <?php wp_nonce_field('moo-checkout-form');?>
                                     </div>
                                 </div>
@@ -1726,8 +2147,8 @@ class checkoutPage extends sooShortCode
                                                                 </button>
                                                             </div>
 
-                                                        </div>
-                                                    </form>
+                                    </div>
+                                </form>
                                                 </div>
                                             </div>
                                             <div class="soo-list-of-addresses">
@@ -1858,12 +2279,21 @@ class checkoutPage extends sooShortCode
                                                 }
                                                 ?>
                                             </label>
-                                            <div class="moo-totals-value" id="moo-cart-service-fee"  tabindex="0">
-                                                <?php
-                                                echo '$'. number_format($serviceFeeAmount/100,2);
-                                                ?>
-                                            </div>
+                                        <div class="moo-totals-value" id="moo-cart-service-fee"  tabindex="0">
+                                            <?php
+                                            echo '$'. number_format($serviceFeeAmount/100,2);
+                                            ?>
                                         </div>
+                                    </div>
+                                    <?php
+                                    $convenienceFee = $convenienceFeeCents / 100;
+                                    ?>
+                                    <div class="moo-totals-item" id="sooConvenienceFeeTotalSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
+                                        <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
+                                        <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
+                                            <?php echo '$'. number_format($convenienceFee, 2); ?>
+                                        </div>
+                                    </div>
 
                                         <div class="moo-totals-item" id="sooDeliveryFeeTotalSection">
                                             <label class="moo-checkoutText-deliveryFees"  tabindex="0">
@@ -2112,10 +2542,16 @@ class checkoutPage extends sooShortCode
     }
     private function enqueueScripts($isAdvancedCheckout = false)
     {
-        $cloverSkd = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/sdk.js' : 'https://checkout.clover.com/sdk.js';
+        $cloverSdk = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/sdk.js' : 'https://checkout.clover.com/sdk.js';
+        $clover3dsSdk = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/clover3DS/clover3DS-sdk.js' : 'https://checkout.clover.com/clover3DS/clover3DS-sdk.js';
+
         //Clover iframe SDK
-        wp_register_script('sooCloverSdk', $cloverSkd, array('jquery'));
+        wp_register_script('sooCloverSdk', $cloverSdk, array('jquery'), null);
         wp_enqueue_script('sooCloverSdk');
+
+        //clover3DS SDK
+        wp_register_script('sooClover3DSSdk', $clover3dsSdk, array('jquery'), null);
+        wp_enqueue_script('sooClover3DSSdk');
 
         if ($isAdvancedCheckout) {
 
@@ -2467,6 +2903,7 @@ HTML;
     {
         $htmBegin   = '<div id="moo-cloverCreditCardPanel"><input type="hidden" name="cloverToken" id="moo-CloverToken">';
         $htmEnd     = ' <div class="clover-errors"></div></div>';
+        $cardName   = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardName"></div><div class="card-name-error"><div class="clover-error"></div></div></div></div></div>';
         $cardNumber = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardNumber"></div><div class="card-number-error"><div class="clover-error"></div></div></div></div></div>';
         $dateAndCvv = '<div class="moo-row"><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardDate"></div><div class="date-error"><div class="clover-error"></div></div></div></div><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardCvv"></div><div class="cvv-error"><div class="clover-error"></div></div></div></div></div>';
         $address    = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverStreetAddress"></div><div class="streetAddress-error"><div class="clover-error"></div></div></div></div></div>';
@@ -2475,10 +2912,17 @@ HTML;
         $cardsIcons  = '<div class="moo-row"><div class="moo-col-md-12"><img style="height: 25px;margin-top: 5px;" src="'. SOO_PLUGIN_URL .'/public/img/cards-icons.png"  alt="Visa, MC, Amex"/></div></div>';
 
         $html = $htmBegin;
+
+        if ($this->showCardNameFieldOnPaymentForm) {
+            $html .= $cardName;
+        }
+
         $html .= $cardNumber . $dateAndCvv;
+
         if ($this->showStreetAddressFieldOnPaymentForm) {
             $html .= $address;
         }
+
         $html .= $zip;
         //$html .= $encrypted;
         //$html .= $cardsIcons;
@@ -2727,8 +3171,62 @@ HTML;
         return false;
     }
 
+    private function checkCloverFraudToolsForCardName($fraudToolsSource)
+    {
+        if (isset($fraudToolsSource["fraudTools"]) &&
+                isset($fraudToolsSource["fraudTools"]["validateCardHolderNameProvided"]) &&
+                isset($fraudToolsSource["fraudTools"]["validateCardHolderNameVerified"]) &&
+                isset($fraudToolsSource["fraudTools"]["validateCardHolderNameMatch"])
+        ) {
+            return $fraudToolsSource["fraudTools"]["validateCardHolderNameProvided"] || $fraudToolsSource["fraudTools"]["validateCardHolderNameVerified"] || $fraudToolsSource["fraudTools"]["validateCardHolderNameMatch"];
+        }
+        return false;
+    }
+
     private function getOpeningMessage($oppening_status)
     {
+        // Global mode: use the unified endpoint (server source of truth) for
+        // ALL close reasons. The data is already fetched + memoized so this
+        // is just a property read, not a new HTTP call.
+        if (SooDashboardSummary::isGlobalActive()) {
+            $dash = SooSettingsSource::instance()->dashboardClient()->fetch();
+            $ss = (is_array($dash) && isset($dash['store_status'])) ? $dash['store_status'] : array();
+            $cs = (is_array($dash) && isset($dash['checkout_settings'])) ? $dash['checkout_settings'] : array();
+
+            $status = isset($ss['status']) ? $ss['status'] : 'open';
+            if ($status === 'open') {
+                return ''; // store is open — no banner
+            }
+
+            $closeReason = isset($ss['close_reason']) ? $ss['close_reason'] : null;
+            $msg = '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">';
+
+            if ($closeReason === 'manually_closed') {
+                // Manual close — show closure message only, no schedule hint
+                $closureMsg = !empty($cs['closureMessage'])
+                    ? $cs['closureMessage']
+                    : __('We are currently closed and will open again soon', 'moo_OnlineOrders');
+                $msg .= esc_html($closureMsg);
+            } else {
+                // Hours-close or holiday — show hours + message
+                if (!empty($cs['closureMessage'])) {
+                    $msg .= esc_html($cs['closureMessage']);
+                } else {
+                    $storeHours = isset($ss['store_hours_today']) ? $ss['store_hours_today'] : '';
+                    if (!empty($storeHours)) {
+                        $msg .= '<strong>' . __("Today's Online Ordering Hours", "moo_OnlineOrders") . '</strong><br/> ' . esc_html($storeHours) . '<br/> ';
+                    }
+                    $msg .= __("Online Ordering Currently Closed", "moo_OnlineOrders");
+                }
+                // Schedule-in-advance hint — only for hours-close, not manual/holiday
+                if ($closeReason === 'outside_hours' && !empty($cs['acceptOrdersWhileClosed'])) {
+                    $msg .= '<br/><p style="color: #006b00">' . __("You may schedule your order in advance", "moo_OnlineOrders") . '</p>';
+                }
+            }
+            $msg .= '</div>';
+            return $msg;
+        }
+
         $oppening_msg = "";
         if ($this->pluginSettings['hours'] != 'all' ) {
             if(!$oppening_status || $oppening_status["status"] == 'close'){
@@ -2771,13 +3269,13 @@ HTML;
 
     private function isApplePayEnabled()
     {
+        if (isset($this->pluginSettings['_dashboard_apple_pay_enabled'])) {
+            return $this->pluginSettings['_dashboard_apple_pay_enabled'] === 'on';
+        }
         return (bool) get_option("moo_apple_pay_enabled",false);
     }
 
     private function getMerchantUuid() {
-        if ($this->isApplePayEnabled()) {
-           return $this->api->getMerchantUuid();
-        }
-        return null;
+        return $this->api->getMerchantUuid();
     }
 }

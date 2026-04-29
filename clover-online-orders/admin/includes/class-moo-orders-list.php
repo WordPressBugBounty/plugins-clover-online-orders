@@ -82,9 +82,10 @@ class Orders_List_Moo extends WP_List_Table_MOO {
             );
     }
     function column_amount( $order ) {
+        $convenienceFee = isset($order["convenience_fee"]) ? $order["convenience_fee"] : 0;
         return
             sprintf( '$%s',
-                number_format((($order["amount"]+$order["tip_amount"])/100),2)
+                number_format((($order["amount"]+$order["tip_amount"]+$convenienceFee)/100),2)
             );
     }
     function column_source( $order ) {
@@ -139,7 +140,7 @@ class Orders_List_Moo extends WP_List_Table_MOO {
             case 'created_at_hf':
             case 'source':
                 if (isset($item[$column_name]))
-                    return stripslashes((string)$item[$column_name]);
+                    return esc_html(stripslashes((string)$item[$column_name]));
                 return '';
             default:
                 return print_r( $item, true ); //Show the whole array for troubleshooting purposes

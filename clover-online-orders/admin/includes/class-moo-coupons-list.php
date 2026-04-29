@@ -80,9 +80,9 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
         $title = '<strong>' . stripslashes($coupon['name']) . '</strong>';
 
         if($coupon['isEnabled']=="1")
-            $actions['Disable'] = sprintf( '<a href="?page=%s&paged=%s&action=%s&coupon=%s">Disable</a>', ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):''),((isset($_REQUEST['paged']))?$_REQUEST['paged']:''), 'disable',$coupon['code']);
+            $actions['Disable'] = sprintf( '<a href="%s">Disable</a>', wp_nonce_url( admin_url('admin.php?page=' . ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):'') . '&paged=' . ((isset($_REQUEST['paged']))?intval($_REQUEST['paged']):'') . '&action=disable&coupon=' . urlencode($coupon['code'])), 'moo_disable_coupon_' . $coupon['code'] ) );
         else
-            $actions['Enable']  = sprintf( '<a href="?page=%s&paged=%s&action=%s&coupon=%s">Enable</a>',((isset($_REQUEST['page']))?$_REQUEST['page']:''),((isset($_REQUEST['paged']))?sanitize_text_field($_REQUEST['paged']):''), 'enable',$coupon['code']);
+            $actions['Enable']  = sprintf( '<a href="%s">Enable</a>', wp_nonce_url( admin_url('admin.php?page=' . ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):'') . '&paged=' . ((isset($_REQUEST['paged']))?intval($_REQUEST['paged']):'') . '&action=enable&coupon=' . urlencode($coupon['code'])), 'moo_enable_coupon_' . $coupon['code'] ) );
 
         $actions['Edit']   = sprintf( '<a href="?page=%s&paged=%s&action=%s&coupon=%s">Edit</a>', ((isset($_REQUEST['page']))?$_REQUEST['page']:''), ((isset($_REQUEST['paged']))?sanitize_text_field($_REQUEST['paged']):''), 'edit_coupon',urlencode( $coupon['code']) );
         $actions['Delete'] = sprintf( '<a onclick="mooDeleteCoupon(event)" href="?page=%s&paged=%s&action=%s&coupon=%s&_wpnonce=%s">Delete</a>',((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):''),((isset($_REQUEST['paged']))?$_REQUEST['paged']:''), 'delete',urlencode($coupon['code']), $delete_nonce );
@@ -198,6 +198,12 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
         $this->items = $this::get_items( $per_page, $current_page );
     }
     public function process_bulk_action() {
+        // Only verify when there IS an action — empty submissions on the listing page have no nonce.
+        $action = $this->current_action();
+        if ( $action && in_array( $action, array( 'bulk-delete', 'bulk-enable', 'bulk-disable' ), true ) ) {
+            check_admin_referer( 'bulk-' . $this->_args['plural'] );
+        }
+
         //Detect when a bulk action is being triggered...
         if ( 'delete' === $this->current_action() ) {
             // In our file that handles the request, verify the nonce.
@@ -213,14 +219,18 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
 
         }
         if ( 'enable' === $this->current_action() ) {
-            $res = $this->enable_coupon(sanitize_text_field($_GET['coupon']),"1");
+            $coupon_id = isset( $_GET['coupon'] ) ? sanitize_text_field( $_GET['coupon'] ) : '';
+            check_admin_referer( 'moo_enable_coupon_' . $coupon_id );
+            $res = $this->enable_coupon( $coupon_id, "1" );
             $redirect_url = add_query_arg(array("enabled"=>$res), $this->couponPageUrl);
             wp_safe_redirect( $redirect_url );
             exit;
         }
 
         if ( 'disable' === $this->current_action() ) {
-            $res = $this->enable_coupon(sanitize_text_field($_GET['coupon']),"0");
+            $coupon_id = isset( $_GET['coupon'] ) ? sanitize_text_field( $_GET['coupon'] ) : '';
+            check_admin_referer( 'moo_disable_coupon_' . $coupon_id );
+            $res = $this->enable_coupon( $coupon_id, "0" );
             $redirect_url = add_query_arg(array("disabled"=>$res), $this->couponPageUrl);
             wp_safe_redirect( $redirect_url );
             exit;

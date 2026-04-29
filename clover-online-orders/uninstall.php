@@ -64,6 +64,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
             /*-- Table `item_modifier_group` --*/
             $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_modifier_group` ;"); // db call ok
 
+
             /* -- Table `order_types -- */
             $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_images` ;"); // db call ok
 
@@ -141,6 +142,9 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
         /*-- Table `item_modifier_group` --*/
         $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_item_modifier_group` ;");
+
+        /*-- Table `items_categories` --*/
+        $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_items_categories` ;");
 
         /* -- Table `order_types -- */
         $wpdb->query("DROP TABLE IF EXISTS `{$wpdb->prefix}moo_images` ;");

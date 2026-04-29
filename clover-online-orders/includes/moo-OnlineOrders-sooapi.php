@@ -35,6 +35,11 @@ class Moo_OnlineOrders_SooApi
             $this->urlInventoryApi = "https://api-inventory.smartonlineorders.com/v2/";
         }
 
+        //TODO RMEOVE THIS FOR TESTING PURPOSE ONLY
+       // $this->url_api_v2 = "http://127.0.0.1:8000/v2/";
+       // $this->urlInventoryApi = "http://127.0.0.1:8000/v2/";
+        //TODO FIN
+
         $this->hours_url_api = "https://smh.smartonlineorder.com/v1/api/";
 
     }
@@ -408,6 +413,114 @@ class Moo_OnlineOrders_SooApi
         }
         return "Please setup your business hours on Clover";
     }
+    public function getCheckoutSettings() {
+        $cacheKey = "moo_checkout_settings_cache";
+        $etagKey = "moo_checkout_settings_etag";
+        $cached = get_option($cacheKey);
+        $etag = get_option($etagKey);
+
+        if(!$this->jwt_token) {
+            $this->getJwtToken();
+        }
+        if(!$this->jwt_token) {
+            return is_array($cached) ? $cached : false;
+        }
+
+        $headers = array(
+            "Accept" => "application/json",
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer ".$this->jwt_token,
+        );
+        if (!empty($etag)) {
+            $headers["If-None-Match"] = $etag;
+        }
+
+        $url = $this->url_api_v2 . "merchants/checkout-settings";
+        $response = $this->sendHttpRequest($url, "GET", array("headers" => $headers));
+        if (!$response || !is_array($response)) {
+            return is_array($cached) ? $cached : false;
+        }
+
+        $httpCode = $response["httpCode"];
+        if ($httpCode === 304) {
+            if (is_array($cached)) {
+                return $cached;
+            }
+            unset($headers["If-None-Match"]);
+            $response = $this->sendHttpRequest($url, "GET", array("headers" => $headers));
+            if (!$response || !is_array($response)) {
+                return false;
+            }
+            $httpCode = $response["httpCode"];
+        }
+
+        if ($httpCode === 200) {
+            $body = json_decode($response["responseContent"], true);
+            if (is_array($body)) {
+                $newEtag = "";
+                if (isset($response["headers"]) && isset($response["headers"]["etag"])) {
+                    $newEtag = $response["headers"]["etag"];
+                }
+                if (!empty($newEtag)) {
+                    update_option($etagKey, $newEtag);
+                }
+                update_option($cacheKey, $body);
+                return $body;
+            }
+        }
+
+        return is_array($cached) ? $cached : false;
+    }
+    public function getConvenienceFee() {
+        $cacheKey = "moo_convenience_fee_cache";
+        $etagKey = "moo_convenience_fee_etag";
+        $cached = get_option($cacheKey);
+        $etag = get_option($etagKey);
+
+        if(!$this->jwt_token) {
+            $this->getJwtToken();
+        }
+        if(!$this->jwt_token) {
+            return is_array($cached) ? $cached : false;
+        }
+
+        $headers = array(
+            "Accept" => "application/json",
+            "Content-Type" => "application/json",
+            "Authorization" => "Bearer ".$this->jwt_token,
+        );
+        if (!empty($etag)) {
+            $headers["If-None-Match"] = $etag;
+        }
+
+        $url = $this->url_api_v2 . "merchants/convenience_fee";
+        $response = $this->sendHttpRequest($url, "GET", array("headers" => $headers));
+        if (!$response || !is_array($response)) {
+            return is_array($cached) ? $cached : false;
+        }
+
+        $httpCode = $response["httpCode"];
+        if ($httpCode === 304) {
+            return is_array($cached) ? $cached : false;
+        }
+
+        if ($httpCode === 200) {
+            $body = json_decode($response["responseContent"], true);
+            if (is_array($body)) {
+                $newEtag = "";
+                if (isset($response["headers"]) && isset($response["headers"]["etag"])) {
+                    $newEtag = $response["headers"]["etag"];
+                }
+                if (!empty($newEtag)) {
+                    update_option($etagKey, $newEtag);
+                }
+                update_option($cacheKey, $body);
+                return $body;
+            }
+        }
+
+        return is_array($cached) ? $cached : false;
+    }
     public function cloverOpeningHoursExist() {
         $res = $this->getRequest($this->url_api_v2 . "merchants/opening_hours", true);
         if (isset($res["elements"]) && count($res["elements"]) > 0) {
@@ -631,6 +744,12 @@ class Moo_OnlineOrders_SooApi
         }
         return $this->postRequest($endPoint, wp_json_encode($payload),true, $extraHeaders);
     }
+
+    public function finalize3DsPayment($payload) {
+        $endPoint = $this->url_api_v2 . "merchants/finalize_3ds_payment";
+        return $this->postRequest($endPoint, wp_json_encode($payload),true);
+    }
+
 
     public function customerRequestsWrapper($endpoint, $payload, $authorization, $isDelete) {
 
@@ -939,12 +1058,6 @@ class Moo_OnlineOrders_SooApi
         return $this->callApi_Post('customers/login', $this->apiKey, 'email=' . $email . '&password=' . $password);
     }
 
-    public function moo_CustomerFbLogin($options)
-    {
-        $urlOptions = $this->stringify($options);
-        return $this->callApi_Post('customers/fblogin', $this->apiKey, $urlOptions);
-    }
-
     public function moo_CustomerSignup($options)
     {
         $urlOptions = $this->stringify($options);
@@ -1150,34 +1263,30 @@ class Moo_OnlineOrders_SooApi
                     $wpdb->delete("{$wpdb->prefix}moo_items_categories", array('item_uuid' => $item['id']));
                 }
 
-                //Delete images as well if users choose to sync them.
-                if ($syncImages){
-                    $wpdb->delete("{$wpdb->prefix}moo_images", array('item_uuid' => $item['id']));
-                }
                // Update the item when it's changed.
                 if ($item['modifiedTime'] != $currentItem['modified_time']){
                     $itemProps = array(
-                        'name' => isset($item["name"]) ? esc_sql($item["name"]) : $currentItem["name"],
-                        'alternate_name' => isset($item["alternateName"]) ? esc_sql($item["alternateName"]) : $currentItem["alternate_name"],
-                        'price' => isset($item["price"]) ? esc_sql($item["price"]) : $currentItem["price"],
-                        'code' => isset($item["code"]) ? esc_sql($item["code"]) : $currentItem["code"],
-                        'price_type' => isset($item["priceType"]) ? esc_sql($item["priceType"]) : $currentItem["price_type"],
-                        'unit_name' => isset($item["unitName"]) ? esc_sql($item["unitName"]) : $currentItem["unit_name"],
-                        'default_taxe_rate' => isset($item["defaultTaxRates"]) ? esc_sql($item["defaultTaxRates"]) : $currentItem["default_taxe_rate"],
-                        'sku' => isset($item["sku"]) ? esc_sql($item["sku"]) : $currentItem["sku"],
-                        'hidden' => isset($item["hidden"]) ? esc_sql($item["hidden"]) : $currentItem["hidden"],
-                        'is_revenue' => isset($item["isRevenue"]) ? esc_sql($item["isRevenue"]) : $currentItem["is_revenue"],
-                        'cost' => isset($item["cost"]) ? esc_sql($item["cost"]) : $currentItem["cost"],
-                        'available' => isset($item["available"]) ? esc_sql($item["available"]) : $currentItem["available"],
-                        'modified_time' => isset($item["modifiedTime"]) ? esc_sql($item["modifiedTime"]) : time(),
+                        'name' => isset($item["name"]) ? $item["name"] : $currentItem["name"],
+                        'alternate_name' => isset($item["alternateName"]) ? $item["alternateName"] : $currentItem["alternate_name"],
+                        'price' => isset($item["price"]) ? $item["price"] : $currentItem["price"],
+                        'code' => isset($item["code"]) ? $item["code"] : $currentItem["code"],
+                        'price_type' => isset($item["priceType"]) ? $item["priceType"] : $currentItem["price_type"],
+                        'unit_name' => isset($item["unitName"]) ? $item["unitName"] : $currentItem["unit_name"],
+                        'default_taxe_rate' => isset($item["defaultTaxRates"]) ? $item["defaultTaxRates"] : $currentItem["default_taxe_rate"],
+                        'sku' => isset($item["sku"]) ? $item["sku"] : $currentItem["sku"],
+                        'hidden' => isset($item["hidden"]) ? $item["hidden"] : $currentItem["hidden"],
+                        'is_revenue' => isset($item["isRevenue"]) ? $item["isRevenue"] : $currentItem["is_revenue"],
+                        'cost' => isset($item["cost"]) ? $item["cost"] : $currentItem["cost"],
+                        'available' => isset($item["available"]) ? $item["available"] : $currentItem["available"],
+                        'modified_time' => isset($item["modifiedTime"]) ? $item["modifiedTime"] : time(),
                     );
                     //Sync online name and descriptions if the user prefers to sync them.
                     if ($syncOnlineName) {
                         if ( !empty($item['menuItem']['name']) ){
-                            $itemProps['soo_name'] = esc_sql($item['menuItem']['name']);
+                            $itemProps['soo_name'] = $item['menuItem']['name'];
                         }
                         if ( !empty($item['menuItem']['description']) ){
-                            $itemProps['description'] = esc_sql($item['menuItem']['description']);
+                            $itemProps['description'] = $item['menuItem']['description'];
                         }
                     }
 
@@ -1185,41 +1294,35 @@ class Moo_OnlineOrders_SooApi
                     $wpdb->update("{$wpdb->prefix}moo_item", $itemProps, array('uuid' => $item['id']));
 
                     //Sync images as well if the user prefers to sync them.
-                    if ($syncImages){
-                        //Save Item Image
-                        if (!empty($item["menuItem"]["imageFilename"])) {
-                            $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
-                            if($link){
-                                $wpdb->insert("{$wpdb->prefix}moo_images",array(
-                                    "item_uuid"=>$item["id"],
-                                    "url"=>$link,
-                                    "is_default"=>1,
-                                    "is_enabled"=>1
-                                ));
-                            }
-                        }
+                    if ($syncImages) {
+                        //$item_uuid, $image_link, $deleteOldImage = true, $force = false)
+                        as_schedule_single_action( time(), 'soo_import_item_image', array(
+                            $item["id"],
+                            $item["menuItem"]["imageFilename"],
+                            true
+                        ) );
                     }
                 }
 
             } else {
                 $itemProps = array(
-                    'uuid' => esc_sql($item['id']),
-                    'name' => esc_sql($item['name']),
-                    'soo_name' => !empty($item['menuItem']['name']) ? esc_sql($item['menuItem']['name']) : null,
-                    'description' => !empty($item['menuItem']['description']) ? esc_sql($item['menuItem']['description']) : null,
-                    'visible' => !empty($item['menuItem']['enabled']) ? esc_sql($item['menuItem']['enabled']) : 1,
-                    'alternate_name' => esc_sql($item['alternateName']),
-                    'price' => esc_sql($item['price']),
-                    'code' => esc_sql($item['code']),
-                    'price_type' => esc_sql($item['priceType']),
-                    'unit_name' => esc_sql($item['unitName']),
-                    'default_taxe_rate' => esc_sql($item['defaultTaxRates']),
-                    'sku' => esc_sql($item['sku']),
-                    'hidden' => esc_sql($item['hidden']),
-                    'is_revenue' => esc_sql($item['isRevenue']),
-                    'cost' => esc_sql($item['cost']),
-                    'available' => esc_sql($item['available']),
-                    'modified_time' => esc_sql($item['modifiedTime']),
+                    'uuid' => $item['id'],
+                    'name' => $item['name'],
+                    'soo_name' => !empty($item['menuItem']['name']) ? $item['menuItem']['name'] : null,
+                    'description' => !empty($item['menuItem']['description']) ? $item['menuItem']['description'] : null,
+                    'visible' => !empty($item['menuItem']['enabled']) ? $item['menuItem']['enabled'] : 1,
+                    'alternate_name' => $item['alternateName'],
+                    'price' => $item['price'],
+                    'code' => $item['code'],
+                    'price_type' => $item['priceType'],
+                    'unit_name' => $item['unitName'],
+                    'default_taxe_rate' => $item['defaultTaxRates'],
+                    'sku' => $item['sku'],
+                    'hidden' => $item['hidden'],
+                    'is_revenue' => $item['isRevenue'],
+                    'cost' => $item['cost'],
+                    'available' => $item['available'],
+                    'modified_time' => $item['modifiedTime'],
                 );
 
                 if (isset($item['itemGroup'])) {
@@ -1228,15 +1331,11 @@ class Moo_OnlineOrders_SooApi
                 $wpdb->insert("{$wpdb->prefix}moo_item", $itemProps);
 
                 if (!empty($item["menuItem"]["imageFilename"])) {
-                    $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
-                    if($link){
-                        $wpdb->insert("{$wpdb->prefix}moo_images",array(
-                            "item_uuid"=>$item["id"],
-                            "url"=>$link,
-                            "is_default"=>1,
-                            "is_enabled"=>1
-                        ));
-                    }
+                    //$item_uuid, $image_link, $deleteOldImage = true, $force = false)
+                    as_schedule_single_action( time(), 'soo_import_item_image', array(
+                        $item["id"],
+                        $item["menuItem"]["imageFilename"]
+                    ) );
                 }
             }
 
@@ -1464,8 +1563,6 @@ class Moo_OnlineOrders_SooApi
     //Functions to save DATA in db
     public function save_items($items) {
         global $wpdb;
-        $wpdb->hide_errors();
-        $wpdb->suppress_errors( true );
         $count = 0;
         $exist = 0;
         $errors = 0;
@@ -1473,7 +1570,7 @@ class Moo_OnlineOrders_SooApi
             if (!$item || !isset($item["id"])) {
                 continue;
             }
-            $itemUuid = esc_sql($item["id"]);
+            $itemUuid = $item["id"];
 
             // Check if item already exists
             $existingItem = $wpdb->get_var($wpdb->prepare(
@@ -1487,27 +1584,27 @@ class Moo_OnlineOrders_SooApi
 
             $itemProps = array(
                 'uuid' => $itemUuid,
-                'name' => esc_sql(!empty($item["name"]) ? $item["name"] : ''),
-                'soo_name' => esc_sql(!empty($item["menuItem"]["name"]) ? $item["menuItem"]["name"] : null),
-                'description' => esc_sql(!empty($item["menuItem"]["description"]) ? $item["menuItem"]["description"] : null),
-                'visible' => esc_sql(!empty($item["menuItem"]["enabled"]) ? (bool)$item["menuItem"]["enabled"] : true),
-                'alternate_name' => esc_sql(!empty($item["alternateName"]) ? $item["alternateName"] : ''),
-                'price' => esc_sql(!empty($item["price"]) ? $item["price"] : 0),
-                'code' => esc_sql(!empty($item["code"]) ? $item["code"] : ''),
-                'price_type' => esc_sql(!empty($item["priceType"]) ? $item["priceType"] : ''),
-                'unit_name' => esc_sql(!empty($item["unitName"]) ? $item["unitName"] : ''),
-                'default_taxe_rate' => esc_sql(!empty($item["defaultTaxRates"]) ? $item["defaultTaxRates"] : ''),
-                'sku' => esc_sql(!empty($item["sku"]) ? $item["sku"] : ''),
-                'hidden' => esc_sql(!empty($item["hidden"]) ? $item["hidden"] : 0),
-                'is_revenue' => esc_sql(!empty($item["isRevenue"]) ? $item["isRevenue"] : 0),
-                'cost' => esc_sql(!empty($item["cost"]) ? $item["cost"] : 0),
-                'available' => esc_sql(!empty($item["available"]) ? $item["available"] : 0),
-                'modified_time' => esc_sql(!empty($item["modifiedTime"]) ? $item["modifiedTime"] : ''),
+                'name' => !empty($item["name"]) ? $item["name"] : '',
+                'soo_name' => !empty($item["menuItem"]["name"]) ? $item["menuItem"]["name"] : null,
+                'description' => !empty($item["menuItem"]["description"]) ? $item["menuItem"]["description"] : null,
+                'visible' => !empty($item["menuItem"]["enabled"]) ? (bool)$item["menuItem"]["enabled"] : true,
+                'alternate_name' => !empty($item["alternateName"]) ? $item["alternateName"] : '',
+                'price' => !empty($item["price"]) ? $item["price"] : 0,
+                'code' => !empty($item["code"]) ? $item["code"] : '',
+                'price_type' => !empty($item["priceType"]) ? $item["priceType"] : '',
+                'unit_name' => !empty($item["unitName"]) ? $item["unitName"] : '',
+                'default_taxe_rate' => !empty($item["defaultTaxRates"]) ? $item["defaultTaxRates"] : '',
+                'sku' => !empty($item["sku"]) ? $item["sku"] : '',
+                'hidden' => !empty($item["hidden"]) ? $item["hidden"] : 0,
+                'is_revenue' => !empty($item["isRevenue"]) ? $item["isRevenue"] : 0,
+                'cost' => !empty($item["cost"]) ? $item["cost"] : 0,
+                'available' => !empty($item["available"]) ? $item["available"] : 0,
+                'modified_time' => !empty($item["modifiedTime"]) ? $item["modifiedTime"] : '',
             );
 
 
             if (isset($item["itemGroup"])){
-                $itemProps['item_group_uuid'] = esc_sql($item["itemGroup"]["id"]);
+                $itemProps['item_group_uuid'] = $item["itemGroup"]["id"];
             }
             try {
                 //Save the item
@@ -1543,15 +1640,10 @@ class Moo_OnlineOrders_SooApi
 
                 //Save Item Image
                 if (!empty($item["menuItem"]["imageFilename"])) {
-                    $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["menuItem"]["imageFilename"]);
-                    if($link){
-                        $wpdb->insert("{$wpdb->prefix}moo_images",array(
-                            "item_uuid"=>$item["id"],
-                            "url"=>$link,
-                            "is_default"=>1,
-                            "is_enabled"=>1
-                        ));
-                    }
+                    as_schedule_single_action( time(), 'soo_import_item_image', array(
+                        $item["id"],
+                        $item["menuItem"]["imageFilename"],
+                    ) );
                 }
             } catch (Exception $e){
                 $errors++;
@@ -1720,7 +1812,6 @@ class Moo_OnlineOrders_SooApi
 
     public function insertOrUpdateCategory($cat) {
         global $wpdb;
-        $wpdb->hide_errors();
         if(isset($cat["items"]) && isset($cat["items"]["elements"]) && count($cat["items"]["elements"])>=100) {
             $items = $this->getItemsPerCategoryWithoutSaving($cat["id"]);
             $cat["items"] = array("elements"=>$items);
@@ -1785,7 +1876,7 @@ class Moo_OnlineOrders_SooApi
         try {
             $res = $wpdb->insert("{$wpdb->prefix}moo_order_types", array(
                 'ot_uuid' => $uuid,
-                'label' => esc_sql($label),
+                'label' => $label,
                 'taxable' => (($taxable == "true") ? "1" : "0"),
                 'status' => 1,
                 'show_sa' => (($show_sa == "true") ? "1" : "0"),
@@ -1846,7 +1937,7 @@ class Moo_OnlineOrders_SooApi
         return $string;
     }
 
-    public function getRequest($url, $withJwt = false) {
+    public function getRequest($url, $withJwt = false, $extraHeaders = null) {
         if($withJwt) {
             if($this->jwt_token){
                 $headers = array(
@@ -1867,6 +1958,9 @@ class Moo_OnlineOrders_SooApi
                 "Accept"=>"application/json",
                 "X-Authorization"=>$this->apiKey,
             );
+        }
+        if($extraHeaders && is_array($extraHeaders)) {
+            $headers = array_merge($headers, $extraHeaders);
         }
         return $this->apiGet($url,$withJwt, $headers);
     }
@@ -2096,6 +2190,7 @@ class Moo_OnlineOrders_SooApi
             $result = array(
                 "httpCode"=> wp_remote_retrieve_response_code( $response ),
                 "responseContent"=> wp_remote_retrieve_body( $response ),
+                "headers" => wp_remote_retrieve_headers( $response ),
             );
             $this->last_error = $result;
             $this->last_error['url'] = $url;

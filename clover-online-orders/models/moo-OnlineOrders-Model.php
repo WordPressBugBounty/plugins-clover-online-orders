@@ -75,10 +75,15 @@ class Moo_OnlineOrders_Model {
     }
     function getItemCategories($uuid) {
         $uuid = esc_sql($uuid);
-        return $this->db->get_results("SELECT uuid as id
-                                    FROM {$this->db->prefix}moo_category
-                                    WHERE items like '%{$uuid}%'
-                                    ",'ARRAY_A');
+        $query = $this->db->prepare(
+            "SELECT c.uuid, c.name, c.alternate_name, c.custom_hours, ic.sort_order
+             FROM {$this->db->prefix}moo_items_categories ic
+             JOIN {$this->db->prefix}moo_category c ON c.uuid = ic.category_uuid
+             WHERE ic.item_uuid = %s
+             ORDER BY ic.sort_order ASC",
+            $uuid
+        );
+        return $this->db->get_results($query, 'ARRAY_A');
     }
     function getVisibleItemsByCategory($string,$limit){
         //$string = esc_sql($string);
@@ -111,6 +116,18 @@ class Moo_OnlineOrders_Model {
                 WHERE i.uuid in {$string}";
         $result  = $this->db->get_results($sql);
         return $result;
+    }
+    function getModifiersNamesByUuids($string){
+        $sql = "SELECT m.uuid,m.name
+                FROM {$this->db->prefix}moo_modifier m
+                WHERE m.uuid in {$string}";
+        return $this->db->get_results($sql);
+    }
+    function getModifierGroupsNamesByUuids($string){
+        $sql = "SELECT mg.uuid,mg.name
+                FROM {$this->db->prefix}moo_modifier_group mg
+                WHERE mg.uuid in {$string}";
+        return $this->db->get_results($sql);
     }
     function deleteItem($uuid) {
         $tables = [
@@ -535,13 +552,11 @@ class Moo_OnlineOrders_Model {
     }
 
     function ChangeCategoryName($cat_uuid,$name) {
-        $uuid = esc_sql($cat_uuid);
-        $name = esc_sql($name);
         return $this->db->update("{$this->db->prefix}moo_category",
             array(
                 'name' => $name
             ),
-            array( 'uuid' => $uuid )
+            array( 'uuid' => $cat_uuid )
         );
 
     }
@@ -661,9 +676,9 @@ class Moo_OnlineOrders_Model {
     }
     function getFeaturedProducts($limit = null) {
        if ($limit){
-           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc limit ".$limit);
+           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by sort_order IS NULL ASC, sort_order ASC, soo_name, name, alternate_name asc limit ".$limit);
        } else {
-           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by soo_name,name,alternate_name asc");
+           return $this->db->get_results("SELECT * FROM {$this->db->prefix}moo_item item where item_group_uuid is null and hidden = 0 and item.featured = 1 ORDER by sort_order IS NULL ASC, sort_order ASC, soo_name, name, alternate_name asc");
        }
     }
     function moo_GetBestItems4Customer($email){
@@ -770,9 +785,7 @@ class Moo_OnlineOrders_Model {
         return true;
     }
     function updateItemName($uuid, $newName) {
-        $uuid = esc_sql($uuid);
-        $name = esc_sql($newName);
-        return $this->db->update("{$this->db->prefix}moo_item", array('soo_name' => $name), array( 'uuid' => $uuid ));
+        return $this->db->update("{$this->db->prefix}moo_item", array('soo_name' => $newName), array( 'uuid' => $uuid ));
     }
     function updateItem($item, $byUuid) {
         if ($byUuid){
@@ -1040,9 +1053,6 @@ class Moo_OnlineOrders_Model {
 
     }
     function updateCategoryNameAndDescription($uuid,$newName,$newDescription) {
-        $uuid           = esc_sql($uuid);
-        $newName        = esc_sql($newName);
-        $newDescription = esc_sql($newDescription);
         $data = array();
 
         $data['alternate_name'] = $newName;
@@ -1055,9 +1065,6 @@ class Moo_OnlineOrders_Model {
 
     }
     function updateCategoryTime($uuid,$status,$hour) {
-        $uuid           = esc_sql($uuid);
-        $status        = esc_sql($status);
-        $hour = esc_sql($hour);
         $data = array();
         if(!empty($status)){
             $data['time_availability'] = $status;
@@ -1075,9 +1082,6 @@ class Moo_OnlineOrders_Model {
 
     }
     function updateItemCustomHour($uuid,$hours) {
-        $uuid           = esc_sql($uuid);
-        $hours = esc_sql($hours);
-
         if(!isset($hours) || empty($hours)){
             $hours = null;
         }
@@ -1188,7 +1192,6 @@ class Moo_OnlineOrders_Model {
                     'items_imported' => 1,
                 ));
             }
-
             $this->db->query('COMMIT');
             return true;
         } catch (Exception $e){

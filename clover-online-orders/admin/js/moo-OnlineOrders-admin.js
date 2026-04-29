@@ -37,6 +37,33 @@ document.addEventListener("keydown", function(e) {
 }, false);
 
 jQuery(document).ready(function($){
+    // CSRF protection: auto-attach the moo_admin_ajax nonce to every POST to admin-ajax.php.
+    // Server-side handlers verify this via check_ajax_referer('moo_admin_ajax', '_moo_nonce').
+    // Handlers that use their own per-action nonce (moo-checkout-form, sooAddOrderType, wp_rest)
+    // continue to verify those independently.
+    jQuery.ajaxSetup({
+        beforeSend: function(xhr, settings) {
+            if (!settings.url || settings.url.indexOf('admin-ajax.php') === -1) return;
+            if (settings.type !== 'POST' && settings.type !== 'post') return;
+            if (typeof moo_admin_ajax_obj === 'undefined' || !moo_admin_ajax_obj.nonce) return;
+
+            if (typeof settings.data === 'string') {
+                // form-encoded; only append if not already present
+                if (settings.data.indexOf('_moo_nonce=') === -1) {
+                    settings.data += (settings.data.length ? '&' : '') + '_moo_nonce=' + encodeURIComponent(moo_admin_ajax_obj.nonce);
+                }
+            } else if (settings.data instanceof FormData) {
+                if (!settings.data.has('_moo_nonce')) {
+                    settings.data.append('_moo_nonce', moo_admin_ajax_obj.nonce);
+                }
+            } else if (typeof settings.data === 'object' && settings.data !== null) {
+                if (!('_moo_nonce' in settings.data)) {
+                    settings.data._moo_nonce = moo_admin_ajax_obj.nonce;
+                }
+            }
+        }
+    });
+
     window.moo_loading = '<svg xmlns="http://www.w3.org/2000/svg" width="44px" height="44px" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid" class="uil-default"><rect x="0" y="0" width="100" height="100" fill="none" class="bk"></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(0 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(30 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.08333333333333333s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(60 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.16666666666666666s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(90 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.25s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(120 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.3333333333333333s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(150 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.4166666666666667s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(180 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.5s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(210 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.5833333333333334s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(240 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.6666666666666666s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(270 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.75s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(300 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.8333333333333334s" repeatCount="indefinite"></animate></rect><rect x="46.5" y="40" width="7" height="20" rx="5" ry="5" fill="#00b2ff" transform="rotate(330 50 50) translate(0 -30)">  <animate attributeName="opacity" from="1" to="0" dur="1s" begin="0.9166666666666666s" repeatCount="indefinite"></animate></rect></svg>';
     window.moo_first_time = true;
     window.moo_nb_allItems =0;
@@ -805,11 +832,14 @@ function Moo_GetOrderTypes(uuid = null){
                 } catch (e) {
                     console.log("Parsing error: orderTypes");
                 }
-                var html='<p>Drag and drop to rearrange</p><ul style="margin-bottom: 10px">';
+                // Store order types data globally for edit modal
+                window.moo_orderTypesData = {};
+                var html='<ul style="margin-bottom: 10px">';
                 if(orderTypes.length>0) {
                     for(var i=0;i<orderTypes.length;i++) {
                         var $ot = orderTypes[i];
                         if($ot.label == "") continue;
+                        window.moo_orderTypesData[$ot.ot_uuid] = $ot;
                         if ($ot.status==1){
                             html += '<li class="moo_orderType enabled" ot_uuid="'+$ot.ot_uuid+'">';
                         }
@@ -827,143 +857,10 @@ function Moo_GetOrderTypes(uuid = null){
                         else{
                             html += '<span style="margin-left: 10px"><img src="'+moo_params.plugin_url+"/public/img/bullet_ball_glass_grey.png"+'"/></span>';
                         }
-                        html +='<span style="float: right;font-size: 12px;" id="top-bt-'+$ot.ot_uuid+'">';
-                        //html += '<a href="#" onclick="moo_showOrderTypeDetails(event,&quot;'+$ot.ot_uuid+'&quot;)">Edit</a> | <a href="#" title="Delete this order types from the wordpress Database" onclick="Moo_deleteOrderType(event,&quot;'+$ot.ot_uuid+'&quot;)">DELETE</a>';
-                        html += `<a href="#" onclick="moo_showOrderTypeDetails(event,'${$ot.ot_uuid}')">Edit</a> | `;
-                        html += `<a href="#" title="Delete this order types from the wordpress Database" onclick="Moo_deleteOrderType(event,'${$ot.ot_uuid}')">DELETE</a>`;
+                        html +='<span style="float: right;" id="top-bt-'+$ot.ot_uuid+'">';
+                        html += `<a href="#" class="moo-ot-action-icon moo-ot-edit" title="Edit" onclick="Moo_OpenEditOrderTypeModal(event,'${$ot.ot_uuid}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></a>`;
+                        html += `<a href="#" class="moo-ot-action-icon moo-ot-delete" title="Delete this order type" onclick="Moo_deleteOrderType(event,'${$ot.ot_uuid}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></a>`;
                         html +='</span>';
-                        html += '</div>';
-                        if(uuid && uuid===$ot.ot_uuid) {
-                            html +='<div class="Detail_OrderType" id="detail_'+$ot.ot_uuid+'" style="display: block">';
-                        } else {
-                            html +='<div class="Detail_OrderType" id="detail_'+$ot.ot_uuid+'">';
-                        }
-
-                        html +='<div class="champ_order name_order"><span class="label_Torder">Order Type Name </span><input type="text" id="label_'+$ot.ot_uuid+'" value="'+$ot.label+'" style="width: 160px;"></div>';
-                        //enable/disable
-                        html +='<div class="champ_order IsEnabled_order"><span class="label_Torder">Disable / Enabled </span>';
-
-                        html +='<div class="moo-onoffswitch" title="Enable or disable this order type">';
-
-                        if ($ot.status==1){
-                            html += '<input type="checkbox" name="onoffswitch[]" id="select_En_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" checked>';
-                        }
-                        else{
-                            html += '<input type="checkbox" name="onoffswitch[]" id="select_En_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" >';
-                        }
-                        html +='<label class="moo-onoffswitch-label" for="select_En_'+$ot.ot_uuid+'"><span class="moo-onoffswitch-inner"></span>';
-                        html +='<span class="moo-onoffswitch-switch"></span>';
-                        html +='</label>';
-                        html +="</div>";
-                        html += '</div>';
-                        //Min amount
-                        html +='<div class="champ_order Taxable_order"><span class="label_Torder">Minimum Amount </span>';
-                        html +='<input type="text" id="minAmount_'+$ot.ot_uuid+'" value="'+$ot.minAmount+'" style="width: 160px;">';
-                        html += '</div>';
-                        //Max amount
-                        html +='<div class="champ_order Taxable_order"><span class="label_Torder">Maximum Amount </span>';
-                        html +='<input type="text" id="maxAmount_'+$ot.ot_uuid+'" value="'+$ot.maxAmount+'" style="width: 160px;">';
-                        html += '</div>';
-                        //show Taxable
-                        html +='<div class="champ_order Taxable_order"><span class="label_Torder">Taxable </span>';
-                        html +='<select style="width: 160px;" id="select_Tax_'+$ot.ot_uuid+'">';
-                        html +='<option value="1" '+(($ot.taxable==1)?"selected":"")+'>Yes</option>';
-                        html +='<option value="0" '+(($ot.taxable==0)?"selected":"")+'>No</option>';
-                        html +='</select>';
-                        html += '</div>';
-
-
-                        //Delivery Order
-                        html +='<div class="champ_order type_order"><span class="label_Torder">Delivery Order </span>';
-                        html +='<select style="width: 160px;" id="select_type_'+$ot.ot_uuid+'">';
-                        html +='<option value="1" '+(($ot.show_sa==1)?"selected":"")+'>Yes</option>';
-                        html +='<option value="0" '+(($ot.show_sa==0)?"selected":"")+'>No</option>';
-                        html +='</select>';
-                        html +='<br/><small>Selecting Yes Will require customers to provide their delivery address</small>';
-                        html += '</div>';
-
-
-                        //Use Coupons
-                        html +='<div class="champ_order IsEnabled_order"><span class="label_Torder">Allow Coupons </span>';
-                        html +='<div class="moo-onoffswitch" title="Enable or disable this coupons">';
-
-                        if ($ot.use_coupons==1){
-                            html += '<input type="checkbox" name="onoffswitch[]" id="useCoupons_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" checked>';
-                        }
-                        else{
-                            html += '<input type="checkbox" name="onoffswitch[]" id="useCoupons_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" >';
-                        }
-                        html +='<label class="moo-onoffswitch-label" for="useCoupons_'+$ot.ot_uuid+'"><span class="moo-onoffswitch-inner"></span>';
-                        html +='<span class="moo-onoffswitch-switch"></span>';
-                        html +='</label>';
-                        html +="</div>";
-                        html += '</div>';
-
-                        //Allow Scheduled Orders
-                        html +='<div class="champ_order IsEnabled_order"><span class="label_Torder">Allow Scheduled Orders </span>';
-                        html +='<div class="moo-onoffswitch" title="Allow or not scheduled orders">';
-
-                        if ( $ot.allow_sc_order == 1 ){
-                            html += '<input type="checkbox" name="onoffswitch[]" id="allowScOrders_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" checked>';
-                        }
-                        else{
-                            html += '<input type="checkbox" name="onoffswitch[]" id="allowScOrders_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" >';
-                        }
-                        html +='<label class="moo-onoffswitch-label" for="allowScOrders_'+$ot.ot_uuid+'"><span class="moo-onoffswitch-inner"></span>';
-                        html +='<span class="moo-onoffswitch-switch"></span>';
-                        html +='</label>';
-                        html +="</div>";
-                        html += '</div>';
-
-                        //Allow Service Fee
-                        html +='<div class="champ_order IsEnabled_order"><span class="label_Torder">Allow Service Fee </span>';
-                        html +='<div class="moo-onoffswitch" title="Add The Default Service Fee To This Order Type">';
-
-                        if (
-                            $ot.allow_service_fee === 1 ||
-                            $ot.allow_service_fee === "1" ||
-                            $ot.allow_service_fee === true ||
-                            $ot.allow_service_fee === "true"
-                        ){
-                            html += '<input type="checkbox" name="onoffswitch[]" id="allowServiceFee_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" checked>';
-                        } else {
-                            html += '<input type="checkbox" name="onoffswitch[]" id="allowServiceFee_'+$ot.ot_uuid+'" class="moo-onoffswitch-checkbox" >';
-                        }
-                        html +='<label class="moo-onoffswitch-label" for="allowServiceFee_'+$ot.ot_uuid+'"><span class="moo-onoffswitch-inner"></span>';
-                        html +='<span class="moo-onoffswitch-switch"></span>';
-                        html +='</label>';
-                        html +="</div>";
-                        html += '</div>';
-
-                        //Limit Availability time
-                        html +='<div class="champ_order type_order"><span class="label_Torder">Ordering Hours</span>';
-                        html +='<select name="" id="availabilityCustomTime_'+$ot.ot_uuid+'" >' +
-                            '<option value="">Default Clover Business Hours</option>'+
-                            '<optgroup label="Choose Order Type Hours">' ;
-                        //Add the Custom Hours to the select
-                        if(moo_custom_hours_for_ot){
-                            Object.keys(moo_custom_hours_for_ot).forEach(function (key) {
-                                html +=  '<option value="'+key+'"' ;
-                                if($ot.custom_hours!== null && $ot.custom_hours === key) {
-                                    html += 'selected' ;
-                                }
-                                html +=   '>'+moo_custom_hours_for_ot[key]+'</option>';
-                            });
-                        }
-
-
-                        html +=  '</optgroup>';
-                        html +=  '</select>' ;
-                        html +='</div>';
-                        //Custom message
-                        html +='<div class="champ_order IsEnabled_order">Custom message to display when ordering method is not available (maximum 200 characters)';
-                        html +='<div><textarea style="width: 100%;" cols="100" rows="5" id="moo_ot_customMessage_'+$ot.ot_uuid+'">'+$ot.custom_message+'</textarea></div>';
-                        html += '</div>';
-                        //Buttons
-                        html +='<div class="bt_update_order" style="float: right;">';
-                        html +='<a class="button" style="min-width: 70px !important;margin-right: 5px;" onclick="moo_saveOrderType(event,&quot;'+$ot.ot_uuid+'&quot;)">Save</a>';
-                        html +='<a class="button" style="min-width: 70px !important;" onclick="Moo_GetOrderTypes()">Cancel</a>';
-                        html += '</div>';
                         html += '</div>';
                         html += '</li>';
                     }
@@ -973,7 +870,6 @@ function Moo_GetOrderTypes(uuid = null){
                 html += "</ul>";
                 document.querySelector('#MooOrderTypesContent').innerHTML = html;
                 window.customHoursForOrderTypesUpdated = false;
-                makeOrderTypesSortable();
             } else {
                 document.querySelector('#MooOrderTypesContent').innerHTML  ="<div style='text-align: center'>Please verify your API Key<br/></div>";
             }
@@ -982,22 +878,6 @@ function Moo_GetOrderTypes(uuid = null){
     }
 }
 
-function makeOrderTypesSortable() {
-    jQuery("#MooOrderTypesContent ul").sortable({
-        stop: function(event, ui) {
-            var tabNew = new Array();
-            var i = 0;
-            jQuery("#MooOrderTypesContent ul li").each(function(i, el){
-                tabNew[i] = jQuery(this).attr("ot_uuid");
-                i++;
-            });
-            jQuery.post(moo_params.ajaxurl,{'action':'moo_reorder_ordertypes','newtable':tabNew},function(data){
-                if(data===false)
-                    swal('','No changes have been made');
-            })
-        }
-    });
-}
 
 function Moo_RefreshOrderTypesSection(){
     if( document.querySelector('#MooOrderTypesContent') != null )
@@ -1202,6 +1082,84 @@ function Moo_SetupReorderCategoriesSection(event){
         });
     }
 }
+
+function Moo_SetupReorderOrderTypesSection(event) {
+    event.preventDefault();
+    jQuery("#MooPanel_tabContent3 .orderTypesContainer").hide();
+    jQuery("#MooPanel_tabContent3 h2").hide();
+    jQuery("#MooPanel_tabContent3 .moo-ot-actions-bar").hide();
+    jQuery("#moo-ordertypes-edit-section").show().html("Loading your order types...");
+
+    jQuery.post(moo_params.ajaxurl, {'action': 'moo_getAllOrderTypes'}, function (data) {
+        if (data.status === 'success') {
+            var orderTypes = {};
+            try {
+                orderTypes = JSON.parse(data.data);
+            } catch (e) {
+                console.log("Parsing error: orderTypes");
+            }
+            var html = '<div class="moo-row moo-goback-row">';
+            html += '<div class="moo-goback-icon" onclick="Moo_BackToOrderTypes()"><img src="' + moo_params.plugin_url + '/public/img/back.png"/></div>';
+            html += '<div onclick="Moo_BackToOrderTypes()" class="moo-goback-text">Back</div>';
+            html += '</div>';
+            if (orderTypes.length > 0) {
+                html += '<div class="moo-reorder-ot-row">';
+                for (var i = 0; i < orderTypes.length; i++) {
+                    var ot = orderTypes[i];
+                    if (ot.label === "") continue;
+                    var statusClass = (ot.status == 1) ? 'enabled' : 'disabled';
+                    html += '<div class="moo-reorder-ot ' + statusClass + '" ot_uuid="' + ot.ot_uuid + '">' + ot.label + '</div>';
+                }
+                html += '</div>';
+            } else {
+                html += "<div class='normal_text'>You don't have any order types.<br/> Please import your data by clicking on <b>Import / Sync Inventory</b></div>";
+            }
+            document.querySelector('#moo-ordertypes-edit-section').innerHTML = html;
+
+            jQuery(".moo-reorder-ot-row").sortable({
+                stop: function (event, ui) {
+                    var newOrder = [];
+                    jQuery(".moo-reorder-ot-row .moo-reorder-ot").each(function (i, el) {
+                        newOrder[i] = jQuery(this).attr("ot_uuid");
+                    });
+                    jQuery.post(moo_params.ajaxurl, {'action': 'moo_reorder_ordertypes', 'newtable': newOrder}, function (data) {
+                        if (data === false)
+                            swal('', 'No changes have been made');
+                    });
+                }
+            });
+        } else {
+            document.querySelector('#moo-ordertypes-edit-section').innerHTML = "<div style='text-align: center'>Please verify your API Key<br/></div>";
+        }
+    });
+}
+
+function Moo_BackToOrderTypes() {
+    jQuery("#moo-ordertypes-edit-section").hide().html('');
+    jQuery("#MooPanel_tabContent3 .orderTypesContainer").show();
+    jQuery("#MooPanel_tabContent3 h2").show();
+    jQuery("#MooPanel_tabContent3 .moo-ot-actions-bar").show();
+    Moo_GetOrderTypes();
+}
+
+function Moo_OpenAddOrderTypeModal(event) {
+    event.preventDefault();
+    jQuery('#Moo_AddOT_label').val('');
+    jQuery('#Moo_AddOT_minAmount').val('');
+    jQuery('#Moo_AddOT_delivery_oui').prop('checked', true);
+    jQuery('#Moo_AddOT_taxable_oui').prop('checked', true);
+    jQuery('#Moo_AddOT_btn').show();
+    jQuery('#Moo_AddOT_loading').html('');
+    jQuery('#Moo_AddOT_label_error').text('');
+    jQuery('#Moo_AddOT_server_error').text('');
+    jQuery('#Moo_AddOT_label').css('border-color', '');
+    jQuery('#moo-addot-modal').fadeIn(200);
+}
+
+function Moo_CloseAddOrderTypeModal() {
+    jQuery('#moo-addot-modal').fadeOut(200);
+}
+
 function Moo_RefeshEditCategorySection(event,uuid) {
     if(event){
         event.preventDefault();
@@ -1636,50 +1594,60 @@ function moo_addordertype(e)
 {
     e.preventDefault();
 
+    // Clear previous errors
+    jQuery('#Moo_AddOT_label_error').text('');
+    jQuery('#Moo_AddOT_server_error').text('');
+    jQuery('#Moo_AddOT_label').css('border-color', '');
+
     var label   = document.querySelector('#Moo_AddOT_label').value;
     var taxable = document.querySelector('#Moo_AddOT_taxable_oui').checked ;
     var show_sa = jQuery("#Moo_AddOT_delivery_oui").prop("checked");
     var minAmount = document.querySelector('#Moo_AddOT_minAmount').value;
     var nonce = document.querySelector('#Moo_AddOT_nonce').value;
-   // var maxAmount = document.querySelector('#Moo_AddOT_maxAmount').value;
-    if(label === "")
-        swal("Error","Please enter a label for your order Type","error");
-    else
-    {
-        jQuery('#Moo_AddOT_loading').html(window.moo_loading);
-        jQuery('#Moo_AddOT_btn').hide();
 
-        jQuery.post(moo_params.ajaxurl,{
-            'action':'moo_add_ot',
-            "nonce":nonce,
-            "label":label,
-            "taxable":taxable,
-            "minAmount":minAmount,
-            "show_sa":show_sa
-        }, function (data) {
-            if(data.status === 'success')
-            {
-                if(data.message === '401 Unauthorized')
-                    jQuery('#Moo_AddOT_loading').html('Verify your API key');
-                else {
-                    swal({
-                        title:"Order type added",
-                        type:'success'
+    if(label === "") {
+        jQuery('#Moo_AddOT_label_error').text('Please enter a label for your order type');
+        jQuery('#Moo_AddOT_label').css('border-color', '#e74c3c').focus();
+        return;
+    }
 
-                    });
-                    Moo_GetOrderTypes();
-                    jQuery('#Moo_AddOT_loading').html('');
-                    jQuery('#Moo_AddOT_btn').show();
-                }
+    jQuery('#Moo_AddOT_loading').html(window.moo_loading);
+    jQuery('#Moo_AddOT_btn').hide();
 
+    jQuery.post(moo_params.ajaxurl,{
+        'action':'moo_add_ot',
+        "nonce":nonce,
+        "label":label,
+        "taxable":taxable,
+        "minAmount":minAmount,
+        "show_sa":show_sa
+    }, function (data) {
+        if(data.status === 'success')
+        {
+            if(data.message === '401 Unauthorized') {
+                jQuery('#Moo_AddOT_server_error').text('Verify your API key');
+                jQuery('#Moo_AddOT_loading').html('');
+                jQuery('#Moo_AddOT_btn').show();
             } else {
-                jQuery('#Moo_AddOT_loading').html('Verify your API key');
+                Moo_CloseAddOrderTypeModal();
+                swal({
+                    title:"Order type added",
+                    type:'success'
+                });
+                Moo_GetOrderTypes();
+                jQuery('#Moo_AddOT_loading').html('');
+                jQuery('#Moo_AddOT_btn').show();
             }
-         }).fail(function () {
+        } else {
+            jQuery('#Moo_AddOT_server_error').text('Verify your API key');
             jQuery('#Moo_AddOT_loading').html('');
             jQuery('#Moo_AddOT_btn').show();
-        });
-    }
+        }
+     }).fail(function () {
+        jQuery('#Moo_AddOT_server_error').text('An error occurred, please try again');
+        jQuery('#Moo_AddOT_loading').html('');
+        jQuery('#Moo_AddOT_btn').show();
+    });
 
 }
 function Moo_deleteOrderType(e,uuid)
@@ -2319,6 +2287,104 @@ function moo_markItemAsFeatured(e,item_uuid) {
         }
     });
 }
+function mooShowToast(msg) {
+    var $t = jQuery('#moo-toast');
+    if (!$t.length) {
+        jQuery('body').append('<div id="moo-toast" style="position:fixed;bottom:20px;right:20px;background:#333;color:#fff;padding:8px 16px;border-radius:4px;font-size:13px;z-index:99999;opacity:0;transition:opacity .3s;"></div>');
+        $t = jQuery('#moo-toast');
+    }
+    $t.text(msg).css('opacity', 1);
+    clearTimeout($t.data('timer'));
+    $t.data('timer', setTimeout(function () { $t.css('opacity', 0); }, 500));
+}
+var mooFeaturedCurrentOrder = [];
+var mooFeaturedOrderChanged = false;
+function mooReorderFeaturedItems() {
+    mooFeaturedOrderChanged = false;
+    jQuery('#mooReorderFeaturedBtn').hide();
+    jQuery('#mooReorderFeaturedDoneBtn').show();
+    jQuery('#mooReorderFeaturedSection').show().html('Loading featured items...');
+    // Hide the items table and nav
+    jQuery('.wp-list-table').hide();
+    jQuery('.tablenav').hide();
+
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/featured_items&_wpnonce=' + moo_params.nonce;
+    } else {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/featured_items?_wpnonce=' + moo_params.nonce;
+    }
+
+    jQuery.get(endpoint, function (response) {
+        var items = response.data;
+        if (!items || items.length === 0) {
+            jQuery('#mooReorderFeaturedSection').html('<p>No featured items found.</p>');
+            return;
+        }
+        var html = '<div class="moo-reorder-featured-grid">';
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var imgHtml = '<div class="moo-rf-placeholder"><span class="dashicons dashicons-food"></span></div>';
+            if (item.image_url) {
+                imgHtml = '<img src="' + item.image_url + '" alt="" />';
+            }
+            html += '<div class="moo-rf-card" data-uuid="' + item.uuid + '">';
+            html += '<div class="moo-rf-drag-handle"><span class="dashicons dashicons-menu"></span></div>';
+            html += '<div class="moo-rf-thumb">' + imgHtml + '</div>';
+            html += '<div class="moo-rf-name">' + item.name + '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+        jQuery('#mooReorderFeaturedSection').html(html);
+
+        jQuery('.moo-reorder-featured-grid').sortable({
+            placeholder: 'moo-rf-card-placeholder',
+            tolerance: 'pointer',
+            stop: function () {
+                mooFeaturedOrderChanged = true;
+                mooFeaturedCurrentOrder = [];
+                jQuery('.moo-reorder-featured-grid .moo-rf-card').each(function () {
+                    mooFeaturedCurrentOrder.push(jQuery(this).attr('data-uuid'));
+                });
+
+                if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+                    var saveEndpoint = moo_RestUrl + 'moo-clover/v2/dash/reorder_featured_items&_wpnonce=' + moo_params.nonce;
+                } else {
+                    var saveEndpoint = moo_RestUrl + 'moo-clover/v2/dash/reorder_featured_items?_wpnonce=' + moo_params.nonce;
+                }
+
+                jQuery.ajax({
+                    type: 'POST',
+                    url: saveEndpoint,
+                    contentType: 'application/json; charset=UTF-8',
+                    data: JSON.stringify({items: mooFeaturedCurrentOrder}),
+                    success: function (data) {
+                        if (data.status === 'success') {
+                            mooShowToast('Order saved');
+                        }
+                    },
+                    error: function () {
+                        swal({title: "Error", text: "Failed to save order. Please try again.", type: "error"});
+                    }
+                });
+            }
+        });
+    }).fail(function () {
+        jQuery('#mooReorderFeaturedSection').html('<p>Failed to load featured items. Please try again.</p>');
+    });
+}
+function mooReorderFeaturedDone() {
+    if (mooFeaturedOrderChanged) {
+        // Reload to reflect new order across all pages
+        location.reload();
+        return;
+    }
+    // No changes — just toggle back without reload
+    jQuery('#mooReorderFeaturedSection').hide().html('');
+    jQuery('#mooReorderFeaturedDoneBtn').hide();
+    jQuery('#mooReorderFeaturedBtn').show();
+    jQuery('.wp-list-table').show();
+    jQuery('.tablenav').show();
+}
 function moo_markItemAsOutOfStock(e,item_uuid) {
     e.preventDefault();
     swal({
@@ -2557,79 +2623,112 @@ function mooCancelItemCustomName(item_uuid, item_original_name) {
     //Show edit icon
     jQuery("#item-name-section-for-"+item_uuid+">img").show();
 }
-function moo_showOrderTypeDetails(e,id) {
-    if (e !==  null)
-        e.preventDefault();
-    //jQuery('#detail_'+id).slideToggle( "slow" );
-    jQuery('#detail_'+id).slideToggle('fast', function() {
-        if (jQuery(this).is(':visible')) {
-            jQuery("#top-bt-"+id).css('display','none');
-        } else {
-            jQuery("#top-bt-"+id).css('display','block');
-        }
-    });
-}
-function moo_saveOrderType(e,uuid) {
-    e.preventDefault();
-    mooShowWaitMessage();
-    var name = jQuery('#label_'+ uuid).val();
-    var isEnabled = jQuery('#select_En_' + uuid).prop('checked')?'1':'0';
-    var useCoupons = jQuery('#useCoupons_' + uuid).prop('checked')?'1':'0';
-    var allowScOrders = jQuery('#allowScOrders_' + uuid).prop('checked')?'1':'0';
-    var allowServiceFee = jQuery('#allowServiceFee_' + uuid).prop('checked')?'1':'0';
-    //var availabilityTime = jQuery('#availabilityTime_' + uuid).prop('checked')?'1':'0';
-    var taxable = jQuery('#select_Tax_'+ uuid).val();
-    var type = jQuery('#select_type_'+ uuid).val();
-    var minAmount = jQuery('#minAmount_'+ uuid).val();
-    var maxAmount = jQuery('#maxAmount_'+ uuid).val();
-    var availabilityCustomTime = jQuery('#availabilityCustomTime_'+ uuid).val();
-    var customMessage = jQuery('#moo_ot_customMessage_'+ uuid).val();
-    if(customMessage.length>200){
-        swal({
-            text:'Custom message length must be least than 200 characters'
-        });
+function Moo_OpenEditOrderTypeModal(e, uuid) {
+    if (e !== null) e.preventDefault();
+    var ot = window.moo_orderTypesData ? window.moo_orderTypesData[uuid] : null;
+    if (!ot) {
+        swal({ text: 'Could not load order type data. Please refresh and try again.' });
         return;
     }
-    var data = {
-        "action":'moo_update_ordertype',
-        "name":name,
-        "enable":isEnabled,
-        "availabilityTime":"",
-        "taxable":taxable,
-        "type":type,"uuid":uuid,
-        "minAmount":minAmount,
-        "maxAmount":maxAmount,
-        "availabilityCustomTime":availabilityCustomTime,
-        "useCoupons":useCoupons,
-        "allowScOrders":allowScOrders,
-        "allowServiceFee":allowServiceFee,
-        "customMessage":customMessage,
-    };
-    jQuery.post(moo_params.ajaxurl,data, function (data) {
-           // console.log(data);
-            if(data && data.data == "1") {
-                if(data.updated) {
-                    swal({
-                        text:'The order type "'+name+'" was updated'
-                    });
-                } else {
-                    swal({
-                        text:'The order type "'+name+'" was updated only locally, maybe you removed this order type from your account in Clover'
-                    });
-                }
-                Moo_GetOrderTypes();
-            } else {
-                swal({
-                    text:'The order type "'+name+'" was updated'
-                });
+    // Populate fields
+    jQuery('#Moo_EditOT_uuid').val(ot.ot_uuid);
+    jQuery('#Moo_EditOT_label').val(ot.label);
+    jQuery('#Moo_EditOT_label_error').text('');
+    jQuery('#Moo_EditOT_server_error').text('');
+    jQuery('#Moo_EditOT_enabled').prop('checked', ot.status == 1);
+    jQuery('#Moo_EditOT_minAmount').val(ot.minAmount || '');
+    jQuery('#Moo_EditOT_maxAmount').val(ot.maxAmount || '');
+    jQuery('#Moo_EditOT_taxable').prop('checked', ot.taxable == 1);
+    jQuery('#Moo_EditOT_delivery').prop('checked', ot.show_sa == 1);
+    jQuery('#Moo_EditOT_coupons').prop('checked', ot.use_coupons == 1);
+    jQuery('#Moo_EditOT_scheduled').prop('checked', ot.allow_sc_order == 1);
+    jQuery('#Moo_EditOT_serviceFee').prop('checked',
+        ot.allow_service_fee === 1 || ot.allow_service_fee === "1" ||
+        ot.allow_service_fee === true || ot.allow_service_fee === "true"
+    );
+    // Populate ordering hours dropdown
+    var $hoursSelect = jQuery('#Moo_EditOT_hours');
+    $hoursSelect.html('<option value="">Default Clover Business Hours</option>');
+    if (moo_custom_hours_for_ot) {
+        var optgroup = '<optgroup label="Choose Order Type Hours">';
+        Object.keys(moo_custom_hours_for_ot).forEach(function (key) {
+            optgroup += '<option value="' + key + '"';
+            if (ot.custom_hours !== null && ot.custom_hours === key) {
+                optgroup += ' selected';
             }
-        }
-    ).fail(function (data) {
-        swal({
-            text:'The order type "'+name+'" was removed from your account in Clover.com, You may need to re-create another one'
+            optgroup += '>' + moo_custom_hours_for_ot[key] + '</option>';
         });
+        optgroup += '</optgroup>';
+        $hoursSelect.append(optgroup);
+    }
+    // Custom message
+    var msg = ot.custom_message || '';
+    jQuery('#Moo_EditOT_customMessage').val(msg);
+    jQuery('#Moo_EditOT_charCount').text(msg.length);
+    // Show modal
+    jQuery('#moo-editot-modal').fadeIn(200);
+}
+function Moo_CloseEditOrderTypeModal() {
+    jQuery('#moo-editot-modal').fadeOut(200);
+}
+function moo_saveOrderType(e) {
+    e.preventDefault();
+    var uuid = jQuery('#Moo_EditOT_uuid').val();
+    var name = jQuery('#Moo_EditOT_label').val().trim();
+    // Validation
+    if (!name) {
+        jQuery('#Moo_EditOT_label_error').text('Name is required');
+        return;
+    }
+    jQuery('#Moo_EditOT_label_error').text('');
+    var minAmount = parseFloat(jQuery('#Moo_EditOT_minAmount').val()) || 0;
+    var maxAmount = parseFloat(jQuery('#Moo_EditOT_maxAmount').val()) || 0;
+    if (minAmount < 0 || maxAmount < 0) {
+        jQuery('#Moo_EditOT_server_error').text('Amounts cannot be negative');
+        return;
+    }
+    var customMessage = jQuery('#Moo_EditOT_customMessage').val();
+    if (customMessage.length > 200) {
+        jQuery('#Moo_EditOT_server_error').text('Custom message must be 200 characters or less');
+        return;
+    }
+    jQuery('#Moo_EditOT_server_error').text('');
+    jQuery('#Moo_EditOT_btn').prop('disabled', true).text('Saving...');
+    var data = {
+        "action": 'moo_update_ordertype',
+        "name": name,
+        "enable": jQuery('#Moo_EditOT_enabled').prop('checked') ? '1' : '0',
+        "availabilityTime": "",
+        "taxable": jQuery('#Moo_EditOT_taxable').prop('checked') ? '1' : '0',
+        "type": jQuery('#Moo_EditOT_delivery').prop('checked') ? '1' : '0',
+        "uuid": uuid,
+        "minAmount": minAmount || '',
+        "maxAmount": maxAmount || '',
+        "availabilityCustomTime": jQuery('#Moo_EditOT_hours').val(),
+        "useCoupons": jQuery('#Moo_EditOT_coupons').prop('checked') ? '1' : '0',
+        "allowScOrders": jQuery('#Moo_EditOT_scheduled').prop('checked') ? '1' : '0',
+        "allowServiceFee": jQuery('#Moo_EditOT_serviceFee').prop('checked') ? '1' : '0',
+        "customMessage": customMessage,
+    };
+    jQuery.post(moo_params.ajaxurl, data, function (data) {
+        jQuery('#Moo_EditOT_btn').prop('disabled', false).text('Save');
+        if (data && data.data == "1") {
+            Moo_CloseEditOrderTypeModal();
+            if (data.updated) {
+                swal({ text: 'The order type "' + name + '" was updated' });
+            } else {
+                swal({ text: 'The order type "' + name + '" was updated only locally, maybe you removed this order type from your account in Clover' });
+            }
+            Moo_GetOrderTypes();
+        } else {
+            swal({ text: 'The order type "' + name + '" was updated' });
+            Moo_CloseEditOrderTypeModal();
+            Moo_GetOrderTypes();
+        }
+    }).fail(function () {
+        jQuery('#Moo_EditOT_btn').prop('disabled', false).text('Save');
+        jQuery('#Moo_EditOT_server_error').text('Failed to save. Please try again.');
     });
-
 }
 function moo_showCustomerMap(event,lat,lng)
 {
@@ -3012,6 +3111,32 @@ function mooGetOpeningHours( event, sync = false ) {
     });
 }
 
+window.mooSyncConvenienceFee = function(event) {
+    if (event) {
+        event.preventDefault();
+    }
+    jQuery('#mooConvenienceFeeSyncStatus').text('Syncing...');
+    let endpoint = moo_RestUrl + 'moo-clover/v2/dash/convenience_fee';
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        endpoint += '&_wpnonce=' + moo_params.nonce;
+    } else {
+        endpoint += '?_wpnonce=' + moo_params.nonce;
+    }
+    jQuery.get(endpoint, function (data) {
+        if (data && data.status === 'success') {
+            if (data.convenience_fee && data.convenience_fee > 0) {
+                jQuery('#mooConvenienceFeeSyncStatus').text('Current Clover fee: $' + (data.convenience_fee / 100).toFixed(2));
+            } else {
+                jQuery('#mooConvenienceFeeSyncStatus').text('Not configured in Clover');
+            }
+        } else {
+            jQuery('#mooConvenienceFeeSyncStatus').text('Sync failed');
+        }
+    }).fail(function () {
+        jQuery('#mooConvenienceFeeSyncStatus').text('Sync failed');
+    });
+};
+
 function enableOrDisableOldCheckout() {
     const enable = jQuery('#sooOldCheckoutPage').is(":checked");
     if(enable){
@@ -3127,6 +3252,45 @@ function enableOrDisableApplePay() {
 
 }
 
+function enableOrDisableGlobalSettings() {
+    var enabled = jQuery("#sooSettingsSourceFeature").is(':checked');
+    persistGlobalSettings(enabled);
+}
+
+function persistGlobalSettings(enabled) {
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/enable-disable-global-settings&_wpnonce=' + moo_params.nonce;
+    } else {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/enable-disable-global-settings?_wpnonce=' + moo_params.nonce;
+    }
+    jQuery.ajax({
+        url: endpoint,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ status: enabled }),
+        success: function(response) {
+            if (response && response.status === true) {
+                if (typeof swal === 'function') {
+                    swal({
+                        title: 'Saved',
+                        text: 'Settings source is now: ' + (enabled ? 'Global Dashboard' : 'Customized'),
+                        type: 'success',
+                        timer: 1500
+                    });
+                }
+                // Reload so the admin re-renders under the newly active mode.
+                setTimeout(function() { location.reload(); }, 1600);
+            }
+        },
+        error: function() {
+            jQuery("#sooSettingsSourceFeature").prop('checked', !enabled);
+            if (typeof swal === 'function') {
+                swal({ title: 'Error', text: 'Could not update settings source', type: 'error' });
+            }
+        }
+    });
+}
+
 
 function expandSection(element) {
     jQuery(element).parent().toggleClass("MooPanelItemExpanded")
@@ -3161,11 +3325,77 @@ function mooSaveChanges(event, element) {
         value: input.value
     }));
 
-    postSettingsData(formData);
+    // Validate and sanitize numeric fields
+    const numericFields = ['service_fees', 'delivery_fees', 'fixed_delivery', 'delivery_fees_p', 'tips_default_value'];
+    const errors = [];
+
+    formData.forEach(item => {
+        // Special validation for tips selections (format: 10,15,20,25)
+        if (item.name === 'tips_selection' && item.value !== '') {
+            const originalValue = item.value;
+            // Remove spaces and dollar signs
+            let cleaned = item.value.replace(/[\$\s%]/g, '');
+
+            // Check if it matches the format: numbers separated by commas
+            if (!/^[\d]+(,[\d]+)*$/.test(cleaned)) {
+                errors.push(`Tips Selection: Invalid format. Must be comma-separated numbers (e.g., "10,15,20,25"). Current value: "${originalValue}"`);
+            } else {
+                // Validate each number
+                const numbers = cleaned.split(',');
+                const invalidNumbers = numbers.filter(n => isNaN(n) || n === '' || parseFloat(n) < 0);
+
+                if (invalidNumbers.length > 0) {
+                    errors.push(`Tips Selection: Contains invalid numbers. Must be positive numbers separated by commas.`);
+                } else if (cleaned !== originalValue) {
+                    item.value = cleaned;
+                    errors.push(`Tips Selection: Special characters removed. Value changed from "${originalValue}" to "${cleaned}"`);
+                }
+            }
+        }
+        // Validate numeric fields
+        else if (numericFields.includes(item.name) && item.value !== '') {
+            const originalValue = item.value;
+            // Check if the value contains dollar signs or other invalid characters
+            if (/[\$,\s%]/.test(item.value)) {
+                // Remove dollar signs, commas, spaces, and percentage signs
+                const cleaned = item.value.replace(/[\$,\s%]/g, '');
+
+                // Validate it's a valid number
+                if (isNaN(cleaned) || cleaned === '') {
+                    errors.push(`${item.name.replace(/_/g, ' ')}: "${originalValue}" is not a valid number`);
+                } else {
+                    // Update the value with cleaned version
+                    item.value = cleaned;
+                    errors.push(`${item.name.replace(/_/g, ' ')}: Special characters removed. Value changed from "${originalValue}" to "${cleaned}"`);
+                }
+            } else if (isNaN(item.value)) {
+                errors.push(`${item.name.replace(/_/g, ' ')}: "${originalValue}" is not a valid number`);
+            }
+        }
+    });
+
+    // Show errors or warnings if any
+    if (errors.length > 0) {
+        swal({
+            title: "Validation Warning",
+            text: "The following fields were corrected:\n\n" + errors.join('\n'),
+            type: "warning",
+            confirmButtonText: "Save Anyway",
+            showCancelButton: true,
+            cancelButtonText: "Cancel"
+        }).then(function(result) {
+            if (result) {
+                postSettingsData(formData, $form);
+            }
+        });
+        return false;
+    }
+
+    postSettingsData(formData, $form);
     return false;
 }
 
-function postSettingsData(data) {
+function postSettingsData(data, $form) {
     mooShowWaitMessage();
     jQuery.ajax({
         type: 'POST',
@@ -3177,6 +3407,7 @@ function postSettingsData(data) {
         data: JSON.stringify(data)
     })
         .fail(function () {
+            mooHideWaitMessage();
             swal({
                 title: "Error",
                 text: "Settings could not be saved. Please refresh the page or contact support.",
@@ -3186,9 +3417,20 @@ function postSettingsData(data) {
         })
         .done(function (response) {
             if (response.status === "success") {
-                sooShowToast("Settings saved successfully")
+                // Update form fields with cleaned values (skip radio/checkbox - they already reflect user selection)
+                if ($form) {
+                    data.forEach(function(item) {
+                        const fieldName = 'moo_settings[' + item.name + ']';
+                        const $field = $form.find('[name="' + fieldName + '"]');
+                        if ($field.length && !$field.is(':radio') && !$field.is(':checkbox')) {
+                            $field.val(item.value);
+                        }
+                    });
+                }
+                sooShowToast("Settings saved successfully");
                 mooHideWaitMessage();
             } else {
+                mooHideWaitMessage();
                 swal({
                     title: "Error",
                     text: response.message || "An unknown error occurred.",
@@ -3421,12 +3663,15 @@ function mooSaveApikey(newApiKey) {
                 jQuery("#moo-keyValid-section .moo-merchant-bg").text(
                     "Loyalty Dashboard Branded App Account: "+response.groupMerchantName
                 );
+            } else {
+                jQuery("#moo-keyValid-section .moo-merchant-bg").text("");
             }
             if(response.address){
                 jQuery("#moo-keyValid-section .moo-merchant-address").text(response.address);
                 moo_merchantAddress = response.address;
 
             }
+            syncSettingsSourceSection(response);
             //Hide loading section and key section
             jQuery("#moo-checking-section").hide();
             jQuery("#moo-enterKey-section").hide();
@@ -3450,6 +3695,25 @@ function mooSaveApikey(newApiKey) {
         });
     });
 
+}
+
+function syncSettingsSourceSection(response) {
+    var shouldShow = response && response.showSettingsSourceChooser === true;
+
+    if (shouldShow) {
+        jQuery("#moo-settings-source-section").show();
+        return;
+    }
+
+    jQuery("#moo-settings-source-section").hide();
+
+    // Auto-disable safeguard: if eligibility is revoked while Global mode
+    // is enabled, flip back to Customized so the UI and saved state agree.
+    var $settingsToggle = jQuery("#sooSettingsSourceFeature");
+    if ($settingsToggle.is(':checked')) {
+        $settingsToggle.prop('checked', false);
+        persistGlobalSettings(false);
+    }
 }
 /* Scroll into div functions */
 
@@ -3536,16 +3800,34 @@ function mooCheckApiKeyOnLoading() {
                 jQuery("#moo-keyValid-section .moo-merchant-bg").text(
                     "Loyalty Dashboard Branded App Account: "+response.groupMerchantName
                 );
+            } else {
+                jQuery("#moo-keyValid-section .moo-merchant-bg").text("");
             }
             //Fill the Address
             if(response.address){
                 jQuery("#moo-keyValid-section .moo-merchant-address").text(response.address);
                 moo_merchantAddress = response.address;
             }
-            //Show ApplePay Section
+            //Show ApplePay Section (with auto-disable safeguard)
             if(response.isApplePaySupported){
                 jQuery("#moo-apple-pay-section").show();
+            } else {
+                jQuery("#moo-apple-pay-section").hide();
+                var $apToggle = jQuery("#sooApplePayFeature");
+                if ($apToggle.is(':checked')) {
+                    $apToggle.prop('checked', false);
+                    enableOrDisableApplePay();
+                }
             }
+            // In Global mode, payment methods are fully dashboard-managed —
+            // the Apple Pay card is redundant and must stay hidden.
+            if (typeof sooGlobalModeActive !== 'undefined' && sooGlobalModeActive) {
+                jQuery("#moo-apple-pay-section").hide();
+            }
+
+            // Show Settings Source only when the API-key check explicitly
+            // returns eligibility for that control.
+            syncSettingsSourceSection(response);
 
             //Show recaptcha
             if (response.blackoutStatus === "close") {
@@ -3727,10 +4009,6 @@ function mooSetupAutoSyncDetailsSection(page) {
         MODIFIER_GROUP : [],
         CATEGORY : [],
     }
-    var items = [];
-    var categories = [];
-    var modifierGroups = [];
-    var modifiers = [];
 
         html = '<div class="soo-body">';
         html += '<div class="moo-row">';
@@ -3772,7 +4050,7 @@ function mooSetupAutoSyncDetailsSection(page) {
                    if (oneLine.object_type === "ITEM") {
                        htmlLine += '<div class="sync-body-row">';
                        htmlLine += '<div class="moo-row">';
-                       htmlLine += '<div class="moo-col-md-3 mooSyncItemUuid">'+oneLine.object_id+'</div>';
+                       htmlLine += '<div class="moo-col-md-3 mooSyncUuid mooSyncUuid-item">'+oneLine.object_id+'</div>';
                        if (oneLine.response_code === "200"){
                            htmlLine += '<div class="moo-col-md-5">';
                            htmlLine += '<div class="sync-msg sync-msg-green">This item has been successfully updated.</div>';
@@ -3807,7 +4085,7 @@ function mooSetupAutoSyncDetailsSection(page) {
                    if (oneLine.object_type === "MODIFIER") {
                        htmlLine += '<div class="sync-body-row">';
                        htmlLine += '<div class="moo-row">';
-                       htmlLine += '<div class="moo-col-md-3 mooSyncItemUuid">'+oneLine.object_id+'</div>';
+                       htmlLine += '<div class="moo-col-md-3 mooSyncUuid mooSyncUuid-modifier">'+oneLine.object_id+'</div>';
                        if (oneLine.response_code === "200"){
                            htmlLine += '<div class="moo-col-md-5">';
                            htmlLine += '<div class="sync-msg sync-msg-green">This Modifier has been successfully updated.</div>';
@@ -3839,7 +4117,7 @@ function mooSetupAutoSyncDetailsSection(page) {
                    if (oneLine.object_type === "MODIFIER_GROUP") {
                        htmlLine += '<div class="sync-body-row">';
                        htmlLine += '<div class="moo-row">';
-                       htmlLine += '<div class="moo-col-md-3 mooSyncItemUuid">'+oneLine.object_id+'</div>';
+                       htmlLine += '<div class="moo-col-md-3 mooSyncUuid mooSyncUuid-modifier-group">'+oneLine.object_id+'</div>';
                        if (oneLine.response_code === "200"){
                            htmlLine += '<div class="moo-col-md-5">';
                            htmlLine += '<div class="sync-msg sync-msg-green">This Modifier Group has been successfully updated.</div>';
@@ -3872,7 +4150,7 @@ function mooSetupAutoSyncDetailsSection(page) {
                        if (oneLine.response_body === '"Category Has Been Updated"'){
                            htmlLine += '<div class="sync-body-row">';
                            htmlLine += '<div class="moo-row">';
-                           htmlLine += '<div class="moo-col-md-3 mooSyncItemUuid">'+oneLine.object_id+'</div>';
+                           htmlLine += '<div class="moo-col-md-3 mooSyncUuid mooSyncUuid-category">'+oneLine.object_id+'</div>';
                            htmlLine += '<div class="moo-col-md-5">';
                            htmlLine += '<div class="sync-msg sync-msg-green">This Category has been successfully updated.</div>';
                            htmlLine += '</div>';
@@ -3882,7 +4160,7 @@ function mooSetupAutoSyncDetailsSection(page) {
                        } else {
                            htmlLine += '<div class="sync-body-row">';
                            htmlLine += '<div class="moo-row">';
-                           htmlLine += '<div class="moo-col-md-3 mooSyncItemUuid">'+oneLine.object_id+'</div>';
+                           htmlLine += '<div class="moo-col-md-3 mooSyncUuid mooSyncUuid-category">'+oneLine.object_id+'</div>';
                            htmlLine += '<div class="moo-col-md-5">';
                            htmlLine += '<div class="sync-msg sync-msg-orange">An error has occurred when updating this category.</div>';
                            htmlLine += '</div>';
@@ -3904,12 +4182,6 @@ function mooSetupAutoSyncDetailsSection(page) {
 
 
                    htmlLines  += htmlLine;
-
-                   if(oneLine.object_type === "ITEM") {
-                       if (!items[oneLine.object_id]) {
-                           items.push(oneLine.object_id);
-                       }
-                   }
 
                    dataNames[oneLine.object_type].push(oneLine.object_id);
                }
@@ -3941,7 +4213,7 @@ function mooSetupAutoSyncDetailsSection(page) {
 
                var fullHtml  = html +paginationHtml +htmlLines+paginationHtml+finalHtml;
                jQuery(selector).html(fullHtml);
-               mooAutoSyncDetailsSectionChangeItemsUuidByNames(items);
+               mooAutoSyncDetailsSectionChangeUuidsByNames(dataNames);
            } else {
                jQuery(selector).html("There are currently no auto sync requests.");
            }
@@ -3970,24 +4242,38 @@ function mooAutoSyncDetailsSectionRefreshOneLine(event, uuid, type) {
         });
     }
 }
-function mooAutoSyncDetailsSectionChangeItemsUuidByNames(items) {
+function mooAutoSyncDetailsSectionChangeUuidsByNames(dataNames) {
     if(moo_RestUrl.indexOf("?rest_route") !== -1){
-        var endpoint = moo_RestUrl+'moo-clover/v2/dash/autosync_items_names&_wpnonce=' + moo_params.nonce ;
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/autosync_names&_wpnonce=' + moo_params.nonce ;
     } else {
-        var endpoint = moo_RestUrl+'moo-clover/v2/dash/autosync_items_names?_wpnonce=' + moo_params.nonce ;
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/autosync_names?_wpnonce=' + moo_params.nonce ;
     }
-    jQuery.post(endpoint,{"items":items}, function (response) {
+    // Deduplicate UUIDs
+    var postData = {
+        items: [...new Set(dataNames.ITEM)],
+        categories: [...new Set(dataNames.CATEGORY)],
+        modifiers: [...new Set(dataNames.MODIFIER)],
+        modifier_groups: [...new Set(dataNames.MODIFIER_GROUP)]
+    };
+    jQuery.post(endpoint, postData, function (response) {
         if(response.status === "success"){
-            var itemsNames = response.data;
-            jQuery(".mooAutoSyncDetailsSection .mooSyncItemUuid").each(function (key, elm) {
-                elm = jQuery(elm);
-                if(elm){
-                    itemUuid = elm.html();
-                    if(itemsNames[itemUuid]){
-                        elm.html(itemsNames[itemUuid])
+            var typeMap = {
+                'item': 'items',
+                'category': 'categories',
+                'modifier': 'modifiers',
+                'modifier-group': 'modifier_groups'
+            };
+            jQuery.each(typeMap, function(cssType, dataKey) {
+                var names = response.data[dataKey];
+                if (!names) return;
+                jQuery(".mooAutoSyncDetailsSection .mooSyncUuid-" + cssType).each(function (key, elm) {
+                    elm = jQuery(elm);
+                    var uuid = elm.html();
+                    if(names[uuid]){
+                        elm.html(names[uuid]);
                     }
-                }
-            })
+                });
+            });
         }
     });
 }
@@ -4107,7 +4393,10 @@ function mooExportInventory() {
     }
 
     //Show a waiting message
-    mooShowWaitMessage();
+    swal({
+        title: 'Exporting your data ..',
+        showConfirmButton: false
+    });
 
     //Send the request
     jQuery.ajax({
@@ -4200,56 +4489,68 @@ function readContentFile(fileTextContent) {
             fileContent.descriptions ||
             fileContent.modifiers ||
             fileContent.ordersTypes ||
-            fileContent.settings
+            fileContent.settings ||
+            fileContent.customHours
         ) {
-            //Change style to uplading style
-            uploadingFileStyle();
+            // Store file content for later use
+            window.mooImportFileContent = fileContent;
+
+            // Hide upload area
             jQuery("#mooImportSectionUpload").hide();
 
-            // Clean local storage inventory images
-            localStorage.removeItem('items');
-            localStorage.removeItem('categories');
-            localStorage.removeItem('inventoryImported');
+            // Build preview checkboxes
+            var optionsHtml = '';
+            var hasImages = false;
 
-            if (fileContent.descriptions){
-                mooImportDescription(fileContent.descriptions);
+            if (fileContent.descriptions) {
+                var descCount = Array.isArray(fileContent.descriptions) ? fileContent.descriptions.length : Object.keys(fileContent.descriptions).length;
+                optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_descriptions" name="mooImportSections" value="descriptions" checked><label for="mooImport_descriptions"> Descriptions <span>(' + descCount + ')</span></label></div>';
             }
-
-            if (fileContent.ordersTypes){
-                jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes").show();
-                mooImportOrdersTypes({
-                    "ordersTypes":fileContent.ordersTypes
-                });
+            if (fileContent.ordersTypes) {
+                var otCount = Array.isArray(fileContent.ordersTypes) ? fileContent.ordersTypes.length : Object.keys(fileContent.ordersTypes).length;
+                optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_ordersTypes" name="mooImportSections" value="ordersTypes" checked><label for="mooImport_ordersTypes"> Orders Types <span>(' + otCount + ')</span></label></div>';
             }
-            if (fileContent.modifiers || fileContent.modifier_groups ){
-                jQuery("#mooImportSection>#mooImportResult>.mooModifiers").show();
-                mooImportModifiersAndGroups({
-                    "modifiers":fileContent.modifiers,
-                    "modifier_groups":fileContent.modifier_groups,
-                });
+            if (fileContent.modifiers || fileContent.modifier_groups) {
+                var modCount = fileContent.modifiers ? (Array.isArray(fileContent.modifiers) ? fileContent.modifiers.length : Object.keys(fileContent.modifiers).length) : 0;
+                var mgCount = fileContent.modifier_groups ? (Array.isArray(fileContent.modifier_groups) ? fileContent.modifier_groups.length : Object.keys(fileContent.modifier_groups).length) : 0;
+                optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_modifiers" name="mooImportSections" value="modifiers" checked><label for="mooImport_modifiers"> Modifiers & Modifier Groups <span>(' + modCount + ' / ' + mgCount + ')</span></label></div>';
             }
-
-            if (fileContent.settings){
-                jQuery("#mooImportSection>#mooImportResult>.mooSettings").show();
-                mooImportSettings(fileContent.settings)
+            if (fileContent.settings) {
+                optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_settings" name="mooImportSections" value="settings" checked><label for="mooImport_settings"> Settings</label></div>';
             }
-
-            if (fileContent.images){
-
-                if (fileContent.images.items && fileContent.images.items.length >0 ){
-                    localStorage.setItem("items", JSON.stringify(fileContent.images.items));
-                    jQuery("#mooImportSection>#mooImportResult>.mooItems").show();
-                    mooImportItems(0);
+            if (fileContent.customHours) {
+                var chCount = Array.isArray(fileContent.customHours) ? fileContent.customHours.length : Object.keys(fileContent.customHours).length;
+                optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_customHours" name="mooImportSections" value="customHours" checked><label for="mooImport_customHours"> Custom Hours <span>(' + chCount + ')</span></label></div>';
+            }
+            if (fileContent.images) {
+                var itemImgCount = (fileContent.images.items && fileContent.images.items.length) ? fileContent.images.items.length : 0;
+                var catImgCount = (fileContent.images.categories && fileContent.images.categories.length) ? fileContent.images.categories.length : 0;
+                if (itemImgCount > 0) {
+                    optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_items" name="mooImportSections" value="items" checked><label for="mooImport_items"> Item Images <span>(' + itemImgCount + ')</span></label></div>';
+                    hasImages = true;
                 }
-
-                if (fileContent.images.categories && fileContent.images.categories.length >0 ){
-                    localStorage.setItem("categories", JSON.stringify(fileContent.images.categories));
-                    jQuery("#mooImportSection>#mooImportResult>.mooCategories").show();
-                    mooImportCategories(0)
+                if (catImgCount > 0) {
+                    optionsHtml += '<div class="checkbox_choose"><input type="checkbox" id="mooImport_categories" name="mooImportSections" value="categories" checked><label for="mooImport_categories"> Category Images <span>(' + catImgCount + ')</span></label></div>';
+                    hasImages = true;
                 }
             }
+
+            jQuery("#mooImportOptions").html(optionsHtml);
+
+            // Show skip existing images toggle if images are present
+            if (hasImages) {
+                jQuery("#mooImportSkipImages").show();
+                jQuery("#mooImportSkipSchedule").show();
+            } else {
+                jQuery("#mooImportSkipImages").hide();
+                jQuery("#mooImportSkipSchedule").hide();
+            }
+
+            // Show preview
+            jQuery("#mooImportPreview").show();
+
         } else {
-            swal("Error","Please double the check the uploaded file, it looks like it's exported from Smart Online Order","error");
+            swal("Error","Please double check the uploaded file, it looks like it's not exported from Smart Online Order","error");
             document.getElementById('file_upload_inventory').value="";
         }
     } else {
@@ -4258,6 +4559,291 @@ function readContentFile(fileTextContent) {
     }
 
 }
+// Start Import — triggered by "Start Import" button in preview
+function mooStartImport() {
+    var fileContent = window.mooImportFileContent;
+    if (!fileContent) return;
+
+    var skipExistingImages = jQuery("#mooSkipExistingImages").is(":checked");
+    var skipScheduledAction = jQuery("#mooSkipScheduledAction").is(":checked");
+
+    // Read selected sections
+    var selected = {};
+    document.getElementsByName('mooImportSections').forEach(function(elem) {
+        selected[elem.value] = elem.checked;
+    });
+
+    // Check if at least one option selected
+    if (Object.values(selected).every(function(v){ return v === false; })) {
+        swal({ title: "Error", text: 'You must choose at least one option', type: "error", confirmButtonText: "ok" });
+        return;
+    }
+
+    // Hide preview, show result area
+    jQuery("#mooImportPreview").hide();
+
+    // Clean local storage
+    localStorage.removeItem('items');
+    localStorage.removeItem('categories');
+    localStorage.removeItem('inventoryImported');
+
+    // Count total sections to import
+    window.mooImportSectionsTotal = 0;
+    window.mooImportSectionsCompleted = 0;
+    window.mooImportSummaryLines = [];
+
+    if (selected.descriptions && fileContent.descriptions) window.mooImportSectionsTotal++;
+    if (selected.ordersTypes && fileContent.ordersTypes) window.mooImportSectionsTotal++;
+    if (selected.modifiers && (fileContent.modifiers || fileContent.modifier_groups)) window.mooImportSectionsTotal++;
+    if (selected.settings && fileContent.settings) window.mooImportSectionsTotal++;
+    if (selected.customHours && fileContent.customHours) window.mooImportSectionsTotal++;
+    if (selected.items && fileContent.images && fileContent.images.items && fileContent.images.items.length > 0) window.mooImportSectionsTotal++;
+    if (selected.categories && fileContent.images && fileContent.images.categories && fileContent.images.categories.length > 0) window.mooImportSectionsTotal++;
+
+    // Dispatch imports for selected sections
+    if (selected.descriptions && fileContent.descriptions) {
+        mooImportDescription(fileContent.descriptions);
+    }
+
+    if (selected.ordersTypes && fileContent.ordersTypes) {
+        jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes").show();
+        mooImportOrdersTypes({ "ordersTypes": fileContent.ordersTypes });
+    }
+
+    if (selected.modifiers && (fileContent.modifiers || fileContent.modifier_groups)) {
+        jQuery("#mooImportSection>#mooImportResult>.mooModifiers").show();
+        mooImportModifiersAndGroups({
+            "modifiers": fileContent.modifiers,
+            "modifier_groups": fileContent.modifier_groups,
+        });
+    }
+
+    if (selected.settings && fileContent.settings) {
+        jQuery("#mooImportSection>#mooImportResult>.mooSettings").show();
+        mooImportSettings(fileContent.settings);
+    }
+
+    if (selected.customHours && fileContent.customHours) {
+        jQuery("#mooImportSection>#mooImportResult>.mooCustomHours").show();
+        mooImportCustomHours(fileContent.customHours);
+    }
+
+    if (selected.items && fileContent.images && fileContent.images.items && fileContent.images.items.length > 0) {
+        localStorage.setItem("items", JSON.stringify(fileContent.images.items));
+        jQuery("#mooImportSection>#mooImportResult>.mooItems").show();
+        window.mooImportItemsStats = { count_items: 0, skippedItems: 0, notFoundItems: 0, errors: 0 };
+        mooImportItemsBatch(0, fileContent.images.items, skipExistingImages, skipScheduledAction);
+    }
+
+    if (selected.categories && fileContent.images && fileContent.images.categories && fileContent.images.categories.length > 0) {
+        localStorage.setItem("categories", JSON.stringify(fileContent.images.categories));
+        jQuery("#mooImportSection>#mooImportResult>.mooCategories").show();
+        window.mooImportCategoriesStats = { count_categories: 0, skippedCategories: 0, notFoundCategories: 0, errors: 0 };
+        mooImportCategoriesBatch(0, fileContent.images.categories, skipExistingImages, skipScheduledAction);
+    }
+}
+
+// Track section completion and show "Import Again" when all done
+function mooImportSectionDone(summaryLine) {
+    window.mooImportSectionsCompleted++;
+    if (summaryLine) {
+        window.mooImportSummaryLines.push(summaryLine);
+    }
+    if (window.mooImportSectionsCompleted >= window.mooImportSectionsTotal) {
+        // Build summary list
+        var html = '';
+        for (var i = 0; i < window.mooImportSummaryLines.length; i++) {
+            html += '<li style="padding: 4px 0; border-bottom: 1px solid #eee;">' + window.mooImportSummaryLines[i] + '</li>';
+        }
+        jQuery("#mooImportSummaryList").html(html);
+        jQuery("#mooImportAgain").show();
+    }
+}
+
+// Reset import UI for another file
+function mooResetImportUI() {
+    // Reset file input
+    document.getElementById('file_upload_inventory').value = "";
+
+    // Hide results, preview, import-again
+    jQuery("#mooImportResult").find('.mooDescriptions, .mooOrdersTypes, .mooModifiers, .mooSettings, .mooCustomHours, .mooItems, .mooCategories').hide();
+    jQuery("#mooImportPreview").hide();
+    jQuery("#mooImportAgain").hide();
+
+    // Reset all progress bars to 0%
+    jQuery("#mooImportDescriptionsProgress").css("width", "0%");
+    jQuery("#mooImportOrdersTypesProgress").css("width", "0%");
+    jQuery("#mooImportModifiersProgress").css("width", "0%");
+    jQuery("#mooImportSettingsProgress").css("width", "0%");
+    jQuery("#mooImportCustomHoursProgress").css("width", "0%");
+    jQuery("#mooImportItemsProgress").css("width", "0%");
+    jQuery("#mooImportCategoriesProgress").css("width", "0%");
+
+    // Reset status messages
+    jQuery("#mooImportResult .mooDescriptions .moo-uploading-msg").text("Uploading your descriptions ..");
+    jQuery("#mooImportResult .mooOrdersTypes .moo-uploading-msg").text("Uploading your Orders Types ..");
+    jQuery("#mooImportResult .mooModifiers .moo-uploading-msg").text("Uploading your modifiers and modifier groups ..");
+    jQuery("#mooImportResult .mooSettings .moo-uploading-msg").text("Uploading your settings ..");
+    jQuery("#mooImportResult .mooCustomHours .moo-uploading-msg").text("Uploading your custom hours ..");
+    jQuery("#mooImportResult .mooItems .moo-uploading-msg").text("Uploading your items ..");
+    jQuery("#mooImportResult .mooCategories .moo-uploading-msg").text("Uploading your categories ..");
+
+    // Clear summary
+    jQuery("#mooImportSummaryList").html('');
+    window.mooImportSummaryLines = [];
+
+    // Clear stored data
+    window.mooImportFileContent = null;
+    window.mooImportItemsStats = null;
+    window.mooImportCategoriesStats = null;
+    localStorage.removeItem('items');
+    localStorage.removeItem('categories');
+    localStorage.removeItem('inventoryImported');
+
+    // Show upload area again
+    uploadingDefaultStyle();
+    jQuery("#mooImportSectionUpload").show();
+}
+
+// Import Custom Hours
+function mooImportCustomHours(customHours) {
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/custom-hours&_wpnonce=' + moo_params.nonce;
+    } else {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/custom-hours?_wpnonce=' + moo_params.nonce;
+    }
+
+    jQuery.post(endpoint, JSON.stringify(customHours), function (response) {
+        if (response.status === true) {
+            moveProgressTo("mooImportCustomHoursProgress", 100);
+            var msg = "Custom Hours imported successfully";
+            var details = [];
+            if (response.updated_categories) details.push(response.updated_categories + " categories");
+            if (response.updated_ordertypes) details.push(response.updated_ordertypes + " order types");
+            if (details.length > 0) msg += " (" + details.join(", ") + ")";
+            jQuery("#mooImportSection>#mooImportResult>.mooCustomHours>.text-upload>.moo-uploading-msg").text(msg);
+            mooImportSectionDone("&#10004; " + msg);
+        } else {
+            jQuery("#mooImportSection>#mooImportResult>.mooCustomHours>.text-upload>.moo-uploading-msg").html(
+                "<span style='color: #DF5C5C'>Custom Hours import failed</span>"
+            );
+            mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Custom Hours failed</span>");
+        }
+    }).fail(function () {
+        moveProgressTo("mooImportCustomHoursProgress", 100);
+        jQuery("#mooImportSection>#mooImportResult>.mooCustomHours>.text-upload>.moo-uploading-msg").html(
+            "<span style='color: #DF5C5C'>Custom Hours import failed (network error)</span>"
+        );
+        mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Custom Hours failed (network error)</span>");
+    });
+}
+
+// Batched item image import (5 at a time)
+function mooImportItemsBatch(index, items, skipExistingImages, skipScheduledAction) {
+    var batchSize = 5;
+    var nbItems = items.length;
+    if (index >= nbItems) {
+        // Show final summary
+        var stats = window.mooImportItemsStats;
+        var msg = "Item Images: " + stats.count_items + " imported";
+        if (stats.skippedItems > 0) msg += ", " + stats.skippedItems + " skipped";
+        if (stats.notFoundItems > 0) msg += ", " + stats.notFoundItems + " not found";
+        if (stats.errors > 0) msg += ", " + stats.errors + " errors";
+        jQuery("#mooImportSection>#mooImportResult>.mooItems>.text-upload>.moo-uploading-msg").text(msg);
+        moveProgressTo("mooImportItemsProgress", 100);
+        var summaryIcon = stats.errors > 0 ? "<span style='color:#DF5C5C'>&#10008;</span> " : "&#10004; ";
+        mooImportSectionDone(summaryIcon + msg);
+        return;
+    }
+
+    var batch = items.slice(index, index + batchSize);
+    var percentage = Math.ceil(index * 100 / nbItems);
+    moveProgressTo("mooImportItemsProgress", percentage);
+
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/images&_wpnonce=' + moo_params.nonce;
+    } else {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/images?_wpnonce=' + moo_params.nonce;
+    }
+
+    // Determine cloneImage based on first item in batch
+    var cloneImage = true;
+    if (moo_params.home_url && batch[0].url && batch[0].url.startsWith(moo_params.home_url)) {
+        cloneImage = false;
+    }
+
+    jQuery.post(endpoint, JSON.stringify({
+        "cloneImages": cloneImage,
+        "skipWhenImageExist": skipExistingImages,
+        "skipScheduledAction": skipScheduledAction,
+        "items": batch
+    }), function (response) {
+        if (response.count_items) window.mooImportItemsStats.count_items += response.count_items;
+        if (response.skipImages && response.skipImages.skippedItems) window.mooImportItemsStats.skippedItems += response.skipImages.skippedItems;
+        if (response.errors && response.errors.notFoundItems) window.mooImportItemsStats.notFoundItems += response.errors.notFoundItems;
+        if (response.errors && response.errors.items) window.mooImportItemsStats.errors += response.errors.items;
+        mooImportItemsBatch(index + batchSize, items, skipExistingImages, skipScheduledAction);
+    }).fail(function () {
+        window.mooImportItemsStats.errors += batch.length;
+        mooImportItemsBatch(index + batchSize, items, skipExistingImages, skipScheduledAction);
+    });
+}
+
+// Batched category image import (5 at a time)
+function mooImportCategoriesBatch(index, categories, skipExistingImages, skipScheduledAction) {
+    var batchSize = 5;
+    var nbCategories = categories.length;
+    if (index >= nbCategories) {
+        // Show final summary
+        var stats = window.mooImportCategoriesStats;
+        var msg = "Category Images: " + stats.count_categories + " imported";
+        if (stats.skippedCategories > 0) msg += ", " + stats.skippedCategories + " skipped";
+        if (stats.notFoundCategories > 0) msg += ", " + stats.notFoundCategories + " not found";
+        if (stats.errors > 0) msg += ", " + stats.errors + " errors";
+        jQuery("#mooImportSection>#mooImportResult>.mooCategories>.text-upload>.moo-uploading-msg").text(msg);
+        moveProgressTo("mooImportCategoriesProgress", 100);
+        var summaryIcon = stats.errors > 0 ? "<span style='color:#DF5C5C'>&#10008;</span> " : "&#10004; ";
+        mooImportSectionDone(summaryIcon + msg);
+        return;
+    }
+
+    var batch = categories.slice(index, index + batchSize);
+    var percentage = Math.ceil(index * 100 / nbCategories);
+    moveProgressTo("mooImportCategoriesProgress", percentage);
+
+    if (moo_RestUrl.indexOf("?rest_route") !== -1) {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/images&_wpnonce=' + moo_params.nonce;
+    } else {
+        var endpoint = moo_RestUrl + 'moo-clover/v2/dash/import/images?_wpnonce=' + moo_params.nonce;
+    }
+
+    // Determine cloneImage based on first category in batch
+    var cloneImage = true;
+    if (batch[0].image_url) {
+        if (moo_params.home_url && batch[0].image_url.startsWith(moo_params.home_url)) {
+            cloneImage = false;
+        }
+    } else {
+        cloneImage = false;
+    }
+
+    jQuery.post(endpoint, JSON.stringify({
+        "cloneImages": cloneImage,
+        "skipWhenImageExist": skipExistingImages,
+        "skipScheduledAction": skipScheduledAction,
+        "categories": batch
+    }), function (response) {
+        if (response.count_categories) window.mooImportCategoriesStats.count_categories += response.count_categories;
+        if (response.skipImages && response.skipImages.skippedCategories) window.mooImportCategoriesStats.skippedCategories += response.skipImages.skippedCategories;
+        if (response.errors && response.errors.notFoundCategories) window.mooImportCategoriesStats.notFoundCategories += response.errors.notFoundCategories;
+        if (response.errors && response.errors.categories) window.mooImportCategoriesStats.errors += response.errors.categories;
+        mooImportCategoriesBatch(index + batchSize, categories, skipExistingImages, skipScheduledAction);
+    }).fail(function () {
+        window.mooImportCategoriesStats.errors += batch.length;
+        mooImportCategoriesBatch(index + batchSize, categories, skipExistingImages, skipScheduledAction);
+    });
+}
+
 // POST Descriptions FUNCTION
 
 function mooImportDescription(descriptions) {
@@ -4273,14 +4859,25 @@ function mooImportDescription(descriptions) {
     jQuery.post(endpoint,JSON.stringify(descriptions), function (response) {
         if (response.status === true) {
             moveProgressTo("mooImportDescriptionsProgress",100);
-            jQuery("#mooImportSection>#mooImportResult>.mooDescriptions>.text-upload>.moo-uploading-msg").text(
-                "Descriptions imported successfully"
-            );
+            var msg = "Descriptions imported successfully";
+            var details = [];
+            if (response.updated_by_uuid) details.push(response.updated_by_uuid + " by uuid");
+            if (response.updated_by_name) details.push(response.updated_by_name + " by name");
+            if (details.length > 0) msg += " (" + details.join(", ") + ")";
+            jQuery("#mooImportSection>#mooImportResult>.mooDescriptions>.text-upload>.moo-uploading-msg").text(msg);
+            mooImportSectionDone("&#10004; " + msg);
         } else {
-            jQuery("#mooImportSection>#mooImportResult>.mooDescriptions>.text-upload>.moo-uploading-msg").text(
-                "Descriptions are not imported, an error has occurred"
+            jQuery("#mooImportSection>#mooImportResult>.mooDescriptions>.text-upload>.moo-uploading-msg").html(
+                "<span style='color: #DF5C5C'>Descriptions are not imported, an error has occurred</span>"
             );
+            mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Descriptions failed</span>");
         }
+    }).fail(function () {
+        moveProgressTo("mooImportDescriptionsProgress", 100);
+        jQuery("#mooImportSection>#mooImportResult>.mooDescriptions>.text-upload>.moo-uploading-msg").html(
+            "<span style='color: #DF5C5C'>Descriptions import failed (network error)</span>"
+        );
+        mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Descriptions failed (network error)</span>");
     });
 }
 function mooImportOrdersTypes(data) {
@@ -4296,14 +4893,22 @@ function mooImportOrdersTypes(data) {
     jQuery.post(endpoint,JSON.stringify(data), function (response) {
         if (response.status === true) {
             moveProgressTo("mooImportOrdersTypesProgress",100);
-            jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes>.text-upload>.moo-uploading-msg").text(
-                "Orders Types imported successfully"
-            );
+            var msg = "Orders Types imported successfully";
+            if (response.updated) msg += " (" + response.updated + " updated)";
+            jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes>.text-upload>.moo-uploading-msg").text(msg);
+            mooImportSectionDone("&#10004; " + msg);
         } else {
-            jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes>.text-upload>.moo-uploading-msg").text(
-                "Orders Types are not imported, an error has occurred"
+            jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes>.text-upload>.moo-uploading-msg").html(
+                "<span style='color: #DF5C5C'>Orders Types are not imported, an error has occurred</span>"
             );
+            mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Orders Types failed</span>");
         }
+    }).fail(function () {
+        moveProgressTo("mooImportOrdersTypesProgress", 100);
+        jQuery("#mooImportSection>#mooImportResult>.mooOrdersTypes>.text-upload>.moo-uploading-msg").html(
+            "<span style='color: #DF5C5C'>Orders Types import failed (network error)</span>"
+        );
+        mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Orders Types failed (network error)</span>");
     });
 }
 function mooImportModifiersAndGroups(data) {
@@ -4319,14 +4924,25 @@ function mooImportModifiersAndGroups(data) {
     jQuery.post(endpoint,JSON.stringify(data), function (response) {
         if (response.status === true) {
             moveProgressTo("mooImportModifiersProgress",100);
-            jQuery("#mooImportSection>#mooImportResult>.mooModifiers>.text-upload>.moo-uploading-msg").text(
-                "Modifiers and Modifier Groups imported successfully"
-            );
+            var msg = "Modifiers and Modifier Groups imported successfully";
+            var details = [];
+            if (response.modifiers) details.push(response.modifiers + " modifiers");
+            if (response.modifier_groups) details.push(response.modifier_groups + " modifier groups");
+            if (details.length > 0) msg += " (" + details.join(", ") + ")";
+            jQuery("#mooImportSection>#mooImportResult>.mooModifiers>.text-upload>.moo-uploading-msg").text(msg);
+            mooImportSectionDone("&#10004; " + msg);
         } else {
-            jQuery("#mooImportSection>#mooImportResult>.mooModifiers>.text-upload>.moo-uploading-msg").text(
-                "Modifiers and Modifier Groups are not imported, an error has occurred"
+            jQuery("#mooImportSection>#mooImportResult>.mooModifiers>.text-upload>.moo-uploading-msg").html(
+                "<span style='color: #DF5C5C'>Modifiers and Modifier Groups are not imported, an error has occurred</span>"
             );
+            mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Modifiers failed</span>");
         }
+    }).fail(function () {
+        moveProgressTo("mooImportModifiersProgress", 100);
+        jQuery("#mooImportSection>#mooImportResult>.mooModifiers>.text-upload>.moo-uploading-msg").html(
+            "<span style='color: #DF5C5C'>Modifiers import failed (network error)</span>"
+        );
+        mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Modifiers failed (network error)</span>");
     });
 }
 function mooImportSettings(settings) {
@@ -4346,11 +4962,19 @@ function mooImportSettings(settings) {
             jQuery("#mooImportSection>#mooImportResult>.mooSettings>.text-upload>.moo-uploading-msg").text(
                 "Settings imported successfully"
             );
+            mooImportSectionDone("&#10004; Settings imported successfully");
         } else {
-            jQuery("#mooImportSection>#mooImportResult>.mooSettings>.text-upload>.moo-uploading-msg").text(
-                "Settings aren't imported successfully"
+            jQuery("#mooImportSection>#mooImportResult>.mooSettings>.text-upload>.moo-uploading-msg").html(
+                "<span style='color: #DF5C5C'>Settings aren't imported successfully</span>"
             );
+            mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Settings failed</span>");
         }
+    }).fail(function () {
+        moveProgressTo("mooImportSettingsProgress", 100);
+        jQuery("#mooImportSection>#mooImportResult>.mooSettings>.text-upload>.moo-uploading-msg").html(
+            "<span style='color: #DF5C5C'>Settings import failed (network error)</span>"
+        );
+        mooImportSectionDone("<span style='color:#DF5C5C'>&#10008; Settings failed (network error)</span>");
     });
 }
 function mooImportItems(index) {

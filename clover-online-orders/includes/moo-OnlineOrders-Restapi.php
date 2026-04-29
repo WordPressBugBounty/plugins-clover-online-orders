@@ -137,9 +137,23 @@ class Moo_OnlineOrders_Restapi
             error_reporting(0);
         }
 
+        if (defined('SOO_DEBUG') && SOO_DEBUG) {
+            error_reporting(E_ALL);
+        } else {
+            error_reporting(0);
+        }
+
         //Get the plugin settings
         $this->pluginSettings = (array) get_option('moo_settings');
         $this->pluginSettings = apply_filters("moo_filter_plugin_settings",$this->pluginSettings);
+        if (SooSettingsSource::current() === 'global') {
+            $dash = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            if (is_array($dash) && isset($dash['checkout_settings']) && is_array($dash['checkout_settings'])) {
+                $checkoutSettings = $dash['checkout_settings'];
+                $this->pluginSettings['track_stock'] = !empty($checkoutSettings['enableStockTracking']) ? 'enabled' : 'disabled';
+                $this->pluginSettings['track_stock_hide_items'] = !empty($checkoutSettings['hideUnavailableItems']) ? 'on' : 'off';
+            }
+        }
 
         if(isset($this->pluginSettings["useAlternateNames"])){
             $this->useAlternateNames = ($this->pluginSettings["useAlternateNames"] !== "disabled");
@@ -846,6 +860,7 @@ class Moo_OnlineOrders_Restapi
             $final_item["has_modifiers"]= $this->model->itemHasModifiers($item->uuid)->total > 0;
             $final_item["image"]        = $defaultImg;
             $final_item["image_url"]    =   null;
+            $final_item["categories"]  =   array();
             if($defaultImg){
                 $final_item["image"]            =   array(
                     "url"=>$this->applyCDN($defaultImg->url,$this->cdnLink)
@@ -859,6 +874,23 @@ class Moo_OnlineOrders_Restapi
                     $final_item["name"]=$this->stripSlashes($item->alternate_name);
                 } else {
                     $final_item["name"]=$this->stripSlashes($item->name);
+                }
+            }
+            $categories = $this->model->getItemCategories($item->uuid);
+            if (!empty($categories)) {
+                foreach ($categories as $category) {
+                    $cat = array(
+                        "uuid" => $category["uuid"],
+                        "alternate_name" => isset($category["alternate_name"]) ? $this->stripSlashes($category["alternate_name"]) : "",
+                        "sort_order" => isset($category["sort_order"]) ? intval($category["sort_order"]) : 0,
+                        "custom_hours" => isset($category["custom_hours"]) ? $category["custom_hours"] : null,
+                    );
+                    if ($this->useAlternateNames && !empty($category["alternate_name"])) {
+                        $cat["name"] = $this->stripSlashes($category["alternate_name"]);
+                    } else {
+                        $cat["name"] = $this->stripSlashes($category["name"]);
+                    }
+                    $final_item["categories"][] = $cat;
                 }
             }
             array_push($response['items'],$final_item);
@@ -921,6 +953,7 @@ class Moo_OnlineOrders_Restapi
         $response["image_url"]        = null;
         $response["modifier_groups"] = array();
         $response["images"] = array();
+        $response["categories"] = array();
 
         if (isset($item->soo_name) && !empty($item->soo_name)){
             $response["name"] = $this->stripSlashes($item->soo_name);
@@ -929,6 +962,23 @@ class Moo_OnlineOrders_Restapi
                 $response["name"]=$this->stripSlashes($item->alternate_name);
             } else {
                 $response["name"]=$this->stripSlashes($item->name);
+            }
+        }
+        $categories = $this->model->getItemCategories($item->uuid);
+        if (!empty($categories)) {
+            foreach ($categories as $category) {
+                $cat = array(
+                    "uuid" => $category["uuid"],
+                    "alternate_name" => isset($category["alternate_name"]) ? $this->stripSlashes($category["alternate_name"]) : "",
+                    "sort_order" => isset($category["sort_order"]) ? intval($category["sort_order"]) : 0,
+                    "custom_hours" => isset($category["custom_hours"]) ? $category["custom_hours"] : null,
+                );
+                if ($this->useAlternateNames && !empty($category["alternate_name"])) {
+                    $cat["name"] = $this->stripSlashes($category["alternate_name"]);
+                } else {
+                    $cat["name"] = $this->stripSlashes($category["name"]);
+                }
+                $response["categories"][] = $cat;
             }
         }
         //Get Item Modifiers
@@ -1007,9 +1057,9 @@ class Moo_OnlineOrders_Restapi
             $itemStocks = false;
         }
         $items = $this->model->getFeaturedProducts();
-        if (!is_array($items) || count($items) <= 0){
-            $items = $this->model->getBestSellingProducts(12);
-        }
+        // if (!is_array($items) || count($items) <= 0){
+        //     $items = $this->model->getBestSellingProducts(12);
+        // }
 
         foreach ($items as $item) {
             if(!$item)
@@ -1626,24 +1676,34 @@ class Moo_OnlineOrders_Restapi
     }
     /* Get the theme settings */
     public function getThemeSettings( $request ) {
-        $response = array();
         if ( !isset($request["theme_name"]) ) {
-            return new WP_Error( 'theme_name_required', 'Please provide ethe theme name', array( 'status' => 404 ) );
+            return new WP_Error( 'theme_name_required', 'Please provide the theme name', array( 'status' => 404 ) );
         }
         $name = $request["theme_name"];
-        $res = array();
         $settings = $this->pluginSettings;
 
-        if($name === "default") {
+        if ($name === "default") {
             $name = $settings["default_style"];
         }
-        foreach ($settings as $key=>$val) {
-            $k = (string)$key;
-            if(strpos($k,$name."_") === 0 && $val != "")
-            {
-                $res[$key]= $val;
+
+        // Whitelist against known theme identifiers. Without this, the public
+        // route's prefix match leaks unrelated option keys (api_key, fb_appsecret,
+        // reCAPTCHA_secret_key, ...) for any caller-chosen prefix.
+        // Update this list when a new theme is added under public/themes/.
+        $validThemes = array('jTheme', 'oTheme', 'onePage', 'style2');
+        if ( !in_array($name, $validThemes, true) ) {
+            return new WP_Error( 'theme_not_found', 'Theme not found', array( 'status' => 404 ) );
+        }
+
+        $res = array();
+        $prefix = $name . "_";
+        foreach ($settings as $key => $val) {
+            if (str_starts_with((string)$key, $prefix) && $val !== "") {
+                $res[$key] = $val;
             }
         }
+
+        $response = array();
         $response["theme_name"] = $name;
         $response["nb_items"]   = $this->moo_get_nbItems_in_cart();
         $response["settings"]   = $res;

@@ -106,6 +106,13 @@ class  CheckoutRoutes extends BaseRoute {
                 'permission_callback' => '__return_true'
             )
         ) );
+        register_rest_route( $this->namespace, '/checkout/finalize_3ds_payment', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'finalize3DsPayment' ),
+                'permission_callback' => '__return_true'
+            )
+        ) );
         register_rest_route( $this->namespace, '/checkout/order_totals', array(
             array(
                 'methods'   => 'POST',
@@ -138,12 +145,45 @@ class  CheckoutRoutes extends BaseRoute {
      * @return array
      */
     public function getCheckoutOptions( $request ) {
+        // Fail-loud when in Global settings mode but the central dashboard is unreachable.
+        // Prevents returning a response that silently mixes local fallback values with
+        // live API values — which would let mobile clients place orders under the wrong
+        // settings with no visible error.
+        if (SooSettingsSource::instance($this->api)->globalFetchFailed()) {
+            return new WP_Error(
+                'settings_source_unavailable',
+                'The central settings dashboard is temporarily unreachable. Please try again in a moment.',
+                array('status' => 503)
+            );
+        }
+
         $response = array();
+        $googleReCAPTCHADisabled = (bool) get_option('sooDisableGoogleReCAPTCHA',false);
+
+        $response["use_coupons"] = isset($this->pluginSettings['use_coupons']) && $this->pluginSettings['use_coupons'] == "enabled";
+        $sooSource = SooSettingsSource::instance($this->api);
+        $applePayEnabled = (bool) get_option("moo_apple_pay_enabled", false);
+
+        // In Global mode, the unified dashboard endpoint is the single source
+        // of truth. Build a mapper once; reuse for blackout, checkout
+        // settings, pubkey, and address. The fail-loud guard above
+        // (globalFetchFailed) has already returned 503 if the fetch failed,
+        // so by the time we reach here we have a usable payload.
+        $dashMapper = null;
+        if (SooSettingsSource::current() === 'global') {
+            $_dashForOverride = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            $dashMapper = new DashboardCheckoutMapper($_dashForOverride);
+            $_cs = isset($_dashForOverride['checkout_settings']) ? $_dashForOverride['checkout_settings'] : array();
+            $this->applyDashboardCheckoutOverrides($_cs);
+            if (array_key_exists('paymentMethods', $_cs)) {
+                $paymentFlags = $this->dashboardPaymentMethodFlags($_cs['paymentMethods']);
+                $applePayEnabled = $paymentFlags['apple_pay'];
+            }
+        }
 
         $response["use_sms_verification"] = isset($this->pluginSettings['use_sms_verification']) && $this->pluginSettings['use_sms_verification'] == "enabled";
-        $response["use_coupons"] = isset($this->pluginSettings['use_coupons']) && $this->pluginSettings['use_coupons'] == "enabled";
-        $response["schedule_orders"] = isset($this->pluginSettings['order_later']) && $this->pluginSettings['order_later'] == "on";
-        $response["schedule_orders_required"] = isset($this->pluginSettings['order_later_mandatory']) && $this->pluginSettings['order_later_mandatory'] == "on";
+        $response["schedule_orders"] = self::asBool($sooSource->get('order_later'));
+        $response["schedule_orders_required"] = self::asBool($sooSource->get('order_later_mandatory'));
         $response["fb_appid"] = $this->pluginSettings['fb_appid'];
         $response["order_types"] = $this->orderTypes($request);
         $response["opening_status"] = $this->openingStatus($request);
@@ -171,8 +211,11 @@ class  CheckoutRoutes extends BaseRoute {
         $response["payment_methods"]["standard_form"] = $this->pluginSettings["payment_creditcard"];
         $response["payment_methods"]["cash_pickup"] = $this->pluginSettings["payment_cash"];
         $response["payment_methods"]["cash_delivery"] = $this->pluginSettings["payment_cash_delivery"];
+        $response["payment_methods"]["gift_cards"] = $this->pluginSettings["clover_giftcards"];
+        $response["payment_methods"]["google_pay"] = $this->pluginSettings["clover_googlepay"];
+        $response["payment_methods"]["apple_pay"] = $applePayEnabled ? 'on' : 'off';
 
-        if(isset($this->pluginSettings["service_fees"]) && $this->pluginSettings["service_fees"] !==""){
+        if(isset($this->pluginSettings["service_fees"]) && $this->pluginSettings["service_fees"] !=="") {
             $response["services_fees"] = array(
                 "name"=>$this->pluginSettings["service_fees_name"],
                 "amount"=>$this->pluginSettings["service_fees"],
@@ -195,35 +238,32 @@ class  CheckoutRoutes extends BaseRoute {
         if(isset($this->pluginSettings["track_stock"]) && $this->pluginSettings["track_stock"] === "enabled"){
             $response["stock"] = array(
                 "track_stock"=>true,
-                "hide_items"=>false,
+                "hide_items"=>$this->pluginSettings["track_stock_hide_items"] === 'on',
             );
         } else {
             $response["stock"] = array(
                 "track_stock"=>false,
-                "hide_items"=>$this->pluginSettings["track_stock_hide_items"] === 'on',
+                "hide_items"=>false,
             );
         }
 
 
         //check if the store makes as closed from the settings
-        if(isset($this->pluginSettings['accept_orders']) && $this->pluginSettings['accept_orders'] === "disabled"){
+        if(isset($this->pluginSettings['accept_orders']) && $this->pluginSettings['accept_orders'] === "disabled") {
             $response["store_is_open"] = false;
-            if(isset($this->pluginSettings["closing_msg"]) && $this->pluginSettings["closing_msg"] !== '') {
-                $response["closing_msg"] = $this->pluginSettings["closing_msg"];
-            } else  {
-                $response["closing_msg"] = "We are currently closed and will open again soon";
-            }
-            if(isset($this->pluginSettings["hide_menu_w_closed"]) && $this->pluginSettings["hide_menu_w_closed"] === "on") {
-                $response["hide_menu"] = true;
-            } else {
-                $response["hide_menu"] = false;
-            }
+            $closingMsg = $sooSource->get('closing_msg');
+            $response["closing_msg"] = !empty($closingMsg) ? $closingMsg : "We are currently closed and will open again soon";
+            $response["hide_menu"] = self::asBool($sooSource->get('hide_menu_w_closed'));
         } else {
             $response["store_is_open"] = true;
         }
 
-        //Get blackout status
-        $blackoutStatusResponse = $this->api->getBlackoutStatus();
+        //Get blackout status — Global mode uses the mapper, Customized hits the legacy API.
+        if ($dashMapper !== null) {
+            $blackoutStatusResponse = $dashMapper->mapStoreStatus();
+        } else {
+            $blackoutStatusResponse = $this->api->getBlackoutStatus();
+        }
 
         if(isset($blackoutStatusResponse["status"]) && $blackoutStatusResponse["status"] === "close") {
             $response["store_is_open"] = false;
@@ -248,12 +288,26 @@ class  CheckoutRoutes extends BaseRoute {
         $response["delivery_areas"]["free_after"]   = $this->pluginSettings['free_delivery'];
         $response["delivery_areas"]["fixed_fees"]   = $this->pluginSettings['fixed_delivery'];
         $response["delivery_areas"]["errorMsg"]     = $this->pluginSettings['delivery_errorMsg'];
-        $response["cloverPakmsPaymentKey"] = $this->api->getPakmsKey();
-        $response["isApplePayEnabled"] =  (bool) get_option("moo_apple_pay_enabled",false);;
+        $checkoutSettings = $dashMapper !== null
+            ? $dashMapper->mapCheckoutSettings()
+            : $this->api->getCheckoutSettings();
+        $response["checkout_settings"] = $checkoutSettings;
+        $response["convenience_fee"] = (is_array($checkoutSettings) && isset($checkoutSettings["convenience_fee"])) ? intval(round(floatval($checkoutSettings["convenience_fee"]))) : 0;
+        $response["fraudTools"] = (is_array($checkoutSettings) && isset($checkoutSettings["fraudTools"])) ? $checkoutSettings["fraudTools"] : null;
+        $response["cloverPakmsPaymentKey"] = $dashMapper !== null
+            ? $dashMapper->mapPubKey()
+            : $this->api->getPakmsKey();
+        $response["isApplePayEnabled"] =  $applePayEnabled;
+        // Merchant pubkey: locally cached in moo_merchant_pubkey; the legacy
+        // method reads from cache before falling back to the network. Safe
+        // to call in both modes — there's no Global override for the
+        // merchant identity pubkey itself.
         $response["pubkey"] = $this->api->getMerchantPubKey();
-        $response["recaptchaKey"] = !empty($this->pluginSettings['reCAPTCHA_site_key']) ? $this->pluginSettings['reCAPTCHA_site_key'] : null;
+        $response["recaptchaKey"] = !$googleReCAPTCHADisabled && !empty($this->pluginSettings['reCAPTCHA_site_key']) ? $this->pluginSettings['reCAPTCHA_site_key'] : null;
+        $response["allowScOrders"] = self::asBool($sooSource->get('order_later'));
         $response["allowAsap"] = $this->isAsapAllowed();
         $response["hideUnavailableItems"] = $this->isHideUnavailableItemsEnabled();
+        $response["useCloverHours"] = $this->pluginSettings['hours'] !== 'all';
 
 
         return $response;
@@ -311,13 +365,36 @@ class  CheckoutRoutes extends BaseRoute {
         return $response;
     }
     public function openingStatus( $request ) {
+        // Fail loud when in Global mode but the dashboard is unreachable —
+        // mirrors the guard at the top of getCheckoutOptions() and checkout().
+        // openingStatus is a separate REST route that can be called directly
+        // by mobile clients, not just from getCheckoutOptions's internal flow.
+        if (SooSettingsSource::instance($this->api)->globalFetchFailed()) {
+            return new WP_Error(
+                'settings_source_unavailable',
+                'The central settings dashboard is temporarily unreachable. Please try again in a moment.',
+                array('status' => 503)
+            );
+        }
+
+        $isGlobal = SooSettingsSource::current() === 'global';
+        $dashMapper = null;
+        if ($isGlobal) {
+            $dash = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            $dashMapper = new DashboardCheckoutMapper($dash);
+        }
 
         if($this->pluginSettings["order_later"] == "on") {
             $inserted_nb_days = $this->pluginSettings["order_later_days"];
             $inserted_nb_mins = $this->pluginSettings["order_later_minutes"];
 
-            $inserted_nb_days_d = $this->pluginSettings["order_later_days_delivery"];
-            $inserted_nb_mins_d = $this->pluginSettings["order_later_minutes_delivery"];
+            if ($isGlobal) {
+                $inserted_nb_days_d = $inserted_nb_days;
+                $inserted_nb_mins_d = $inserted_nb_mins;
+            } else {
+                $inserted_nb_days_d = $this->pluginSettings["order_later_days_delivery"];
+                $inserted_nb_mins_d = $this->pluginSettings["order_later_minutes_delivery"];
+            }
 
             if($inserted_nb_days === "") {
                 $nb_days = 4;
@@ -363,16 +440,26 @@ class  CheckoutRoutes extends BaseRoute {
                     "message" => "",
                 ];
         }
-        $oppening_status = $this->api->getOpeningStatus($nb_days,$nb_minutes);
-        if($nb_days != $nb_days_d || $nb_minutes != $nb_minutes_d) {
-            $oppening_status_d = $this->api->getOpeningStatus($nb_days_d,$nb_minutes_d);
-            if(isset($oppening_status_d["pickup_time"])){
-                $oppening_status["delivery_time"]=$oppening_status_d["pickup_time"];
+        if ($dashMapper !== null) {
+            // REST mobile clients don't get a throttled map — filter out
+            // unavailable slots so customers only see bookable times.
+            $oppening_status = $dashMapper->mapOpeningStatus($nb_days, $nb_minutes, true);
+        } else {
+            $oppening_status = $this->api->getOpeningStatus($nb_days, $nb_minutes);
+        }
+        // In Global mode, pickup slots double as delivery slots in v1
+        // (per the centralized-settings spec). Skip the second fetch.
+        if ($dashMapper !== null) {
+            $oppening_status["delivery_time"] = $oppening_status["pickup_time"];
+        } elseif ($nb_days != $nb_days_d || $nb_minutes != $nb_minutes_d) {
+            $oppening_status_d = $this->api->getOpeningStatus($nb_days_d, $nb_minutes_d);
+            if (isset($oppening_status_d["pickup_time"])) {
+                $oppening_status["delivery_time"] = $oppening_status_d["pickup_time"];
             } else {
                 $oppening_status["delivery_time"] = null;
             }
         } else {
-            $oppening_status["delivery_time"]=$oppening_status["pickup_time"];
+            $oppening_status["delivery_time"] = $oppening_status["pickup_time"];
         }
         //remove times if schedule_orders disabled
         if($this->pluginSettings["order_later"] != "on") {
@@ -394,7 +481,10 @@ class  CheckoutRoutes extends BaseRoute {
             }
             //Adding asap to delivery time
             if(isset($oppening_status["delivery_time"])) {
-                if(isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on')
+                $allowAsapForDelivery = $isGlobal
+                    ? (isset($this->pluginSettings['order_later_asap_for_p']) && $this->pluginSettings['order_later_asap_for_p'] == 'on')
+                    : (isset($this->pluginSettings['order_later_asap_for_d']) && $this->pluginSettings['order_later_asap_for_d'] == 'on');
+                if($allowAsapForDelivery)
                 {
                     if(isset($oppening_status["delivery_time"]["Today"])) {
                         array_unshift($oppening_status["delivery_time"]["Today"],'ASAP');
@@ -410,7 +500,14 @@ class  CheckoutRoutes extends BaseRoute {
 
         $oppening_msg = "";
 
-        if($this->pluginSettings['hours'] != 'all'){
+        // Global mode: when the dashboard reports manual close, use the
+        // closure message as-is and skip the hours-close boilerplate.
+        $dashClose = SooDashboardSummary::manualCloseState();
+        if ($dashClose !== null) {
+            $oppening_msg = $dashClose['message'];
+            $oppening_status["status"] = 'close';
+            $oppening_status["accept_orders_when_closed"] = false;
+        } elseif($this->pluginSettings['hours'] != 'all'){
             if ($oppening_status["status"] == 'close'){
                 if(isset($this->pluginSettings["closing_msg"]) && $this->pluginSettings["closing_msg"] !== '') {
                     $oppening_msg = $this->pluginSettings["closing_msg"];
@@ -438,13 +535,39 @@ class  CheckoutRoutes extends BaseRoute {
      * @return array
      */
     public function checkout( $request ) {
+        // Fail loud when in Global mode but the dashboard is unreachable —
+        // mirrors the guard at the top of getCheckoutOptions(). Without it,
+        // the order would be processed against a mix of dashboard overrides
+        // (where they exist on the singleton's prior fetch) and legacy data.
+        if (SooSettingsSource::instance($this->api)->globalFetchFailed()) {
+            return new WP_Error(
+                'settings_source_unavailable',
+                'The central settings dashboard is temporarily unreachable. Please try again in a moment.',
+                array('status' => 503)
+            );
+        }
 
         $body = json_decode($request->get_body(),true);
+        $idempotencyKey = $request->get_header('Idempotency-Key');
+        if (!empty($idempotencyKey)) {
+            $body["idempotency_key"] = sanitize_text_field($idempotencyKey);
+        } elseif (isset($body["idempotency_key"])) {
+            $body["idempotency_key"] = sanitize_text_field($body["idempotency_key"]);
+        } else {
+            $body["idempotency_key"] = wp_generate_uuid4();
+        }
         $customer_token =  (!empty($body["customer_token"])) ?  $body["customer_token"] : null;
         $googleReCAPTCHADisabled =  (bool) get_option('sooDisableGoogleReCAPTCHA',false);
 
         if (get_option('moo_old_checkout_enabled') === 'yes') {
             $googleReCAPTCHADisabled = true;
+        }
+
+        if (SooSettingsSource::current() === 'global') {
+            $_dashForOverride = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            if (is_array($_dashForOverride) && isset($_dashForOverride['checkout_settings']) && is_array($_dashForOverride['checkout_settings'])) {
+                $this->applyDashboardCheckoutOverrides($_dashForOverride['checkout_settings']);
+            }
         }
 
         //Check Google recaptcha
@@ -497,9 +620,13 @@ class  CheckoutRoutes extends BaseRoute {
             $body["reCAPTCHA_token"] = 'disabled';
         }
 
-        //Check blackout status
-        //Get blackout status
-        $blackoutStatusResponse = $this->api->getBlackoutStatus();
+        //Check blackout status — Global mode uses the mapper, Customized hits the legacy API.
+        if (SooSettingsSource::current() === 'global') {
+            $_dashForBlackout = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            $blackoutStatusResponse = (new DashboardCheckoutMapper($_dashForBlackout))->mapStoreStatus();
+        } else {
+            $blackoutStatusResponse = $this->api->getBlackoutStatus();
+        }
         if(isset($blackoutStatusResponse["status"]) && $blackoutStatusResponse["status"] === "close") {
 
             if(isset($blackoutStatusResponse["custom_message"]) && !empty($blackoutStatusResponse["custom_message"])){
@@ -555,6 +682,19 @@ class  CheckoutRoutes extends BaseRoute {
             $body["delivery_name"] = $this->pluginSettings['delivery_fees_name'];
         } else {
             $body["delivery_name"] = "Delivery Charge";
+        }
+
+        //Convenience fee (display only, online payments only)
+        if (!isset($body["convenience_fee"])) {
+            $body["convenience_fee"] = 0;
+        } else {
+            $body["convenience_fee"] = intval($body["convenience_fee"]);
+            if ($body["convenience_fee"] < 0) {
+                $body["convenience_fee"] = 0;
+            }
+        }
+        if ($body["payment_method"] === "cash") {
+            $body["convenience_fee"] = 0;
         }
 
         //check Scheduled time
@@ -811,6 +951,7 @@ class  CheckoutRoutes extends BaseRoute {
         $body["title"] = apply_filters('moo_filter_title', $body["title"]);
         $body["delivery_amount"] = apply_filters('moo_filter_delivery_amount', $body["delivery_amount"]);
         $body["service_fee"] = apply_filters('moo_filter_service_fee', $body["service_fee"]);
+        $body["convenience_fee"] = apply_filters('moo_filter_convenience_fee', $body["convenience_fee"]);
 
         $body = apply_filters('moo_filter_pre_create_order_body', $body);
 
@@ -829,7 +970,8 @@ class  CheckoutRoutes extends BaseRoute {
           ["name"=>"clientIp","value"=>$this->getClientIp()],
           ["name"=>"clientUserAgent","value"=>$_SERVER["HTTP_USER_AGENT"]],
           ["name"=>"phpVersion","value"=>phpversion()],
-          ["name"=>"pluginVersion","value"=>$this->version]
+          ["name"=>"pluginVersion","value"=>$this->version],
+          ["name"=>"settingsSource","value"=>SooSettingsSource::current()]
         );
         //Add Few MetaData to the Order
         if (isset($body["metainfo"])  && is_array($body["metainfo"])){
@@ -838,15 +980,19 @@ class  CheckoutRoutes extends BaseRoute {
             $body["metainfo"] = $metaData;
         }
 
+        //Add Ip to 3Ds
+        if (!empty($body["threeds"]["browser_info"])) {
+            $body["threeds"]["browser_info"]["browser_ip"] = $this->getClientIp();
+        }
+
         //send request to the Api
-        try{
+        try {
             do_action("moo_action_new_order_received", $body);
 
             $orderCreated = $this->api->createOrderV2($body,$customer_token);
             if($orderCreated){
                 //Order created successfully
                 if(isset($orderCreated["id"])){
-
                     do_action("moo_action_order_created", $orderCreated["id"], $body["payment_method"] );
 
                     if(isset($orderCreated["status"]) && $orderCreated["status"] === "success"){
@@ -861,7 +1007,13 @@ class  CheckoutRoutes extends BaseRoute {
                         }
                     }
                 }
-                return apply_filters("moo_filter_order_creation_response",$orderCreated);
+                $orderResponse = apply_filters("moo_filter_order_creation_response",$orderCreated);
+                if (is_array($orderResponse)) {
+                    $orderResponse["confirmation_message"] = isset($this->pluginSettings["confirmation_message"])
+                        ? $this->pluginSettings["confirmation_message"]
+                        : null;
+                }
+                return $orderResponse;
             } else {
                 return array(
                     "status"=>"failed",
@@ -938,7 +1090,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(isset($request["moo_customer_token"]) && !empty($request["moo_customer_token"])){
             $token = $request["moo_customer_token"];
         }
-        var_dump($token);
+        //TODO : Verify this
         $body = json_decode($request->get_body(),true);
         $coupon_code = sanitize_text_field($body['code']);
 
@@ -973,6 +1125,29 @@ class  CheckoutRoutes extends BaseRoute {
 
         return $response;
 
+    }
+
+    public function finalize3DsPayment( $request ) {
+        $body = json_decode($request->get_body(),true);
+
+        $charge_id = sanitize_text_field($body['charge_id']);
+        $flow_status = sanitize_text_field($body['flow_status']);
+
+        if(empty($charge_id) || empty($flow_status)){
+            return array(
+                'status'	=> 'error',
+                'message'   => 'Please send all required fields'
+            );
+        }
+        $payload = array(
+            "flow_status" => $flow_status,
+            "charge_id" => $charge_id,
+        );
+        $result = $this->api->finalize3DsPayment($payload);
+        var_dump($result);
+        return array(
+            'status'	=> 'failed',
+        );
     }
     public function getOrderTotals( $request ) {
 
@@ -1093,6 +1268,228 @@ class  CheckoutRoutes extends BaseRoute {
         }
         if(isset($this->pluginSettings['hide_category_ifnotavailable']) && $this->pluginSettings['hide_category_ifnotavailable'] == 'on')
         {
+            return true;
+        }
+        return false;
+    }
+
+    private function applyDashboardCheckoutOverrides(array $checkoutSettings) {
+        $this->pluginSettings['tips'] = !empty($checkoutSettings['tipsEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['tips_selection'] = $this->dashboardListToCsv(
+            isset($checkoutSettings['tipsSuggested']) ? $checkoutSettings['tipsSuggested'] : array()
+        );
+        $this->pluginSettings['tips_default'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['tipsDefault']) ? $checkoutSettings['tipsDefault'] : null
+        );
+        $this->pluginSettings['service_fees'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['serviceFeeAmount']) ? $checkoutSettings['serviceFeeAmount'] : null
+        );
+        $this->pluginSettings['service_fees_type'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['serviceFeeType']) ? $checkoutSettings['serviceFeeType'] : 'amount',
+            'amount'
+        );
+        $this->pluginSettings['service_fees_name'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['serviceFeeName']) ? $checkoutSettings['serviceFeeName'] : null
+        );
+        $this->pluginSettings['use_sms_verification'] = !empty($checkoutSettings['smsVerificationEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['use_special_instructions'] = !empty($checkoutSettings['specialInstructionsEnabled']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['special_instructions_required'] = !empty($checkoutSettings['specialInstructionsRequired']) ? 'yes' : 'no';
+        $this->pluginSettings['text_under_special_instructions'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['specialInstructionsText']) ? $checkoutSettings['specialInstructionsText'] : null
+        );
+        $this->pluginSettings['marketing_checkbox_enabled'] = !empty($checkoutSettings['marketingCheckboxEnabled']) ? 'on' : 'off';
+        $this->pluginSettings['marketing_checkbox_text'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['marketingCheckboxText']) ? $checkoutSettings['marketingCheckboxText'] : null
+        );
+        $this->pluginSettings['use_coupons'] = !empty($checkoutSettings['useCoupons']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['track_stock'] = !empty($checkoutSettings['enableStockTracking']) ? 'enabled' : 'disabled';
+        $this->pluginSettings['track_stock_hide_items'] = !empty($checkoutSettings['hideUnavailableItems']) ? 'on' : 'off';
+        $this->pluginSettings['confirmation_message'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['confirmation_message']) ? $checkoutSettings['confirmation_message'] : null
+        );
+        $this->pluginSettings['show_order_number'] = !empty($checkoutSettings['showOrderNumberOnReceipt']) ? 'on' : 'off';
+        $this->pluginSettings['rollout_order_number_max'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['orderNumberRollOverLimit']) ? $checkoutSettings['orderNumberRollOverLimit'] : null,
+            '999'
+        );
+        $this->pluginSettings['rollout_order_number'] =
+            (!empty($checkoutSettings['showOrderNumberOnReceipt']) && $this->pluginSettings['rollout_order_number_max'] !== '')
+                ? 'on'
+                : 'off';
+        $this->pluginSettings['print_ahead_time_minutes'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['printAheadTimeMinutes']) ? $checkoutSettings['printAheadTimeMinutes'] : null
+        );
+        $notifyOnNewOrders = !array_key_exists('notifyOnNewOrders', $checkoutSettings) || !empty($checkoutSettings['notifyOnNewOrders']);
+        $this->pluginSettings['_dashboard_notify_on_new_orders'] = $notifyOnNewOrders ? 'on' : 'off';
+        $this->pluginSettings['merchant_email'] = $notifyOnNewOrders
+            ? $this->dashboardListToDelimitedString(
+                isset($checkoutSettings['notificationEmailList']) ? $checkoutSettings['notificationEmailList'] : array(),
+                ','
+            )
+            : '';
+        $this->pluginSettings['merchant_phone'] = $notifyOnNewOrders
+            ? $this->dashboardListToDelimitedString(
+                isset($checkoutSettings['notificationPhoneList']) ? $checkoutSettings['notificationPhoneList'] : array(),
+                '__'
+            )
+            : '';
+
+        $announcement = isset($checkoutSettings['announcement']) && is_array($checkoutSettings['announcement'])
+            ? $checkoutSettings['announcement']
+            : array();
+        $announcementEnabled = !array_key_exists('enabled', $announcement) || !empty($announcement['enabled']);
+        if ($announcementEnabled) {
+            $this->pluginSettings['custom_sa_title'] = $this->dashboardScalarToString(
+                isset($announcement['title']) ? $announcement['title'] : null
+            );
+            $this->pluginSettings['custom_sa_content'] = $this->dashboardScalarToString(
+                isset($announcement['content']) ? $announcement['content'] : null
+            );
+            $this->pluginSettings['custom_sa_onCheckoutPage'] = !empty($announcement['showOnCheckout']) ? 'on' : 'off';
+        } else {
+            $this->pluginSettings['custom_sa_title'] = '';
+            $this->pluginSettings['custom_sa_content'] = '';
+            $this->pluginSettings['custom_sa_onCheckoutPage'] = 'off';
+        }
+
+        if (array_key_exists('paymentMethods', $checkoutSettings)) {
+            $paymentFlags = $this->dashboardPaymentMethodFlags($checkoutSettings['paymentMethods']);
+            $this->pluginSettings['clover_payment_form'] = $paymentFlags['clover_payment_form'] ? 'on' : 'off';
+            $this->pluginSettings['payment_cash'] = $paymentFlags['payment_cash'] ? 'on' : 'off';
+            $this->pluginSettings['payment_cash_delivery'] = $paymentFlags['payment_cash_delivery'] ? 'on' : 'off';
+            $this->pluginSettings['clover_giftcards'] = $paymentFlags['clover_giftcards'] ? 'on' : 'off';
+            $this->pluginSettings['clover_googlepay'] = $paymentFlags['clover_googlepay'] ? 'on' : 'off';
+            $this->pluginSettings['payment_creditcard'] = 'off';
+        }
+    }
+
+    private function dashboardListToCsv($value) {
+        return $this->dashboardListToDelimitedString($value, ',');
+    }
+
+    private function dashboardListToDelimitedString($value, $delimiter) {
+        if (!is_array($value)) {
+            return '';
+        }
+
+        $parts = array();
+        foreach ($value as $oneValue) {
+            if (is_scalar($oneValue) && $oneValue !== '') {
+                $parts[] = (string) $oneValue;
+            }
+        }
+
+        return implode($delimiter, $parts);
+    }
+
+    private function dashboardScalarToString($value, $default = '') {
+        if ($value === null) {
+            return $default;
+        }
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+        return $default;
+    }
+
+    private function dashboardPaymentMethodFlags($paymentMethods) {
+        $flags = array(
+            'clover_payment_form' => false,
+            'payment_cash' => false,
+            'payment_cash_delivery' => false,
+            'clover_giftcards' => false,
+            'clover_googlepay' => false,
+            'apple_pay' => false,
+        );
+
+        if (!is_array($paymentMethods)) {
+            return $flags;
+        }
+
+        $hasGenericCash = false;
+
+        foreach ($paymentMethods as $paymentMethod) {
+            $normalized = $this->normalizeDashboardPaymentMethod($paymentMethod);
+            if ($normalized === '') {
+                continue;
+            }
+
+            if ($normalized === 'applepay') {
+                $flags['apple_pay'] = true;
+                continue;
+            }
+
+            if ($normalized === 'googlepay') {
+                $flags['clover_googlepay'] = true;
+                continue;
+            }
+
+            if ($normalized === 'giftcard' || $normalized === 'giftcards') {
+                $flags['clover_giftcards'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cashondelivery' || $normalized === 'cashdelivery') {
+                $flags['payment_cash_delivery'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cashpickup' || $normalized === 'cashatlocation' || $normalized === 'cashinstore') {
+                $flags['payment_cash'] = true;
+                continue;
+            }
+
+            if ($normalized === 'cash') {
+                $hasGenericCash = true;
+                continue;
+            }
+
+            if ($normalized === 'clover' || $normalized === 'creditcard' || $normalized === 'card' || $normalized === 'online') {
+                $flags['clover_payment_form'] = true;
+            }
+        }
+
+        if ($hasGenericCash) {
+            $flags['payment_cash'] = true;
+            $flags['payment_cash_delivery'] = true;
+        }
+
+        return $flags;
+    }
+
+    private function normalizeDashboardPaymentMethod($paymentMethod) {
+        $raw = '';
+
+        if (is_array($paymentMethod)) {
+            if (array_key_exists('enabled', $paymentMethod) && empty($paymentMethod['enabled'])) {
+                return '';
+            }
+
+            foreach (array('code', 'slug', 'type', 'name', 'label', 'value', 'id') as $key) {
+                if (isset($paymentMethod[$key]) && is_scalar($paymentMethod[$key]) && $paymentMethod[$key] !== '') {
+                    $raw = (string) $paymentMethod[$key];
+                    break;
+                }
+            }
+        } elseif (is_scalar($paymentMethod) && $paymentMethod !== '') {
+            $raw = (string) $paymentMethod;
+        }
+
+        if ($raw === '') {
+            return '';
+        }
+
+        return strtolower(preg_replace('/[^a-z0-9]+/', '', $raw));
+    }
+
+    /**
+     * Coerce values from the resolver (which may be 'on'/'off'/bool/int) into bool.
+     */
+    private static function asBool($value) {
+        if (is_bool($value)) {
+            return $value;
+        }
+        if ($value === 'on' || $value === 1 || $value === '1' || $value === 'true' || $value === true) {
             return true;
         }
         return false;

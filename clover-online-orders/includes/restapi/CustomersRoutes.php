@@ -123,13 +123,6 @@ class CustomersRoutes extends BaseRoute {
                 'permission_callback' => '__return_true'
             )
         ) );
-        register_rest_route( $this->namespace, '/customers/fblogin', array(
-            array(
-                'methods'   => 'POST',
-                'callback'  => array( $this, 'customerFbLogin' ),
-                'permission_callback' => '__return_true'
-            )
-        ) );
         register_rest_route( $this->namespace, '/customers/reset-password', array(
             array(
                 'methods'   => 'POST',
@@ -361,27 +354,6 @@ class CustomersRoutes extends BaseRoute {
             );
         }
 
-    }
-    public function customerFbLogin( $request ) {
-        $request_body = $request->get_json_params();
-        $customerOptions = array(
-            "gender"     => sanitize_text_field($request_body["gender"]),
-            "name" => sanitize_text_field($request_body["name"]),
-            "email"     => sanitize_text_field($request_body["email"]),
-            "id"     => sanitize_text_field($request_body["fbid"])
-        );
-        $res = $this->api->moo_CustomerFbLogin($customerOptions);
-        $result= json_decode($res);
-        if($result->status == 'success')
-        {
-            $this->session->set($result->token,"moo_customer_token");
-            $this->session->set($result->customer_email,"moo_customer_email");
-        } else {
-            $this->session->set(false,"moo_customer_token");
-            $this->session->set(null,"moo_customer_email");
-        }
-
-        return $result;
     }
     public function customerFacebookLogin( $request ) {
 

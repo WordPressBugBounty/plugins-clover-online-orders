@@ -3,9 +3,9 @@ Contributors: elbanyaoui, khalid995
 Donate link: http://www.zaytech.com/
 Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
-Tested up to: 6.8.2
+Tested up to: 6.9.4
 Requires PHP: 5.2.0
-Stable tag: 1.6.0
+Stable tag: 1.6.1
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -148,6 +148,16 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.1 =
+* Security improvements and hardening.
+* Improved admin-side handling of order data.
+* Improved Global / Customized settings mode handling.
+
+= 1.6.0 =
+* Display Convenience fee
+* Added support of cardholder Name if it's enabled on fraud tools
+* Added reorder to featured items
+* Added support of disabling guest Mode
 
 = 1.6.0 =
 * Enhanced compatibility with the latest WordPress version.

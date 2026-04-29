@@ -44,6 +44,8 @@ class Products_List_Moo extends WP_List_Table_MOO {
         if ( ! empty( $_REQUEST['orderby'] ) ) {
             $sql .= ' ORDER BY ' . esc_sql( $_REQUEST['orderby'] ).',name';
             $sql .= ! empty( $_REQUEST['order'] ) ? ' ' . esc_sql( $_REQUEST['order'] ) : ' ASC';
+        } elseif ( !empty($_REQUEST['filter']) && $_REQUEST['filter'] === 'featured' ) {
+            $sql .= ' ORDER BY sort_order IS NULL ASC, sort_order ASC, soo_name, name';
         } else {
             $sql .= ' ORDER BY soo_name,name';
         }
@@ -432,6 +434,12 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $this->items = $this->get_items( $per_page, $current_page );
     }
     public function process_bulk_action() {
+        $action = $this->current_action();
+        $bulkActions = array( 'bulk-hide', 'bulk-show', 'bulk-enable-ot', 'bulk-disable-ot', 'bulk-feature', 'bulk-unfeature' );
+        if ( $action && in_array( $action, $bulkActions, true ) ) {
+            check_admin_referer( 'bulk-' . $this->_args['plural'] );
+        }
+
         $queryArgs =  array('paged'=>$this->get_pagenum());
 
         if( ! empty( $_REQUEST['filter'] )){
@@ -629,6 +637,10 @@ class Products_List_Moo extends WP_List_Table_MOO {
             $custom_url  = add_query_arg( array('filter'=>$k), $this->itemsPageUrl );
             $class       = ( $current == $k ? ' class="current"' : '' );
             $views[ $k ] = "<a href='{$custom_url}' {$class} >" . $v['name'] . "</a>";
+            if ( $current === $k && $k === 'featured' ) {
+                $views[ $k ] .= ' <button type="button" class="button button-small" id="mooReorderFeaturedBtn" onclick="mooReorderFeaturedItems()" style="margin-left:8px;vertical-align:middle;">Reorder</button>';
+                $views[ $k ] .= ' <button type="button" class="button button-small" id="mooReorderFeaturedDoneBtn" onclick="mooReorderFeaturedDone()" style="display:none;margin-left:8px;vertical-align:middle;">Done</button>';
+            }
         }
 
         return $views;

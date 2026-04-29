@@ -538,7 +538,7 @@ class Moo_OnlineOrders_Activator {
             array("name"=>"custom_sa_content","value"=>""),
             array("name"=>"custom_sa_title","value"=>""),
             array("name"=>"custom_sa_onCheckoutPage","value"=>"off"),
-            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.6.0">Smart Online Order</a>'),
+            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.6.1">Smart Online Order</a>'),
             array("name"=>"default_style","value"=>"onePage"),
             array("name"=>"track_stock","value"=>""),
             array("name"=>"track_stock_hide_items","value"=>"off"),

@@ -40,6 +40,29 @@ class DashboardRoutes extends BaseRoute {
 
     }
 
+    /**
+     * Normalize the backend-owned flag that controls whether the admin
+     * should show the Settings Source chooser.
+     */
+    private function withSettingsSourceChooserFlag(array $result) {
+        $flag = false;
+
+        if (array_key_exists('showSettingsSourceChooser', $result)) {
+            $raw = $result['showSettingsSourceChooser'];
+            if (is_bool($raw)) {
+                $flag = $raw;
+            } elseif (is_numeric($raw)) {
+                $flag = ((int) $raw) === 1;
+            } elseif (is_string($raw)) {
+                $flag = in_array(strtolower(trim($raw)), array('1', 'true', 'yes', 'on'), true);
+            }
+        }
+
+        $result['showSettingsSourceChooser'] = $flag;
+
+        return $result;
+    }
+
 
     // Register our routes.
     public function register_routes() {
@@ -118,6 +141,14 @@ class DashboardRoutes extends BaseRoute {
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
+        // Sync convenience fee from Clover
+        register_rest_route($this->namespace, '/dash/convenience_fee', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'dashSyncConvenienceFee'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
 
         // Enable or disbale Apple Pay (Beta)
         register_rest_route($this->namespace, '/dash/enable-apple-pay', array(
@@ -125,6 +156,15 @@ class DashboardRoutes extends BaseRoute {
             array(
                 'methods' => 'POST',
                 'callback' => array($this, 'enableOrDisableApplePay'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+
+        // Enable or disable Global Settings
+        register_rest_route($this->namespace, '/dash/enable-disable-global-settings', array(
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'enableOrDisableGlobalSettings'),
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
@@ -285,11 +325,35 @@ class DashboardRoutes extends BaseRoute {
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
+        // Get all featured items (dashboard — no stock/visibility filtering)
+        register_rest_route($this->namespace, '/dash/featured_items', array(
+            array(
+                'methods' => 'GET',
+                'callback' => array($this, 'dashGetFeaturedItems'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+        // Reorder featured items
+        register_rest_route($this->namespace, '/dash/reorder_featured_items', array(
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'dashReorderFeaturedItems'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
         // Get the names of items based on their UUID
         register_rest_route($this->namespace, '/dash/autosync_items_names', array(
             array(
                 'methods' => 'POST',
                 'callback' => array($this, 'dashGetAutoSyncItemsNames'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+        // Get the names of items, categories, modifiers, modifier_groups based on their UUID
+        register_rest_route($this->namespace, '/dash/autosync_names', array(
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'dashGetAutoSyncNames'),
                 'permission_callback' => array( $this, 'permissionCheck' )
             )
         ));
@@ -520,6 +584,23 @@ class DashboardRoutes extends BaseRoute {
              );
         }
     }
+    function dashSyncConvenienceFee( $request ){
+        $data = $this->api->getConvenienceFee();
+        if (!is_array($data)) {
+            return array("status" => "failed");
+        }
+        $fee = 0;
+        if (isset($data["status"]) && isset($data["data"]) && is_array($data["data"]) && isset($data["data"]["amount"])) {
+            $fee = intval($data["data"]["amount"]);
+        } else {
+            return array("status" => "failed");
+        }
+
+        return array(
+            "status" => "success",
+            "convenience_fee" => $fee
+        );
+    }
     function dashUpdateApiKey( $request ){
 
         if (empty( $request["api_key"] )) {
@@ -533,7 +614,7 @@ class DashboardRoutes extends BaseRoute {
             if($this->pluginSettings["api_key"] === $api_key) {
                 return array(
                     "status"=>false,
-                    "message"=>"The API KEY isn't changed"
+                    "message"=>"You've used the same current API key."
                 );
             }
 
@@ -642,6 +723,25 @@ class DashboardRoutes extends BaseRoute {
             );
         }
     }
+    function enableOrDisableGlobalSettings( $request ) {
+        // Use isset — not empty — so an explicit `false` (switching Global → Customized)
+        // is accepted rather than rejected as "missing".
+        if (!isset($request["status"])) {
+            return new WP_Error( 'status_required', 'An error has occurred', array( 'status' => 400 ) );
+        }
+        $status = rest_sanitize_boolean($request["status"]);
+        update_option('moo_settings_source', $status ? 'global' : 'customized');
+        //Save on Cloud
+        try {
+            $this->api->saveMerchantSettings("settings_source", $status ? 'global' : 'customized');
+        } catch (Exception $e){
+            // Silence is golden
+        }
+        return array(
+            "status" => true,
+            "mode"   => $status ? 'global' : 'customized',
+        );
+    }
     function dashCheckApiKey( $request ) {
         if (isset($this->pluginSettings["api_key"])){
             $body = array(
@@ -651,18 +751,21 @@ class DashboardRoutes extends BaseRoute {
                 "version"=>$this->version
             );
             $response = $this->api->checkApiKey($body);
-            if($response && is_array($response)){
+            if($response && is_array($response)) {
                 if($response["httpCode"] === 400 ||  $response["httpCode"] === 500 ){
+                    $result = json_decode($response["responseContent"], true);
                     return array(
                         "status"=>"failed",
-                        "message"=>"An error has occurred, please refresh the page"
+                        "message"=>!empty($result["message"]) ? $result["message"] : "An error has occurred, please refresh the page"
                     );
                 }
+
                 if($response["httpCode"] === 404 ){
                     return array(
                         "status"=>"failed",
                         "message"=>"The API KEY isn't valid"
                     );
+
                 }
                 if($response["httpCode"] === 401 ) {
                     $result = json_decode($response["responseContent"], true);
@@ -677,6 +780,7 @@ class DashboardRoutes extends BaseRoute {
                         "uuid"=> isset($result["uuid"]) ? $result["uuid"] : null
                     );
                 }
+
                 if($response["httpCode"] === 200 ){
                     $result = json_decode($response["responseContent"], true);
 
@@ -697,7 +801,7 @@ class DashboardRoutes extends BaseRoute {
                     } else {
                         update_option('sooDisableGoogleReCAPTCHA',false);
                     }
-                    return $result;
+                    return $this->withSettingsSourceChooserFlag($result);
                 }
             }
             return array(
@@ -796,7 +900,7 @@ class DashboardRoutes extends BaseRoute {
                 update_option("moo_settings",$this->pluginSettings);
                 update_option('moo_merchant_pubkey', "");
                 $result = json_decode($response["responseContent"], true);
-                return $result;
+                return $this->withSettingsSourceChooserFlag($result);
             }
         }
         return array(
@@ -1030,11 +1134,34 @@ class DashboardRoutes extends BaseRoute {
         );
         //get items images
 
-        $data["items"] = $wpdb->get_results("SELECT items.uuid,items.name,images.url,images.is_default,images.is_enabled FROM `{$wpdb->prefix}moo_item` items,`{$wpdb->prefix}moo_images` images where images.item_uuid = items.uuid");
+        $data["items"] = $wpdb->get_results("SELECT items.uuid,items.name,items.alternate_name,items.soo_name,images.url,images.is_default,images.is_enabled FROM `{$wpdb->prefix}moo_item` items,`{$wpdb->prefix}moo_images` images where images.item_uuid = items.uuid");
 
         // get categories images
 
         $data["categories"] = $wpdb->get_results("SELECT uuid,name,alternate_name,sort_order,show_by_default,image_url,description,custom_hours,time_availability FROM `{$wpdb->prefix}moo_category`");
+
+        // strip slashes from names so comparisons work on import
+        foreach( $data["items"] as &$row ) {
+            foreach( $row as &$field ) {
+                if ( is_string( $field ) ) {
+                    $field = stripslashes( $field );
+                }
+                if ( empty( $field ) ) {
+                    $field = null;
+                }
+            }
+        }
+        foreach( $data["categories"] as &$row ) {
+            foreach( $row as &$field ) {
+                if ( is_string( $field ) ) {
+                    $field = stripslashes( $field );
+                }
+                if ( empty( $field ) ) {
+                    $field = null;
+                }
+            }
+        }
+        unset($row, $field);
 
         //export
         if($data){
@@ -1313,16 +1440,102 @@ class DashboardRoutes extends BaseRoute {
         if (!isset($data)){
             return new WP_Error( 'data_required', 'New Data not found ( send file or json body)', array( 'status' => 400 ) );
         } else {
-           //TODO :: Import Custom Hours
+           global $wpdb;
+           $updatedCategories = 0;
+           $updatedOrderTypes = 0;
+
+           // Import custom hours for categories
+           if (isset($data['categories']) && is_array($data['categories'])) {
+               foreach ($data['categories'] as $hoursEntry) {
+                   // Each entry may contain an _id (the hours key) and associated entities
+                   $hoursId = null;
+                   if (isset($hoursEntry['_id'])) {
+                       $hoursId = sanitize_text_field($hoursEntry['_id']);
+                   } elseif (isset($hoursEntry['id'])) {
+                       $hoursId = sanitize_text_field($hoursEntry['id']);
+                   }
+                   if (!$hoursId) continue;
+
+                   // Update categories that reference this hours ID
+                   $result = $wpdb->update(
+                       "{$wpdb->prefix}moo_category",
+                       array('time_availability' => 'custom'),
+                       array('custom_hours' => $hoursId)
+                   );
+                   if ($result !== false && $result > 0) {
+                       $updatedCategories += $result;
+                   }
+               }
+           }
+
+           // Import custom hours for order types
+           if (isset($data['ordertypes']) && is_array($data['ordertypes'])) {
+               foreach ($data['ordertypes'] as $hoursEntry) {
+                   $hoursId = null;
+                   if (isset($hoursEntry['_id'])) {
+                       $hoursId = sanitize_text_field($hoursEntry['_id']);
+                   } elseif (isset($hoursEntry['id'])) {
+                       $hoursId = sanitize_text_field($hoursEntry['id']);
+                   }
+                   if (!$hoursId) continue;
+
+                   // Verify order types that reference this hours ID exist
+                   $count = $wpdb->get_var($wpdb->prepare(
+                       "SELECT COUNT(*) FROM {$wpdb->prefix}moo_order_types WHERE custom_hours = %s",
+                       $hoursId
+                   ));
+                   if ($count > 0) {
+                       $updatedOrderTypes += intval($count);
+                   }
+               }
+           }
+
+           return array(
+               "status" => true,
+               "updated_categories" => $updatedCategories,
+               "updated_ordertypes" => $updatedOrderTypes,
+           );
         }
     }
+    /**
+     * Strip backslashes from item names in the database.
+     * Some items get stored with literal backslashes (e.g. Zane\'s instead of Zane's).
+     * Only updates rows that actually need cleaning.
+     */
+    private function cleanupItemNames() {
+        global $wpdb;
+        $table = "{$wpdb->prefix}moo_item";
+        $items = $wpdb->get_results("SELECT uuid, name, alternate_name, soo_name FROM `{$table}`");
+        foreach ($items as $item) {
+            $clean_name = stripslashes($item->name);
+            $clean_alt  = stripslashes($item->alternate_name);
+            $clean_soo  = stripslashes($item->soo_name);
+            if ($clean_name !== $item->name || $clean_alt !== $item->alternate_name || $clean_soo !== $item->soo_name) {
+                $wpdb->update(
+                    $table,
+                    array(
+                        'name'           => $clean_name,
+                        'alternate_name' => $clean_alt,
+                        'soo_name'       => $clean_soo,
+                    ),
+                    array('uuid' => $item->uuid)
+                );
+            }
+        }
+    }
+
     function dashImportImages( $request ){
         require_once( ABSPATH . 'wp-admin/includes/image.php' );
         global $wpdb;
+
+        // Clean up backslashes in item names before matching
+        $this->cleanupItemNames();
         $count_items=0;
+        $matchedItems=0;
         $count_categories = 0;
         $skippedCategories = 0;
         $skippedItems = 0;
+        $logs = [];
         $errors = [
             "items"=>0,
             "categories"=>0,
@@ -1337,15 +1550,21 @@ class DashboardRoutes extends BaseRoute {
             $data = json_decode($request->get_body(),true);
             //Get Data from json
             if ( isset( $data["cloneImages"] ) ) {
-                $cloneImages = $data["cloneImages"] !== 'false';
+                $cloneImages = filter_var($data["cloneImages"], FILTER_VALIDATE_BOOLEAN);
             } else {
                 $cloneImages = true;
             }
 
             if ( isset( $data["skipWhenImageExist"] ) ) {
-                $skipWhenImageExist = $data["skipWhenImageExist"] !== 'false';
+                $skipWhenImageExist = filter_var($data["skipWhenImageExist"], FILTER_VALIDATE_BOOLEAN);
             } else {
                 $skipWhenImageExist = false;
+            }
+
+            if ( isset( $data["skipScheduledAction"] ) ) {
+                $skipScheduledAction = filter_var($data["skipScheduledAction"], FILTER_VALIDATE_BOOLEAN);
+            } else {
+                $skipScheduledAction = false;
             }
 
         } else {
@@ -1360,6 +1579,11 @@ class DashboardRoutes extends BaseRoute {
                 $skipWhenImageExist = $request_body["skipWhenImageExist"] !== 'false';
             } else {
                 $skipWhenImageExist = false;
+            }
+            if ( isset( $request_body["skipScheduledAction"] ) ) {
+                $skipScheduledAction = $request_body["skipScheduledAction"] !== 'false';
+            } else {
+                $skipScheduledAction = false;
             }
             $file = $files['file'];
             // confirm no file errors
@@ -1378,59 +1602,133 @@ class DashboardRoutes extends BaseRoute {
         }
         if(isset($data["items"]) && is_array($data["items"])) {
             foreach ($data["items"] as $item) {
+                $log = ["json_name" => isset($item["name"]) ? $item["name"] : null, "json_uuid" => isset($item["uuid"]) ? $item["uuid"] : null];
                 if(isset($item["url"])){
-                    //get item uuid based on name and uuid
-                    $name = esc_sql($item["name"]);
-                    $sql = "SELECT * FROM `{$wpdb->prefix}moo_item` 
-                        WHERE name like '{$name}' OR alternate_name like '{$name}'
-                        OR uuid = '{$item["uuid"]}';";
-                    $oneItem = $wpdb->get_row($sql);
-                    if ($oneItem){
-                        if ($skipWhenImageExist){
-                            //Count current images
-                            $images = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}moo_images where item_uuid = '{$oneItem->uuid}'");
-                            if(count($images) > 0){
-                                $skippedItems++;
-                                continue;
-                            }
-                        }
-
-                        if($cloneImages){
-                            try {
-                               // $link = $this->uploadFileByUrl($item["url"]);
-                                $link = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["url"]);
-                                if($link){
-                                    $link_image = $link;
-                                } else {
-                                    throw new Exception();
+                    //get item uuid based on name, alternate_name, soo_name and uuid
+                    $item_name = isset($item["name"]) ? stripslashes(trim($item["name"])) : '';
+                    $item_alt_name = isset($item["alternate_name"]) ? stripslashes(trim($item["alternate_name"])) : $item_name;
+                    $item_soo_name = isset($item["soo_name"]) ? stripslashes(trim($item["soo_name"])) : '';
+                    $names = array_unique(array_filter([$item_name, $item_alt_name, $item_soo_name]));
+                    $log["search_names"] = array_values($names);
+                    $placeholders = [];
+                    $values = [];
+                    foreach ($names as $n) {
+                        $placeholders[] = "TRIM(name) = %s OR TRIM(alternate_name) = %s OR TRIM(soo_name) = %s";
+                        $values[] = $n;
+                        $values[] = $n;
+                        $values[] = $n;
+                    }
+                    $values[] = $item["uuid"];
+                    $where = implode(" OR ", $placeholders) . " OR uuid = %s";
+                    $query = $wpdb->prepare(
+                        "SELECT * FROM `{$wpdb->prefix}moo_item` WHERE {$where}",
+                        $values
+                    );
+                    $matchedRows = $wpdb->get_results($query);
+                    if ($matchedRows && count($matchedRows) > 0){
+                        $log["matched"] = true;
+                        $log["matched_count"] = count($matchedRows);
+                        $log["items"] = [];
+                        foreach ($matchedRows as $oneItem) {
+                            $matchedItems++;
+                            $itemLog = [
+                                "uuid" => $oneItem->uuid,
+                                "name" => $oneItem->name,
+                            ];
+                            if ($skipWhenImageExist){
+                                $images = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}moo_images WHERE item_uuid = %s", $oneItem->uuid));
+                                $itemLog["existing_images"] = count($images);
+                                if(count($images) > 0){
+                                    $skippedItems++;
+                                    $itemLog["action"] = "skipped_has_image";
+                                    $log["items"][] = $itemLog;
+                                    continue;
                                 }
-                            } catch (Exception  $e){
-                                $errors["items"]++;
-                                continue;
                             }
-                        } else {
-                            $link_image = $item["url"];
-                        }
 
-                        //remove old images
-                        $wpdb->delete("{$wpdb->prefix}moo_images",array(
-                            "item_uuid"=>$oneItem->uuid
-                        ));
+                            if($cloneImages && $skipScheduledAction){
+                                // Real-time: download immediately (like categories)
+                                try {
+                                    $res = Moo_OnlineOrders_Helpers::uploadFileByUrl($item["url"]);
+                                    $link = isset($res["url"]) ? $res["url"] : false;
+                                    if ($link) {
+                                        $link_image = $link;
+                                    } else {
+                                        throw new Exception("uploadFileByUrl returned no URL");
+                                    }
+                                } catch (Exception $e) {
+                                    $itemLog["action"] = "realtime_error";
+                                    $itemLog["error"] = $e->getMessage();
+                                    $errors["items"]++;
+                                    $log["items"][] = $itemLog;
+                                    continue;
+                                }
+                                // Remove old images
+                                $wpdb->delete("{$wpdb->prefix}moo_images", array("item_uuid" => $oneItem->uuid));
+                                // Add new image
+                                if ($wpdb->insert("{$wpdb->prefix}moo_images", array(
+                                    "item_uuid" => $oneItem->uuid,
+                                    "url" => $link_image,
+                                    "is_default" => ($item["is_default"]) ? $item["is_default"] : 1,
+                                    "is_enabled" => ($item["is_enabled"]) ? $item["is_enabled"] : 1
+                                ))) {
+                                    $itemLog["action"] = "realtime_inserted";
+                                    $count_items++;
+                                } else {
+                                    $itemLog["action"] = "insert_failed";
+                                    $itemLog["db_error"] = $wpdb->last_error;
+                                }
+                            } elseif($cloneImages){
+                                try {
+                                    // Clear any stale concurrency lock from previous attempts
+                                    delete_transient('soo_clone_lock_' . md5($oneItem->uuid));
+                                    // Stagger actions so they don't compete for the same URL upload lock
+                                    $actionId = as_schedule_single_action( time() + ($matchedItems * 5), 'soo_import_item_image', array(
+                                        $oneItem->uuid,
+                                        $item["url"]
+                                    ) );
+                                    $itemLog["action"] = "scheduled";
+                                    $itemLog["action_id"] = $actionId;
+                                    $count_items++;
+                                } catch (Exception  $e){
+                                    $itemLog["action"] = "schedule_error";
+                                    $itemLog["error"] = $e->getMessage();
+                                    $errors["items"]++;
+                                }
+                            } else {
+                                $link_image = $item["url"];
 
-                        //add new image
-                        if ( $wpdb->insert("{$wpdb->prefix}moo_images",array(
-                            "item_uuid"=>$oneItem->uuid,
-                            "url"=>$link_image,
-                            "is_default"=>($item["is_default"])?$item["is_default"]:1,
-                            "is_enabled"=>($item["is_enabled"])?$item["is_enabled"]:1
-                        ))) {
-                            $count_items++;
+                                //remove old images
+                                $wpdb->delete("{$wpdb->prefix}moo_images",array(
+                                    "item_uuid"=>$oneItem->uuid
+                                ));
+
+                                //add new image
+                                if ( $wpdb->insert("{$wpdb->prefix}moo_images",array(
+                                    "item_uuid"=>$oneItem->uuid,
+                                    "url"=>$link_image,
+                                    "is_default"=>($item["is_default"])?$item["is_default"]:1,
+                                    "is_enabled"=>($item["is_enabled"])?$item["is_enabled"]:1
+                                ))) {
+                                    $itemLog["action"] = "inserted";
+                                    $count_items++;
+                                } else {
+                                    $itemLog["action"] = "insert_failed";
+                                    $itemLog["db_error"] = $wpdb->last_error;
+                                }
+                            }
+                            $log["items"][] = $itemLog;
                         }
                     } else {
+                        $log["matched"] = false;
+                        $log["db_error"] = $wpdb->last_error;
                         $errors["notFoundItems"]++;
                     }
 
+                } else {
+                    $log["action"] = "no_url";
                 }
+                $logs[] = $log;
             }
         }
         if(isset($data["categories"]) && is_array($data["categories"])) {
@@ -1439,7 +1737,10 @@ class DashboardRoutes extends BaseRoute {
 
                     if ($skipWhenImageExist){
                         //Count current images
-                        $cat = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}moo_category where uuid = '{$category["uuid"]}' or name like '{$category["name"]}'or alternate_name like '{$category["name"]}' ");
+                        $cat = $wpdb->get_row($wpdb->prepare(
+                            "SELECT * FROM {$wpdb->prefix}moo_category WHERE uuid = %s OR name = %s OR alternate_name = %s",
+                            $category["uuid"], $category["name"], $category["name"]
+                        ));
                         if($cat && isset($cat->image_url) && !empty($cat->image_url)){
                             $skippedCategories++;
                             continue;
@@ -1447,11 +1748,12 @@ class DashboardRoutes extends BaseRoute {
                     }
 
                     if($cloneImages) {
-                        try{
-                            $link = $this->uploadFileByUrl($category["image_url"]);
+                        try {
+                            $res = Moo_OnlineOrders_Helpers::uploadFileByUrl($category["image_url"]);
+                            $link = isset($res["url"]) ? $res["url"] : false;
                             if($link){
                                 $link_image = $link;
-                            } else{
+                            } else {
                                 throw new Exception();
                             }
                         } catch (Exception  $e){
@@ -1462,31 +1764,38 @@ class DashboardRoutes extends BaseRoute {
                         $link_image =  $category["image_url"];
                     }
 
-                    if(isset($category["name"])){
-                        $name     = esc_sql($category["name"]);
-                    } else {
-                        $name = null;
-                    }
-                    if(isset($category["description"])){
-                        $cat_desc     = esc_sql($category["description"]);
-                    } else {
-                        $cat_desc = '';
-                    }
-                    //Get the category
+                    $name = isset($category["name"]) ? $category["name"] : null;
+                    $cat_desc = isset($category["description"]) ? $category["description"] : '';
 
                     //Update image url
                     $category['image_url'] = $link_image;
 
                     //Save changes
                     $res = $this->model->updateCategory($category);
-                    if($res  === 0 && $name){
-                       $sql = "UPDATE `{$wpdb->prefix}moo_category` 
-                        SET image_url = '{$link_image}',
-                          description = '{$cat_desc}'
-                        WHERE name like '{$name}' or alternate_name like '{$name}';";
-                        if ($wpdb->query($sql)){
+                    if($res  === 0 && $name) {
+                        // updateCategory returns 0 when uuid didn't match OR data was identical.
+                        // Try fallback update by name/alternate_name.
+                        $sql = $wpdb->prepare(
+                            "UPDATE `{$wpdb->prefix}moo_category`
+                            SET image_url = %s, description = %s
+                            WHERE name = %s OR alternate_name = %s",
+                            $link_image, $cat_desc, $name, $name
+                        );
+                        $fallbackRes = $wpdb->query($sql);
+                        if ($fallbackRes) {
+                            $count_categories++;
                         } else {
-                            $errors["notFoundCategories"]++;
+                            // Neither uuid nor name matched — check if category exists with unchanged data
+                            $exists = $wpdb->get_var($wpdb->prepare(
+                                "SELECT COUNT(*) FROM `{$wpdb->prefix}moo_category` WHERE uuid = %s OR name = %s OR alternate_name = %s",
+                                isset($category["uuid"]) ? $category["uuid"] : '',
+                                $name, $name
+                            ));
+                            if ($exists) {
+                                $count_categories++;
+                            } else {
+                                $errors["notFoundCategories"]++;
+                            }
                         }
                    } else {
                        $count_categories++;
@@ -1498,6 +1807,7 @@ class DashboardRoutes extends BaseRoute {
         return array(
             "status"=>'success',
             "count_items"=>$count_items,
+            "matchedItems"=>$matchedItems,
             "count_categories"=>$count_categories,
             "cloneImages"=>$cloneImages,
             "skipImages"=>[
@@ -1505,7 +1815,8 @@ class DashboardRoutes extends BaseRoute {
                 "skippedItems"=>$skippedItems,
                 "skippedCategories"=>$skippedCategories,
             ],
-            "errors"=>$errors
+            "errors"=>$errors,
+            "logs"=>$logs
         );
     }
     function dashGetAutoSyncDetails( $request ){
@@ -1550,6 +1861,49 @@ class DashboardRoutes extends BaseRoute {
             "status"=>"failed"
         );
     }
+    function dashGetAutoSyncNames( $request ){
+        $request_body = $request->get_body_params();
+        $types = array('items','categories','modifiers','modifier_groups');
+        $data  = array();
+
+        foreach ($types as $type) {
+            $data[$type] = array();
+            if (!isset($request_body[$type]) || !is_array($request_body[$type]) || count($request_body[$type]) === 0) {
+                continue;
+            }
+            $uuids = $request_body[$type];
+            $string = "(";
+            foreach ($uuids as $uuid) {
+                $string .= "'" . esc_sql($uuid) . "',";
+            }
+            $string = rtrim($string, ',') . ")";
+
+            switch ($type) {
+                case 'items':
+                    $rows = $this->model->getItemsNamesByUuids($string);
+                    break;
+                case 'categories':
+                    $rows = $this->model->getCategoriesNamesByUuids($string);
+                    break;
+                case 'modifiers':
+                    $rows = $this->model->getModifiersNamesByUuids($string);
+                    break;
+                case 'modifier_groups':
+                    $rows = $this->model->getModifierGroupsNamesByUuids($string);
+                    break;
+                default:
+                    $rows = array();
+            }
+            foreach ($rows as $row) {
+                $data[$type][$row->uuid] = $row->name;
+            }
+        }
+
+        return array(
+            "status" => "success",
+            "data"   => $data
+        );
+    }
     function dashUpdateItemName( $request ){
         $request_body   = $request->get_body_params();
 
@@ -1560,6 +1914,7 @@ class DashboardRoutes extends BaseRoute {
         if (empty( $request_body['name'] )) {
             return new WP_Error( 'name_required', 'Item name not found', array( 'status' => 400 ) );
         }
+
         if ( strlen((string)$request_body['name'] ) > 255 ) {
             return array(
                 "status"=>"failed",
@@ -1594,6 +1949,67 @@ class DashboardRoutes extends BaseRoute {
             );
         }
 
+    }
+
+    /**
+     * Get all featured items for dashboard (no stock/visibility filtering)
+     * @param $request
+     * @return array
+     */
+    public function dashGetFeaturedItems( $request ) {
+        global $wpdb;
+        $items = $wpdb->get_results(
+            "SELECT i.uuid, i.name, i.soo_name, i.alternate_name, i.sort_order, i.hidden,
+                    (SELECT img.url FROM {$wpdb->prefix}moo_images img WHERE img.item_uuid = i.uuid ORDER BY img.is_default DESC LIMIT 1) as image_url
+             FROM {$wpdb->prefix}moo_item i
+             WHERE i.item_group_uuid IS NULL AND i.featured = 1
+             ORDER BY i.sort_order IS NULL ASC, i.sort_order ASC, i.soo_name, i.name, i.alternate_name ASC"
+        );
+
+        $data = array();
+        foreach ($items as $item) {
+            $name = !empty($item->soo_name) ? $item->soo_name : (!empty($item->alternate_name) ? $item->alternate_name : $item->name);
+            $data[] = array(
+                'uuid' => $item->uuid,
+                'name' => stripslashes($name),
+                'image_url' => $item->image_url,
+                'hidden' => (int) $item->hidden,
+            );
+        }
+
+        return array('status' => 'success', 'data' => $data);
+    }
+
+    /**
+     * Reorder featured items
+     * @param $request
+     * @return array
+     */
+    public function dashReorderFeaturedItems( $request ) {
+        $body = $request->get_json_params();
+        $orderedItems = isset($body['items']) && is_array($body['items'])
+            ? array_map('sanitize_text_field', $body['items'])
+            : null;
+
+        if (empty($orderedItems)) {
+            return array(
+                "status" => "error",
+                "message" => "Invalid or missing items data"
+            );
+        }
+
+        $res = $this->model->reOrderItems($orderedItems);
+        if ($res) {
+            return array(
+                "status" => "success",
+                "message" => "$res items reordered"
+            );
+        }
+
+        return array(
+            "status" => "error",
+            "message" => "Failed to reorder items"
+        );
     }
 
 }

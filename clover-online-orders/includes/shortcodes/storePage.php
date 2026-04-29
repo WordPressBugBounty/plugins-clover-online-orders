@@ -3,13 +3,77 @@ require_once "sooShortCode.php";
 
 class storePage extends sooShortCode
 {
+    private function dashboardAnnouncementParams() {
+        $localParams = array(
+            'custom_sa_title' => (isset($this->pluginSettings["custom_sa_title"]) && trim($this->pluginSettings["custom_sa_title"]) !== "") ? trim($this->pluginSettings["custom_sa_title"]) : "",
+            'custom_sa_content' => (isset($this->pluginSettings["custom_sa_content"]) && trim($this->pluginSettings["custom_sa_content"]) !== "") ? trim($this->pluginSettings["custom_sa_content"]) : "",
+            'custom_sa_onCheckoutPage' => (isset($this->pluginSettings["custom_sa_onCheckoutPage"])) ? trim($this->pluginSettings["custom_sa_onCheckoutPage"]) : "off",
+        );
+
+        if (SooSettingsSource::current() !== 'global') {
+            return $localParams;
+        }
+
+        $dash = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+        if (!is_array($dash) || !isset($dash['checkout_settings']) || !is_array($dash['checkout_settings'])) {
+            // Fail loud: in Global mode + outage, blank the announcement
+            // entirely rather than render stale local copy. The storefront's
+            // unavailable banner above already alerts the customer.
+            return array(
+                'custom_sa_title' => '',
+                'custom_sa_content' => '',
+                'custom_sa_onCheckoutPage' => 'off',
+            );
+        }
+
+        $announcement = isset($dash['checkout_settings']['announcement']) && is_array($dash['checkout_settings']['announcement'])
+            ? $dash['checkout_settings']['announcement']
+            : array();
+        $announcementEnabled = !array_key_exists('enabled', $announcement) || !empty($announcement['enabled']);
+        if (!$announcementEnabled) {
+            return array(
+                'custom_sa_title' => '',
+                'custom_sa_content' => '',
+                'custom_sa_onCheckoutPage' => 'off',
+            );
+        }
+
+        return array(
+            'custom_sa_title' => isset($announcement['title']) && is_scalar($announcement['title']) ? trim((string) $announcement['title']) : '',
+            'custom_sa_content' => isset($announcement['content']) && is_scalar($announcement['content']) ? trim((string) $announcement['content']) : '',
+            'custom_sa_onCheckoutPage' => !empty($announcement['showOnCheckout']) ? 'on' : 'off',
+        );
+    }
+
 
     public function htmCode($atts, $content) {
         $api   = $this->api;
         $mooOptions = $this->pluginSettings;
         $oppening_msg = "";
 
-        if(isset($mooOptions['accept_orders']) && $mooOptions['accept_orders'] === "disabled"){
+        // Global mode: use the Varnish-cached store-status endpoint for ALL
+        // close reasons (manual, holiday, outside_hours). One fast call replaces
+        // the legacy getBlackoutStatus + getOpeningStatus calls. If open, falls
+        // through to render the menu normally.
+        $_sooGlobalCheck = (SooSettingsSource::current() === 'global');
+        if ($_sooGlobalCheck) {
+            $pubKey = get_option('moo_merchant_pubkey', '');
+            $storeStatus = SooStoreStatusChecker::check($pubKey);
+            if ($storeStatus === null) {
+                // Varnish fetch failed — can't determine store status.
+                // Show error and hide menu to prevent orders against an unknown state.
+                return '<div id="moo_OnlineStoreContainer">' . SooClosureBanner::renderUnavailable() . '</div>';
+            }
+            if ($storeStatus['status'] === 'close') {
+                $oppening_msg .= SooClosureBanner::render($storeStatus);
+
+                if ($storeStatus['hideMenu']) {
+                    return '<div id="moo_OnlineStoreContainer">' . $oppening_msg . '</div>';
+                }
+                // else: menu renders with banner above
+            }
+            // status = 'open' or fetch failed → fall through to render menu
+        } elseif (isset($mooOptions['accept_orders']) && $mooOptions['accept_orders'] === "disabled") {
             if(isset($mooOptions["closing_msg"]) && $mooOptions["closing_msg"] !== '') {
                 $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">'.$mooOptions["closing_msg"].'</div>';
             } else  {
@@ -142,7 +206,7 @@ class storePage extends sooShortCode
 
     }
     public function getCustomisedCssForThemes($theme_id) {
-        $mooOptions = (array)get_option( 'moo_settings' );
+        $mooOptions = $this->pluginSettings;
         $path = SOO_PLUGIN_PATH . "/public/themes/";
         $css = '';
         if(file_exists($path."/".$theme_id."/manifest.json")){
@@ -261,15 +325,17 @@ class storePage extends sooShortCode
         $checkout_page_url  =  get_page_link($checkout_page_id);
         $store_page_url     =  get_page_link($store_page_id);
 
+        $announcementParams = $this->dashboardAnnouncementParams();
+
         $params = array(
             'plugin_img' =>  SOO_PLUGIN_URL . '/public/img',
             'cartPage' =>  $cart_page_url,
             'checkoutPage' =>  $checkout_page_url,
             'storePage' =>  $store_page_url,
             'moo_RestUrl' =>  get_rest_url(),
-            'custom_sa_title' =>  (isset($mooOptions["custom_sa_title"]) && trim($mooOptions["custom_sa_title"]) !== "")?trim($mooOptions["custom_sa_title"]):"",
-            'custom_sa_content' =>  (isset($mooOptions["custom_sa_content"]) && trim($mooOptions["custom_sa_content"]) !== "")?trim($mooOptions["custom_sa_content"]):"",
-            'custom_sa_onCheckoutPage' =>  (isset($mooOptions["custom_sa_onCheckoutPage"]))?trim($mooOptions["custom_sa_onCheckoutPage"]):"off"
+            'custom_sa_title' => $announcementParams['custom_sa_title'],
+            'custom_sa_content' => $announcementParams['custom_sa_content'],
+            'custom_sa_onCheckoutPage' => $announcementParams['custom_sa_onCheckoutPage']
         );
         wp_localize_script("mooScript-style3", "moo_params",$params);
 

@@ -159,7 +159,7 @@ class Moo_OnlineOrders_Helpers
         foreach ($queries as $query) {
             try {
                 $wpdb->query($query); // Execute the query
-            } catch (Throwable $e) {
+            } catch (Exception $e) {
                 // Log the error and continue to the next query
                 error_log("Failed to execute query: $query - Error: " . $e->getMessage());
             }
@@ -232,7 +232,7 @@ class Moo_OnlineOrders_Helpers
             array("name"=>"custom_sa_content","value"=>""),
             array("name"=>"custom_sa_title","value"=>""),
             array("name"=>"custom_sa_onCheckoutPage","value"=>"off"),
-            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.6.0">Smart Online Order</a>'),
+            array("name"=>"copyrights","value"=>'Powered by <a href="https://wordpress.org/plugins/clover-online-orders/" target="_blank" title="Online Orders for Clover POS v 1.6.1">Smart Online Order</a>'),
             array("name"=>"default_style","value"=>"onePage"),
             array("name"=>"track_stock","value"=>""),
             array("name"=>"track_stock_hide_items","value"=>"off"),
@@ -325,71 +325,250 @@ class Moo_OnlineOrders_Helpers
     /**
      * @throws Exception
      */
-    public static function uploadFileByUrl($image_url) {
+    public static function uploadFileByUrl($image_url, $opts = []) {
+        $opts = wp_parse_args($opts, [
+            'timeout'     => 120,
+            'force'             => false,  // force re-download even if same URL exists
+            'refresh_if_changed'=> true,   // check HEAD to refresh only if changed
+            'lock_ttl'          => 120,
+            'images_only' => true,
+        ]);
 
-        // If the function it's not available, require it.
-        if ( ! function_exists( 'download_url' ) ) {
-            // it allows us to use download_url() and wp_handle_sideload() functions
-            require_once ABSPATH . '/wp-admin/includes/file.php';
+        // Validate URL
+        $parts = wp_parse_url($image_url);
+        if (empty($parts['scheme']) || ! in_array($parts['scheme'], ['http', 'https'], true)) {
+            throw new Exception('Invalid image URL scheme.');
         }
 
-        // download to temp dir
-        $temp_file = download_url( $image_url );
-
-        if( is_wp_error( $temp_file ) ) {
+        $lock_key = 'soo_upload_lock_' . md5( $image_url );
+        if ( false !== get_transient($lock_key) ) {
+            // Someone else is working on it; use current if present
+            $existing_id = self::find_latest_attachment_id_by_source_url($image_url);
+            if ($existing_id) {
+                return ["url" => wp_get_attachment_url($existing_id), "attachment_id" => (int) $existing_id];
+            }
             return false;
         }
-        $filetype = wp_check_filetype( $temp_file );
+        set_transient($lock_key, 1, (int) $opts['lock_ttl']);
 
+        try {
+            // If an attachment already exists for this source:
+            $existing_id = self::find_latest_attachment_id_by_source_url($image_url);
 
-        // move the temp file into the uploads directory
-        $file = array(
-            'name'     => basename( $image_url ),
-            'type'     => $filetype['type'],
-            'tmp_name' => $temp_file,
-            'size'     => filesize( $temp_file ),
-        );
+            if ($existing_id && !$opts['force']) {
+                if ($opts['refresh_if_changed']) {
+                    $changed = self::remote_seems_changed($image_url, $existing_id, (int) $opts['timeout']);
+                    if ($changed === false) {
+                        // Looks identical → reuse
+                        return ["url" => wp_get_attachment_url($existing_id), "attachment_id" => (int) $existing_id];
+                    }
+                    // changed === true (or null if unknown) → fall through to re-download
+                } else {
+                    // No refresh check → reuse existing
+                    return ["url" => wp_get_attachment_url($existing_id), "attachment_id" => (int) $existing_id];
+                }
+            }
+            // ---- Download + insert ----
+            if (!function_exists('download_url')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            if (!function_exists('wp_generate_attachment_metadata')) {
+                require_once ABSPATH . 'wp-admin/includes/image.php';
+            }
 
-        $sideload = wp_handle_sideload(
-            $file,
-            array(
-                'test_form'   => false // no needs to check 'action' parameter
-            )
-        );
+            // download to temp dir
+            $temp_file = download_url($image_url, (int) $opts['timeout']);
+            if (is_wp_error($temp_file)) {
+                throw new Exception('[soo_download_failed] : ' .$temp_file->get_error_message());
+            }
+            if ( ! file_exists($temp_file) || ! is_readable($temp_file) ) {
+                error_log('Temp not readable: ' . $temp_file);
+                return false;
+            }
+            //Come up with a safe filename (prefer name from URL; add extension if missing)
+            $nameFromUrl = wp_basename(parse_url($image_url, PHP_URL_PATH) ?: 'image');
+            $base = pathinfo($nameFromUrl, PATHINFO_FILENAME);
+            $ext  = strtolower(pathinfo($nameFromUrl, PATHINFO_EXTENSION));
 
-        if( ! empty( $sideload[ 'error' ] ) ) {
-            // you may return an error message if you want
-            throw new Exception($sideload[ 'error' ]);
-        }
+            $filetype = wp_check_filetype( $temp_file );
 
-        // it is time to add our uploaded image into WordPress media library
-        $attachment_id = wp_insert_attachment(
-            array(
-                'guid'           => $sideload[ 'url' ],
-                'post_mime_type' => $sideload[ 'type' ],
-                'post_title'     => basename( $sideload[ 'file' ] ),
+            // If no extension, try to infer from actual file mime
+            $mime = null;
+            if (function_exists('mime_content_type')) {
+                $mime = @mime_content_type($temp_file) ?: null;
+            }
+            if (!$ext && $mime) {
+                $map = [
+                    'image/jpeg' => 'jpg',
+                    'image/png'  => 'png',
+                    'image/gif'  => 'gif',
+                    'image/webp' => 'webp',
+                    'image/avif' => 'avif',
+                    'image/bmp'  => 'bmp',
+                    'image/tiff' => 'tif',
+                    'image/svg+xml' => 'svg',
+                ];
+                $ext = isset($map[$mime]) ? $map[$mime] : '';
+            }
+            if (!$ext) {
+                // Fallback—WordPress can still validate type by contents
+                $ext = 'jpg';
+            }
+            $name = sanitize_file_name("{$base}.{$ext}");
+
+            // move the temp file into the uploads directory
+            $file = array(
+                'name'     => $name,
+                'type'     => $filetype['type'],
+                'tmp_name' => $temp_file,
+                'size'     => filesize( $temp_file ),
+            );
+            $sideload = wp_handle_sideload(
+                $file,
+                array(
+                    'test_form'   => false // no needs to check 'action' parameter
+                )
+            );
+            if (file_exists($temp_file)) {
+                @unlink($temp_file);
+            }
+
+            if (!empty($sideload['error'])) {
+                return false;
+            }
+            // Insert attachment
+            $attachment_id = wp_insert_attachment([
+                'guid'           => $sideload['url'],
+                'post_mime_type' => isset($sideload['type']) ? $sideload['type'] : '',
+                'post_title'     => sanitize_text_field($base),
                 'post_content'   => '',
                 'post_status'    => 'inherit',
-            ),
-            $sideload[ 'file' ]
-        );
+            ], $sideload['file']);
 
-        if( is_wp_error( $attachment_id ) || ! $attachment_id ) {
+            if (is_wp_error($attachment_id) || !$attachment_id) {
+                if (!empty($sideload['file']) && file_exists($sideload['file'])) {
+                    function_exists('wp_delete_file') ? wp_delete_file($sideload['file']) : @unlink($sideload['file']);
+                }
+                return false;
+            }
+
+            // Metadata (sizes)
+            $metadata = wp_generate_attachment_metadata($attachment_id, $sideload['file']);
+            if (!is_wp_error($metadata) && !empty($metadata)) {
+                wp_update_attachment_metadata($attachment_id, $metadata);
+            }
+            // Tag with source URL + freshness headers for future comparisons
+            update_post_meta($attachment_id, '_soo_source_url', $image_url);
+
+            if (isset($opts["item_uuid"])) {
+                update_post_meta($attachment_id, '_soo_item_uuid', $opts["item_uuid"]);
+            }
+
+            // If we have freshness info from HEAD, store it now (or fetch it post-factum)
+            $head = self::safe_head($image_url, (int) $opts['timeout']);
+            if ($head && !is_wp_error($head)) {
+                $etag     = wp_remote_retrieve_header($head, 'etag');
+                $lastmod  = wp_remote_retrieve_header($head, 'last-modified');
+                $len      = wp_remote_retrieve_header($head, 'content-length');
+                if ($etag)     update_post_meta($attachment_id, '_soo_source_etag', $etag);
+                if ($lastmod)  update_post_meta($attachment_id, '_soo_source_lastmod', $lastmod);
+                if ($len)      update_post_meta($attachment_id, '_soo_source_len', (string) $len);
+            }
+
+            // Delete older attachments for this same source URL (keep the newest one we just created)
+            if ($existing_id) {
+                $old_ids = self::find_attachments_by_source_url($image_url);
+                foreach ($old_ids as $old_id) {
+                    if ((int)$old_id !== (int)$attachment_id) {
+                        wp_delete_attachment((int)$old_id, true);
+                    }
+                }
+            }
+            return [
+                "url"=> $sideload['url'],
+                "attachment_id"=> (int) $attachment_id,
+            ];
+
+
+        } catch (Exception $ex) {
+            //var_dump($ex->getMessage());
+        } finally {
+            delete_transient($lock_key);
+        }
+    }
+    /** Return the latest attachment ID tagged with this source URL, or 0 if none. */
+    private static function find_latest_attachment_id_by_source_url($url) {
+        global $wpdb;
+        $id = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT pm.post_id
+                 FROM {$wpdb->postmeta} pm
+                 JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'attachment'
+                 WHERE pm.meta_key = '_soo_source_url' AND pm.meta_value = %s
+                 ORDER BY p.ID DESC
+                 LIMIT 1",
+                $url
+            )
+        );
+        return (int) $id;
+    }
+
+    /** Return all attachment IDs for this source URL. */
+    private static function find_attachments_by_source_url( $url) {
+        global $wpdb;
+        $ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT post_id FROM {$wpdb->postmeta}
+                 WHERE meta_key = '_soo_source_url' AND meta_value = %s",
+                $url
+            )
+        );
+        return array_map('intval', $ids ?: []);
+    }
+
+    /**
+     * Quick freshness check: compare ETag/Last-Modified/Content-Length with stored meta.
+     * Returns false if unchanged, true if changed, null if unknown.
+     */
+    private static function remote_seems_changed( $url, $existing_id,  $timeout = 10) {
+        $head = self::safe_head($url, $timeout);
+        if (!$head || is_wp_error($head)) {
+            return null; // unknown
+        }
+
+        $etag    = wp_remote_retrieve_header($head, 'etag');
+        $lastmod = wp_remote_retrieve_header($head, 'last-modified');
+        $len     = wp_remote_retrieve_header($head, 'content-length');
+
+        $etag0    = get_post_meta($existing_id, '_soo_source_etag', true);
+        $lastmod0 = get_post_meta($existing_id, '_soo_source_lastmod', true);
+        $len0     = get_post_meta($existing_id, '_soo_source_len', true);
+
+        // If any strong indicator matches → unchanged
+        if ($etag && $etag0 && $etag === $etag0) {
+            return false;
+        }
+        if ($lastmod && $lastmod0 && $lastmod === $lastmod0) {
+            return false;
+        }
+        if ($len && $len0 && (string)$len === (string)$len0) {
             return false;
         }
 
-        // update metadata, regenerate image sizes
-        require_once( ABSPATH . 'wp-admin/includes/image.php' );
+        // If we received any header and none matched → likely changed
+        if ($etag || $lastmod || $len) {
+            return true;
+        }
+        return null; // no usable headers
+    }
 
-        wp_update_attachment_metadata(
-            $attachment_id,
-            wp_generate_attachment_metadata( $attachment_id, $sideload[ 'file' ] )
-        );
-
-        @unlink( $temp_file );
-
-        return $sideload[ 'url' ];
-
+    private static function safe_head($url, $timeout = 8) {
+        $resp = wp_remote_head($url, ['timeout' => $timeout, 'redirection' => 3]);
+        // Some servers don’t support HEAD; try a small-range GET if needed (optional)
+        if (is_wp_error($resp) || (int) wp_remote_retrieve_response_code($resp) >= 400) {
+            return $resp;
+        }
+        return $resp;
     }
 
     public static function getDefaultI18N()

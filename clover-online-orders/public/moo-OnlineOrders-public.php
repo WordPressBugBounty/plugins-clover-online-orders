@@ -117,13 +117,45 @@ class Moo_OnlineOrders_Public {
 	public function enqueue_scripts() {
 
         $MooOptions = (array)get_option('moo_settings');
+        $announcementTitle = (isset($MooOptions["custom_sa_title"]) && trim($MooOptions["custom_sa_title"]) !== "") ? trim($MooOptions["custom_sa_title"]) : "";
+        $announcementContent = (isset($MooOptions["custom_sa_content"]) && trim($MooOptions["custom_sa_content"]) !== "") ? trim($MooOptions["custom_sa_content"]) : "";
+        $announcementOnCheckout = (isset($MooOptions["custom_sa_onCheckoutPage"])) ? trim($MooOptions["custom_sa_onCheckoutPage"]) : "off";
+
+        $sooUnavailable = false;
+        if (SooSettingsSource::current() === 'global') {
+            $dash = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            if (!is_array($dash) || !isset($dash['checkout_settings']) || !is_array($dash['checkout_settings'])) {
+                // Fail loud: blank the announcement and surface a flag the
+                // front-end JS can read to show a non-blocking "try again"
+                // notice. Don't leak stale local values under the Global tag.
+                $announcementTitle = '';
+                $announcementContent = '';
+                $announcementOnCheckout = 'off';
+                $sooUnavailable = true;
+            } else {
+                $announcement = isset($dash['checkout_settings']['announcement']) && is_array($dash['checkout_settings']['announcement'])
+                    ? $dash['checkout_settings']['announcement']
+                    : array();
+                $announcementEnabled = !array_key_exists('enabled', $announcement) || !empty($announcement['enabled']);
+                if ($announcementEnabled) {
+                    $announcementTitle = isset($announcement['title']) && is_scalar($announcement['title']) ? trim((string) $announcement['title']) : '';
+                    $announcementContent = isset($announcement['content']) && is_scalar($announcement['content']) ? trim((string) $announcement['content']) : '';
+                    $announcementOnCheckout = !empty($announcement['showOnCheckout']) ? 'on' : 'off';
+                } else {
+                    $announcementTitle = '';
+                    $announcementContent = '';
+                    $announcementOnCheckout = 'off';
+                }
+            }
+        }
 
         $params = array(
             'ajaxurl'    => admin_url('admin-ajax.php', is_ssl() ? 'https://' : 'http://'),
             'plugin_img' =>  SOO_PLUGIN_URL . '/public/img',
-            'custom_sa_title' =>  (isset($MooOptions["custom_sa_title"]) && trim($MooOptions["custom_sa_title"]) !== "")?trim($MooOptions["custom_sa_title"]):"",
-            'custom_sa_content' =>  (isset($MooOptions["custom_sa_content"]) && trim($MooOptions["custom_sa_content"]) !== "")?trim($MooOptions["custom_sa_content"]):"",
-            'custom_sa_onCheckoutPage' =>  (isset($MooOptions["custom_sa_onCheckoutPage"]))?trim($MooOptions["custom_sa_onCheckoutPage"]):"off"
+            'custom_sa_title' => $announcementTitle,
+            'custom_sa_content' => $announcementContent,
+            'custom_sa_onCheckoutPage' => $announcementOnCheckout,
+            'sooUnavailable' => $sooUnavailable,
         );
 
         // Register the scripts
@@ -569,6 +601,7 @@ class Moo_OnlineOrders_Public {
 
     }
     public function moo_UpdateOrdertype() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             wp_send_json_error(['message' => 'Unauthorized action'], 403);
             return false;
@@ -628,6 +661,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_ReorderOrderTypes(){
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             wp_send_json_error([
                 'status'  => 'error',
@@ -667,6 +701,7 @@ class Moo_OnlineOrders_Public {
      * Decoupled to 5 requests
      */
     public function moo_ImportCategories() {
+         check_ajax_referer('moo_admin_ajax', '_moo_nonce');
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
@@ -678,6 +713,7 @@ class Moo_OnlineOrders_Public {
        wp_send_json($response);
    }
     public function moo_ImportLabels() {
+         check_ajax_referer('moo_admin_ajax', '_moo_nonce');
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
@@ -696,6 +732,7 @@ class Moo_OnlineOrders_Public {
        wp_send_json($response);
    }
     public function moo_ImportTaxes(){
+         check_ajax_referer('moo_admin_ajax', '_moo_nonce');
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
@@ -708,6 +745,7 @@ class Moo_OnlineOrders_Public {
        wp_send_json($response);
    }
     public function moo_ImportItemsV2() {
+         check_ajax_referer('moo_admin_ajax', '_moo_nonce');
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
@@ -728,6 +766,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
    }
     public function moo_ImportOrderTypes() {
+       check_ajax_referer('moo_admin_ajax', '_moo_nonce');
        if (! current_user_can( 'manage_options' ) ){
            return false;
        }
@@ -755,6 +794,181 @@ class Moo_OnlineOrders_Public {
        $this->api->getAndSaveItems();
        $this->api->getCategories();
    }
+
+    /**
+     * A hook to sync Clover Image in the background using Action Scheduler
+     * @return void
+     */
+    public function moo_cloneItemImageTask($item_uuid, $image_link, $deleteOldImage = true, $force = false) {
+        global $wpdb;
+
+        $table      = $wpdb->prefix . 'moo_images';
+        $item_uuid  = (string) $item_uuid;
+        $image_link = esc_url_raw($image_link);
+        $debug      = [];
+
+        if ($item_uuid === '' || $image_link === '') {
+            $debug['exit'] = 'empty_uuid_or_link';
+            update_option('soo_clone_debug_' . $item_uuid, $debug);
+            return;
+        }
+
+        // ---- Light concurrency lock (per item) ----
+        $lock_key = 'soo_clone_lock_' . md5($item_uuid);
+        if (false !== get_transient($lock_key)) {
+            $debug['exit'] = 'concurrency_lock';
+            update_option('soo_clone_debug_' . $item_uuid, $debug);
+            return;
+        }
+        set_transient($lock_key, 1, 120); // 2 minutes
+
+        try {
+            // If the exact same URL is already stored for this item, skip work.
+            $existing_id = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT _id FROM {$table} WHERE item_uuid = %s AND url = %s LIMIT 1",
+                    $item_uuid,
+                    $image_link
+                )
+            );
+            if ($existing_id && !$force) {
+                $debug['exit'] = 'duplicate_url';
+                $debug['existing_id'] = $existing_id;
+                update_option('soo_clone_debug_' . $item_uuid, $debug);
+                return;
+            }
+            $debug['duplicate_check'] = 'passed';
+
+            // 1) Upload
+            try {
+                $res = Moo_OnlineOrders_Helpers::uploadFileByUrl($image_link);
+                $debug['upload_result'] = $res;
+                $new_url = isset($res["url"]) ? $res["url"] : false;
+                if (!$new_url) {
+                    $debug['exit'] = 'upload_returned_falsy';
+                    update_option('soo_clone_debug_' . $item_uuid, $debug);
+                    return ;
+                }
+            } catch (Exception $e){
+                $debug['exit'] = 'upload_exception';
+                $debug['error'] = $e->getMessage();
+                update_option('soo_clone_debug_' . $item_uuid, $debug);
+                return;
+            }
+
+            $debug['new_url'] = $new_url;
+
+            // 2) Insert the new row first (so we never end up with no image if deletion fails)
+            $ok = $wpdb->insert(
+                $table,
+                array(
+                    'item_uuid'  => $item_uuid,
+                    'url'        => $new_url,
+                    'is_default' => 1,
+                    'is_enabled' => 1,
+                ),
+                array('%s', '%s', '%d', '%d')
+            );
+
+            if (!$ok) {
+                $this->soo_delete_attachment_by_url($new_url);
+                $debug['exit'] = 'insert_failed';
+                $debug['db_error'] = $wpdb->last_error;
+                update_option('soo_clone_debug_' . $item_uuid, $debug);
+                return;
+            }
+
+            $new_id = (int) $wpdb->insert_id;
+            $debug['inserted_id'] = $new_id;
+
+            // 3) Delete any older files + rows for this item (one image per item policy)
+            if ($deleteOldImage) {
+                $old_urls = $wpdb->get_col(
+                    $wpdb->prepare(
+                        "SELECT url FROM {$table} WHERE item_uuid = %s AND _id <> %d",
+                        $item_uuid,
+                        $new_id
+                    )
+                );
+
+                $debug['old_urls'] = $old_urls;
+
+                if (!empty($old_urls)) {
+                    foreach ($old_urls as $old_url) {
+                        if (!empty($old_url) && $old_url !== $new_url) {
+                            // Only delete attachment if no other item is using it
+                            $used = $wpdb->get_var($wpdb->prepare(
+                                "SELECT COUNT(*) FROM {$table} WHERE url = %s AND _id <> %d",
+                                $old_url, $new_id
+                            ));
+                            if ((int) $used <= 1) {
+                                $this->soo_delete_attachment_by_url($old_url);
+                            }
+                        }
+                    }
+
+                    $wpdb->query(
+                        $wpdb->prepare(
+                            "DELETE FROM {$table} WHERE item_uuid = %s AND _id <> %d",
+                            $item_uuid,
+                            $new_id
+                        )
+                    );
+                }
+            }
+            $debug['exit'] = 'success';
+            update_option('soo_clone_debug_' . $item_uuid, $debug);
+        } finally {
+            delete_transient($lock_key);
+        }
+    }
+
+    /**
+     * Delete an attachment by URL (PHP 5.6 compatible).
+     * Tries URL→ID, then metadata scan (resized filenames), then path fallback.
+     */
+    private function soo_delete_attachment_by_url($url) {
+        global $wpdb;
+
+        if ($url === '') {
+            return;
+        }
+
+        // 1) Direct URL → attachment ID
+        $attachment_id = attachment_url_to_postid($url);
+        if ($attachment_id) { wp_delete_attachment((int) $attachment_id, true); return; }
+
+        // 2) If the URL is a resized variant, find via _wp_attachment_metadata
+        $path = parse_url($url, PHP_URL_PATH);
+        $basename = $path ? wp_basename($path) : '';
+        if ($basename) {
+            $maybe_id = $wpdb->get_var(
+                $wpdb->prepare(
+                    "SELECT post_id FROM {$wpdb->postmeta}
+                 WHERE meta_key = '_wp_attachment_metadata' AND meta_value LIKE %s
+                 LIMIT 1",
+                    '%' . $wpdb->esc_like($basename) . '%'
+                )
+            );
+            if ($maybe_id) { wp_delete_attachment((int) $maybe_id, true); return; }
+        }
+
+        // 3) Fallback: delete physical file within uploads (no DB/meta cleanup)
+        $uploads = wp_get_upload_dir();
+        if (!empty($uploads['baseurl']) && strpos($url, $uploads['baseurl']) === 0) {
+            $relative = ltrim(wp_normalize_path(urldecode(substr($url, strlen($uploads['baseurl'])))), '/');
+            $filepath = trailingslashit($uploads['basedir']) . $relative;
+
+            if (file_exists($filepath)) {
+                if (function_exists('wp_delete_file')) {
+                    wp_delete_file($filepath);
+                } else {
+                    @unlink($filepath);
+                }
+            }
+        }
+    }
+
 
     /**
      * Update JWT token
@@ -785,6 +999,7 @@ class Moo_OnlineOrders_Public {
        wp_send_json($response);
    }
    public function moo_SendFeedBack() {
+         check_ajax_referer('moo_admin_ajax', '_moo_nonce');
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
@@ -838,6 +1053,7 @@ class Moo_OnlineOrders_Public {
     /* Manage Modifiers */
 
     public function moo_ChangeModifierName() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -861,6 +1077,7 @@ class Moo_OnlineOrders_Public {
     }
     public function moo_UpdateModifierGroupStatus()
     {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -880,6 +1097,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateModifierStatus(){
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -894,6 +1112,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($res);
     }
     public function moo_NewOrderGroupModifier() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -902,6 +1121,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($ret);
     }
     public function moo_NewOrderModifier(){
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -929,12 +1149,12 @@ class Moo_OnlineOrders_Public {
             $modifiers =  $this->model->getModifiers($mg->uuid);
             foreach ($modifiers as $m){
                 $final_modifiers[] = array(
-                    "name" => $m->name,
+                    "name" => stripslashes($m->name),
                     "price" => $m->price / 100
                 );
             }
             $final_modifier_groups[] = array(
-                "name" => $mg->name,
+                "name" => stripslashes($mg->name),
                 "modifiers" => $final_modifiers
             );
         }
@@ -948,22 +1168,18 @@ class Moo_OnlineOrders_Public {
     }
     //TODO : Imporve this function
     public function moo_saveItemWithImages() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
         // Sanitize inputs
         $item_uuid = isset($_POST['item_uuid']) ? sanitize_text_field($_POST['item_uuid']) : '';
         $description = isset($_POST['description']) ? wp_kses_post($_POST['description']) : '';
-        $images = $_POST['images'];
+        $images = !empty($_POST['images']) ? $_POST['images'] : array();
         // Validate required fields
         if (empty($item_uuid)) {
             wp_send_json_error(['message' => 'Item UUID is required'], 400);
             return;
-        }
-
-
-        if (empty($images)){
-            $images = array();
         }
 
         $res = $this->model->saveItemWithImage($item_uuid,$description,$images);
@@ -982,7 +1198,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_saveItemDescription() {
-
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             wp_send_json_error(['message' => 'Unauthorized action'], 403);
             return;
@@ -1016,6 +1232,7 @@ class Moo_OnlineOrders_Public {
      * Manual Sync functions
      */
     public function moo_UpdateItems() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1059,6 +1276,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateModifiersG() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1088,6 +1306,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateModifiers() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1116,6 +1335,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateTaxes() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1144,6 +1364,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateOrderTypes() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1173,6 +1394,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_UpdateCategories() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1211,6 +1433,7 @@ class Moo_OnlineOrders_Public {
     /* <<< START FUNCTIONS TO MANAGE Categories >>> */
     public function visibility_category()
     {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1228,6 +1451,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($ret);
     }
     public function save_image_category(){
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1245,7 +1469,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($ret);
     }
     public function new_order_categories(){
-
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1261,7 +1485,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($ret);
     }
     public function delete_img_category(){
-
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1279,6 +1503,7 @@ class Moo_OnlineOrders_Public {
     }
 
     public function moo_UpdateCategoryStatus() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if ( !current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1306,6 +1531,7 @@ class Moo_OnlineOrders_Public {
         wp_send_json($response);
     }
     public function moo_reorder_items() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             wp_send_json_error([
                 'status'  => 'error',
@@ -1435,26 +1661,6 @@ class Moo_OnlineOrders_Public {
             $this->session->set(false,"moo_customer_token");
             $this->session->set(null,"moo_customer_email");
         }
-        wp_send_json((array)$result);
-    }
-    public function moo_CustomerFbLogin()
-    {
-        $customerOptions = array(
-            "name" => sanitize_text_field($_POST["name"]),
-            "email"     => sanitize_text_field($_POST["email"]),
-            "id"     => sanitize_text_field($_POST["fbid"])
-        );
-        $res = $this->api->moo_CustomerFbLogin($customerOptions);
-        $result= json_decode($res);
-        if($result->status == 'success')
-        {
-            $this->session->set($result->token,"moo_customer_token");
-            $this->session->set($result->customer_email,"moo_customer_email");
-        } else {
-            $this->session->set(false,"moo_customer_token");
-            $this->session->set(null,"moo_customer_email");
-        }
-
         wp_send_json((array)$result);
     }
     public function moo_CustomerSignup()
@@ -1620,6 +1826,7 @@ class Moo_OnlineOrders_Public {
                }
 
                if($res['total']['sub_total'] < $couponMinAmount ) {
+                   $this->session->delete("coupon");
                    $res = array(
                        "status"=>"failure",
                        "error"=>"min_failed",
@@ -1650,6 +1857,7 @@ class Moo_OnlineOrders_Public {
                         $res['total'] = $newTotal;
 
                         if($res['total']['sub_total']<$couponMinAmount) {
+                            $this->session->delete("coupon");
                             $res = array(
                                 "status"=>"failure",
                                 "error"=>"min_failed",
@@ -1794,7 +2002,16 @@ class Moo_OnlineOrders_Public {
                 }
 
 
-                $MooOptions = (array)get_option('moo_settings');
+                try {
+                    $MooOptions = $this->getResolvedOrderFlowSettings();
+                } catch (SooDashboardUnavailableException $e) {
+                    error_log('[moo_OnlineOrders] moo_checkout aborted — dashboard unreachable: ' . $e->getMessage());
+                    wp_send_json(array(
+                        'status'  => 'Error',
+                        'message' => __('The ordering system is temporarily unavailable. Please try again in a moment.', 'moo_OnlineOrders'),
+                    ));
+                    return;
+                }
                 $total = self::moo_cart_getTotal(true);
 
                 $deliveryFee    = 0;
@@ -1841,7 +2058,7 @@ class Moo_OnlineOrders_Public {
                                 $response = array(
                                     'status'	=> 'Error',
                                     'code'	=> 'low_stock',
-                                    'message'	=> 'The item '.$cartLine['item']->name.' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
+                                    'message'	=> 'The item '.stripslashes($cartLine['item']->name).' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
                                 );
                                 wp_send_json($response);
                             }
@@ -1852,7 +2069,7 @@ class Moo_OnlineOrders_Public {
                                     $response = array(
                                         'status'	=> 'Error',
                                         'code'	=> 'low_stock',
-                                        'message'	=> 'The item '.$cartLine['item']->name.' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
+                                        'message'	=> 'The item '.stripslashes($cartLine['item']->name).' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
                                     );
                                     wp_send_json($response);
                                 }
@@ -2079,13 +2296,15 @@ class Moo_OnlineOrders_Public {
                         } else {
                             $smsPaymentMethod = "will be paid at location";
                         }
-                        $this->SendSmsToMerchant($orderCreated['OrderId'],$smsPaymentMethod,$pickup_time,$orderTypeFromLocal['label']);
+                        if($this->shouldSendMerchantNotifications($MooOptions)) {
+                            $this->SendSmsToMerchant($orderCreated['OrderId'],$smsPaymentMethod,$pickup_time,$orderTypeFromLocal['label']);
 
-                        $this->api->NotifyMerchant(
-                            $orderCreated['OrderId'],
-                            sanitize_text_field($_POST['form']['instructions']),
-                            $pickup_time,
-                            $paymentmethod);
+                            $this->api->NotifyMerchant(
+                                $orderCreated['OrderId'],
+                                sanitize_text_field($_POST['form']['instructions']),
+                                $pickup_time,
+                                $paymentmethod);
+                        }
 
                         $this->sendEmailsAboutOrder(
                             $orderCreated['OrderId'],
@@ -2106,7 +2325,7 @@ class Moo_OnlineOrders_Public {
                             'status'	=> 'APPROVED',
                             'order'	=> $orderCreated['OrderId']
                         );
-                        wp_send_json($response);
+                        wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
                     } else {
                         if($paymentmethod === 'clover'){
                             if( isset($_POST['form']['token']) && !empty($_POST['form']['token'])) {
@@ -2141,11 +2360,13 @@ class Moo_OnlineOrders_Public {
                                 }
 
                                 if(isset($paymentResult) && $paymentResult["status"] == 'success') {
-                                    $this->api->NotifyMerchant(
-                                        $orderCreated['OrderId'],
-                                        sanitize_text_field($_POST['form']['instructions']),
-                                        $pickup_time,$paymentmethod);
-                                    $this->SendSmsToMerchant($orderCreated['OrderId'],'is paid with CC',$pickup_time,$orderTypeFromLocal['label']);
+                                    if($this->shouldSendMerchantNotifications($MooOptions)) {
+                                        $this->api->NotifyMerchant(
+                                            $orderCreated['OrderId'],
+                                            sanitize_text_field($_POST['form']['instructions']),
+                                            $pickup_time,$paymentmethod);
+                                        $this->SendSmsToMerchant($orderCreated['OrderId'],'is paid with CC',$pickup_time,$orderTypeFromLocal['label']);
+                                    }
                                     $this->sendEmailsAboutOrder($orderCreated['OrderId'],$MooOptions['merchant_email'],
                                         sanitize_text_field($_POST['form']['email'])
                                     );
@@ -2161,7 +2382,7 @@ class Moo_OnlineOrders_Public {
                                         'order'	=> $orderCreated['OrderId']
                                     );
 
-                                    wp_send_json($response);
+                                    wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
                                 } else {
                                     $response = array(
                                         'status'	=> 'Error',
@@ -2220,8 +2441,10 @@ class Moo_OnlineOrders_Public {
 
 
                                 if($response['status'] == 'APPROVED') {
-                                    $this->api->NotifyMerchant($orderCreated['OrderId'],$_POST['form']['instructions'],$pickup_time,$paymentmethod);
-                                    $this->SendSmsToMerchant($orderCreated['OrderId'],'is paid with CC',$pickup_time,$orderTypeFromLocal['label']);
+                                    if($this->shouldSendMerchantNotifications($MooOptions)) {
+                                        $this->api->NotifyMerchant($orderCreated['OrderId'],$_POST['form']['instructions'],$pickup_time,$paymentmethod);
+                                        $this->SendSmsToMerchant($orderCreated['OrderId'],'is paid with CC',$pickup_time,$orderTypeFromLocal['label']);
+                                    }
                                     $this->sendEmailsAboutOrder($orderCreated['OrderId'],$MooOptions['merchant_email'],$_POST['form']['email']);
 
                                     $this->session->delete("items");
@@ -2230,7 +2453,7 @@ class Moo_OnlineOrders_Public {
 
                                     do_action("moo_action_order_created", $orderCreated['OrderId'], "credit_card" );
 
-                                    wp_send_json($response);
+                                    wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
                                 } else {
                                     //remove the order
                                     $this->api->removeOrderFromClover($orderCreated['OrderId']);
@@ -2517,6 +2740,104 @@ class Moo_OnlineOrders_Public {
         @$this->api->sendOrderEmails($order_id,$merchant_emails,$customer_email);
     }
 
+    private function getResolvedOrderFlowSettings()
+    {
+        $options = (array)get_option('moo_settings');
+        if (SooSettingsSource::current() !== 'global') {
+            return $options;
+        }
+
+        $resolver = SooSettingsSource::instance($this->api);
+        if ($resolver->globalFetchFailed()) {
+            // Fail loud: don't run the post-order-creation flow with stale
+            // local options under nominally Global mode. The caller catches
+            // and skips emails/receipts for this invocation.
+            throw new SooDashboardUnavailableException('Cannot resolve order-flow settings: dashboard unreachable');
+        }
+
+        $dash = $resolver->dashboardClient()->fetch();
+        if (!is_array($dash) || !isset($dash['checkout_settings']) || !is_array($dash['checkout_settings'])) {
+            // Defense in depth: shape mismatch despite a successful fetch.
+            throw new SooDashboardUnavailableException('Cannot resolve order-flow settings: malformed dashboard payload');
+        }
+
+        return $this->applyDashboardOrderFlowOverrides($options, $dash['checkout_settings']);
+    }
+
+    private function applyDashboardOrderFlowOverrides(array $options, array $checkoutSettings)
+    {
+        $options['confirmation_message'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['confirmation_message']) ? $checkoutSettings['confirmation_message'] : null
+        );
+        $options['show_order_number'] = !empty($checkoutSettings['showOrderNumberOnReceipt']) ? 'on' : 'off';
+        $options['rollout_order_number_max'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['orderNumberRollOverLimit']) ? $checkoutSettings['orderNumberRollOverLimit'] : null,
+            '999'
+        );
+        $options['rollout_order_number'] =
+            (!empty($checkoutSettings['showOrderNumberOnReceipt']) && $options['rollout_order_number_max'] !== '')
+                ? 'on'
+                : 'off';
+        $options['print_ahead_time_minutes'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['printAheadTimeMinutes']) ? $checkoutSettings['printAheadTimeMinutes'] : null
+        );
+
+        $notifyOnNewOrders = !array_key_exists('notifyOnNewOrders', $checkoutSettings) || !empty($checkoutSettings['notifyOnNewOrders']);
+        $options['_dashboard_notify_on_new_orders'] = $notifyOnNewOrders ? 'on' : 'off';
+        $options['merchant_email'] = $notifyOnNewOrders
+            ? $this->dashboardListToDelimitedString(
+                isset($checkoutSettings['notificationEmailList']) ? $checkoutSettings['notificationEmailList'] : array(),
+                ','
+            )
+            : '';
+        $options['merchant_phone'] = $notifyOnNewOrders
+            ? $this->dashboardListToDelimitedString(
+                isset($checkoutSettings['notificationPhoneList']) ? $checkoutSettings['notificationPhoneList'] : array(),
+                '__'
+            )
+            : '';
+
+        return $options;
+    }
+
+    private function dashboardScalarToString($value, $default = '')
+    {
+        if ($value === null) {
+            return $default;
+        }
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+        return $default;
+    }
+
+    private function dashboardListToDelimitedString($value, $delimiter)
+    {
+        if (!is_array($value)) {
+            return '';
+        }
+
+        $parts = array();
+        foreach ($value as $oneValue) {
+            if (is_scalar($oneValue) && $oneValue !== '') {
+                $parts[] = (string) $oneValue;
+            }
+        }
+
+        return implode($delimiter, $parts);
+    }
+
+    private function shouldSendMerchantNotifications(array $options)
+    {
+        return !isset($options['_dashboard_notify_on_new_orders']) || $options['_dashboard_notify_on_new_orders'] === 'on';
+    }
+
+    private function addConfirmationMessageToResponse(array $response, array $options)
+    {
+        $response['confirmation_message'] = isset($options['confirmation_message']) ? $options['confirmation_message'] : null;
+        return $response;
+    }
+
     /**
      * Send sms to the merchant
      * @param $orderID
@@ -2526,7 +2847,12 @@ class Moo_OnlineOrders_Public {
      */
     private function SendSmsToMerchant($orderID,$PaymentMethod,$pickuptime,$ordertype)
     {
-        $MooOptions = (array)get_option('moo_settings');
+        try {
+            $MooOptions = $this->getResolvedOrderFlowSettings();
+        } catch (SooDashboardUnavailableException $e) {
+            error_log('[moo_OnlineOrders] Skipping order-flow side effect: ' . $e->getMessage());
+            return;
+        }
         if(isset($MooOptions['merchant_phone']) && $MooOptions['merchant_phone'] != '' )
         {
             $message = 'You have received a new order ('.$ordertype.') and this order '.$PaymentMethod.' '.$pickuptime.' It can be seen at this link https://www.clover.com/r/'.$orderID;

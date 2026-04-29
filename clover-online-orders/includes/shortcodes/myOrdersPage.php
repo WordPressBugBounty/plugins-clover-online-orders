@@ -166,6 +166,24 @@ class myOrdersPage extends sooShortCode
                                             <?php _e("Please confirm your password", "moo_OnlineOrders"); ?>
                                         </span>
                                     </div>
+                                    <?php
+$_mktEnabled = true;
+if (SooDashboardSummary::isGlobalActive()) {
+    $_dashMkt = SooSettingsSource::instance()->dashboardClient()->fetch();
+    $_mktEnabled = !isset($_dashMkt['checkout_settings']['marketingCheckboxEnabled']) || !empty($_dashMkt['checkout_settings']['marketingCheckboxEnabled']);
+} else {
+    $_mktEnabled = !isset($this->pluginSettings['marketing_checkbox_enabled']) || $this->pluginSettings['marketing_checkbox_enabled'] === 'on';
+}
+if ($_mktEnabled) : ?>
+                                    <div class="moo-form-group">
+                                        <label class="soo-marketing-checkbox">
+                                            <input type="checkbox" id="sooSignupMarketingAllowed" checked>
+                                            <span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>
+                                            <span class="soo-marketing-label"><?php echo !empty($this->pluginSettings['marketing_checkbox_text']) ? esc_html($this->pluginSettings['marketing_checkbox_text']) : __("I agree to receive marketing emails and promotions", "moo_OnlineOrders"); ?></span>
+                                        </label>
+                                    </div>
+                                    <?php endif; ?>
+
                                     <button class="sooCheckoutPrimaryButtonInput" type="submit" aria-label="<?php _e("Submit", "moo_OnlineOrders"); ?>">
                                         <?php _e("Submit", "moo_OnlineOrders"); ?>
                                     </button>

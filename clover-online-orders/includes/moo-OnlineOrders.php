@@ -140,6 +140,20 @@ class moo_OnlineOrders {
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/moo-OnlineOrders-sooapi.php';
 
         /**
+         * Settings registry, dashboard client, exception, mapper, source resolver, and admin renderer.
+         * Order matters: registry -> client -> exception -> mapper -> source -> renderer.
+         */
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooSettingsRegistry.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooDashboardClient.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooDashboardUnavailableException.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/DashboardCheckoutMapper.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooSettingsSource.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooSettingsRenderer.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooClosureBanner.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooDashboardSummary.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooStoreStatusChecker.php';
+
+        /**
          * The class responsible for defining all actions that occur in the databse
          * side of the site.
          */
@@ -210,8 +224,19 @@ class moo_OnlineOrders {
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_admin_menu' );
 		$this->loader->add_action( 'admin_init', $plugin_admin, 'register_mysettings' );
 		$this->loader->add_action( 'admin_bar_menu', $plugin_admin, 'toolbar_link_to_settings',999 );
-		$this->loader->add_action( 'wpmu_new_blog', $plugin_admin, 'activate_plugin_in_network',10,6 );
-		$this->loader->add_action( 'delete_blog', $plugin_admin, 'delete_plugin_in_network',10,1 );
+
+        // WP 5.1+ uses the Site API
+        if (function_exists('wp_initialize_site')) {
+            // New hook: (WP_Site $site, array $args)
+            $this->loader->add_action('wp_initialize_site', $plugin_admin, 'activate_plugin_in_network_v2', 10, 2);
+        } else {
+            // Legacy fallback: ( $blog_id, $user_id, $domain, $path, $site_id, $meta )
+            $this->loader->add_action('wpmu_new_blog', $plugin_admin, 'activate_plugin_in_network', 10, 6);
+        }
+
+       // $this->loader->add_action( 'wpmu_new_blog', $plugin_admin, 'activate_plugin_in_network',10,6 );
+
+        $this->loader->add_action( 'delete_blog', $plugin_admin, 'delete_plugin_in_network',10,1 );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'displayUpdateNotice' );
 
 	}
@@ -237,6 +262,9 @@ class moo_OnlineOrders {
 
         // Import inventory when hook fired
         $this->loader->add_action( 'smart_online_order_import_inventory', $plugin_public, 'moo_ImportInventory');
+
+        // Clone and Sync Images in Background using Schedule Action
+        $this->loader->add_action( 'soo_import_item_image', $plugin_public, 'moo_cloneItemImageTask',10 , 4);
 
         // Update  jwt token
         $this->loader->add_action( 'smart_online_order_update_jwttoken', $plugin_public, 'moo_updateJwtToken');
@@ -375,9 +403,6 @@ class moo_OnlineOrders {
 
         $this->loader->add_action( 'wp_ajax_moo_customer_login', $plugin_public, 'moo_CustomerLogin');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_login', $plugin_public, 'moo_CustomerLogin');
-
-        $this->loader->add_action( 'wp_ajax_moo_customer_fblogin', $plugin_public, 'moo_CustomerFbLogin');
-        $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_fblogin', $plugin_public, 'moo_CustomerFbLogin');
 
         $this->loader->add_action( 'wp_ajax_moo_customer_signup', $plugin_public, 'moo_CustomerSignup');
         $this->loader->add_action( 'wp_ajax_nopriv_moo_customer_signup', $plugin_public, 'moo_CustomerSignup');

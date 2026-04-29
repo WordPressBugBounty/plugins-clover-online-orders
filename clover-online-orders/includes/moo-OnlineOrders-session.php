@@ -206,6 +206,7 @@ class MOO_SESSION {
             @session_start();
             session_write_close();
         }
+        $this->handleWpdbErrors();
     }
     public function sessionStart() {
         session_start();
@@ -216,6 +217,17 @@ class MOO_SESSION {
     function printDump(){
         if($this->type === 'session') {
             print_r($_SESSION[$this->blogId]);
+        }
+    }
+
+    function handleWpdbErrors()
+    {
+        global $wpdb;
+
+        $wpdb->hide_errors(); // always hide from frontend
+
+        if (defined('SOO_DEBUG') && SOO_DEBUG) {
+            $wpdb->show_errors(); // optional for local/dev
         }
     }
 
