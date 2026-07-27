@@ -49,10 +49,12 @@ class Orders_List_Moo extends WP_List_Table_MOO {
             $title = $order["uuid"];
         }
         return
-            sprintf( '<a href="?page=%s&action=%s&order_uuid=%s">%s</a>',
-                ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):''),
-                'show_order_detail',
-                $order['uuid'],
+            sprintf( '<a href="%s">%s</a>',
+                esc_url( sprintf( '?page=%s&action=%s&order_uuid=%s',
+                    ((isset($_REQUEST['page']))?sanitize_key($_REQUEST['page']):''),
+                    'show_order_detail',
+                    urlencode($order['uuid'])
+                ) ),
                 $title
             );
     }

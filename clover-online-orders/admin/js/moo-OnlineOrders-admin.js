@@ -2086,119 +2086,176 @@ function moo_get_item_with_images(uuid) {
 }
 /*End upload Functions*/
 
-function MooPanel_UpdateItems(event) {
+var MOO_SYNC_ALL_STEPS = ['items', 'categories', 'modifiers', 'ordertypes', 'taxes'];
+var MOO_SYNC_ALL_LABELS = {
+    items: 'Items',
+    categories: 'Categories',
+    modifiers: 'Modifiers',
+    ordertypes: 'Order Types',
+    taxes: 'Taxes'
+};
+
+function moo_syncAll_buildStepsHtml() {
+    var html = '<div id="mooSyncAllProgressBar" class="moo-sync-progressbar"></div>';
+    html += '<ul id="mooSyncAllSteps" class="moo-sync-steps">';
+    MOO_SYNC_ALL_STEPS.forEach(function (step) {
+        html += '<li class="moo-sync-step" data-step="' + step + '">'
+            + '<span class="moo-sync-step-icon"></span>'
+            + '<span class="moo-sync-step-label">' + MOO_SYNC_ALL_LABELS[step] + '</span></li>';
+    });
+    html += '</ul>';
+    return html;
+}
+function moo_syncAll_setStepStatus(step, status, icon) {
+    jQuery('#mooSyncAllSteps .moo-sync-step[data-step="' + step + '"]')
+        .removeClass('moo-sync-step-active moo-sync-step-done moo-sync-step-error')
+        .addClass(status ? 'moo-sync-step-' + status : '')
+        .find('.moo-sync-step-icon').text(icon || '');
+}
+function moo_syncAll_startStep(step) {
+    moo_syncAll_setStepStatus(step, 'active', '●');
+}
+function moo_syncAll_finishStep(step) {
+    moo_syncAll_setStepStatus(step, 'done', '✓');
+}
+function moo_syncAll_failStep(step, message) {
+    moo_syncAll_setStepStatus(step, 'error', '✕');
+    swal("Error", message, "error");
+}
+function moo_syncAll_setProgress(value, text) {
+    window.bar.animate(value);
+    window.bar.setText(text || (Math.round(value * 100) + '%'));
+}
+
+function MooPanel_SyncAll(event) {
     event.preventDefault();
-    window.bar.animate(0.01);
-    window.bar.setText('1 %');
     window.itemReceived = 0;
-    moo_upadateItemsPerPage(0);
-}
-function MooPanel_UpdateCategories(event)
-{
-    event.preventDefault();
-    window.bar.animate(0.01);
-    window.bar.setText('1 %');
-
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_categories'}, function (data)
-        {
-            window.bar.animate(0.5);
-            window.bar.setText('50 %');
+    swal({
+        title: 'Syncing your inventory...',
+        html: moo_syncAll_buildStepsHtml(),
+        showConfirmButton: false,
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        onOpen: function () {
+            window.bar = new ProgressBar.Line('#mooSyncAllProgressBar', {
+                strokeWidth: 4,
+                easing: 'easeInOut',
+                duration: 1400,
+                color: '#496F4E',
+                trailColor: '#eee',
+                trailWidth: 1,
+                svgStyle: {width: '100%', height: '100%'},
+                text: {
+                    style: {
+                        color: '#999',
+                        position: 'absolute',
+                        right: '0',
+                        top: '30px',
+                        padding: 0,
+                        margin: 0,
+                        transform: null
+                    },
+                    autoStyleContainer: false
+                },
+                from: {color: '#FFEA82'},
+                to: {color: '#ED6A5A'}
+            });
+            moo_syncAll_setProgress(0.01, '1%');
+            moo_syncAll_startStep('items');
+            moo_syncAll_updateItems(0);
         }
-    ).done(function () {
-            swal("Categories updated");
-            window.bar.animate(1.0);
-            window.bar.setText('100 %');
-
     });
 }
-function MooPanel_UpdateModifiers(event)
-{
-    event.preventDefault();
-    window.bar.animate(0.01);
-    window.bar.setText('1 %');
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_modifiers_groups'}, function (data)
-        {
-            window.bar.animate(0.5);
-            window.bar.setText('50 %');
-        }
-    ).done(function () {
-        jQuery.post(moo_params.ajaxurl,{'action':'moo_update_modifiers'}, function (data)
-            {
-                window.bar.animate(1.0);
-                window.bar.setText('100 %');
-            }
-        ).done(function () {
-            swal("Modifiers updated");
-            window.bar.animate(1.0);
-            window.bar.setText('100 %');
-
-        });
-
-    });
-}
-function MooPanel_UpdateOrderTypes(event)
-{
-    event.preventDefault();
-    window.bar.animate(0.01);
-    window.bar.setText('1 %');
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_order_types'}, function (data) {
-            window.bar.animate(1.0);
-            window.bar.setText('100 %');
-    }).done(function () {
-        Moo_GetOrderTypes();
-        swal("Order Types updated");
-        window.bar.animate(1.0);
-        window.bar.setText('100 %');
-
-    });
-
-
-}
-function MooPanel_UpdateTaxes(event)
-{
-    event.preventDefault();
-    window.bar.animate(0.01);
-    window.bar.setText('1 %');
-    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_taxes'}, function (data)
-        {
-            window.bar.animate(1.0);
-            window.bar.setText('100 %');
-        }
-    ).done(function () {
-        swal("Taxes updated");
-        window.bar.animate(1.0);
-        window.bar.setText('100 %');
-
-    });
-
-
-}
-function moo_upadateItemsPerPage(page) {
-    var received = 0;
+function moo_syncAll_updateItems(page) {
     jQuery.post(moo_params.ajaxurl,{'action':'moo_update_items','page':page}, function (data)
     {
-        received = data.received;
+        var received = data.received;
         var percent_loaded = data.received*100/window.moo_nb_allItems;
 
         if( percent_loaded === null )
             percent_loaded = 1;
 
+        // Items are weighted as the first 50% of the overall sync progress.
         if (window.moo_nb_allItems !== 0 ) {
-            window.bar.animate(bar.value()+percent_loaded/100);
+            var value = Math.min(bar.value()+(percent_loaded/100)*0.5, 0.5);
+            if(received>0) {
+                moo_syncAll_setProgress(value, (window.itemReceived + received) + ' items updated');
+            } else {
+                window.bar.animate(value);
+            }
         }
-    }
-    ).done(function () {
+
         if(received>0) {
             window.itemReceived += received;
-            moo_upadateItemsPerPage(page+1);
-            window.bar.setText(window.itemReceived+' items updated');
+            moo_syncAll_updateItems(page+1);
         } else {
-            swal("Items updated");
-            window.bar.animate(1.0);
-            window.bar.setText('100 %');
             moo_Update_stats();
-
+            moo_syncAll_setProgress(0.5);
+            moo_syncAll_finishStep('items');
+            moo_syncAll_startStep('categories');
+            moo_syncAll_updateCategories();
         }
+    }
+    ).fail(function () {
+        moo_syncAll_failStep('items', "Error when updating items, please try again");
+    });
+}
+function moo_syncAll_updateCategories() {
+    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_categories'}, function (data)
+        {
+            moo_syncAll_setProgress(0.65);
+        }
+    ).done(function () {
+        moo_syncAll_finishStep('categories');
+        moo_syncAll_startStep('modifiers');
+        moo_syncAll_updateModifiers();
+    }).fail(function () {
+        moo_syncAll_failStep('categories', "Error when updating categories, please try again");
+    });
+}
+function moo_syncAll_updateModifiers() {
+    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_modifiers_groups'}, function (data)
+        {
+            moo_syncAll_setProgress(0.75);
+        }
+    ).done(function () {
+        jQuery.post(moo_params.ajaxurl,{'action':'moo_update_modifiers'}, function (data)
+            {
+                moo_syncAll_setProgress(0.85);
+            }
+        ).done(function () {
+            moo_syncAll_finishStep('modifiers');
+            moo_syncAll_startStep('ordertypes');
+            moo_syncAll_updateOrderTypes();
+        }).fail(function () {
+            moo_syncAll_failStep('modifiers', "Error when updating modifiers, please try again");
+        });
+    }).fail(function () {
+        moo_syncAll_failStep('modifiers', "Error when updating modifier groups, please try again");
+    });
+}
+function moo_syncAll_updateOrderTypes() {
+    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_order_types'}, function (data) {
+            moo_syncAll_setProgress(0.92);
+    }).done(function () {
+        Moo_GetOrderTypes();
+        moo_syncAll_finishStep('ordertypes');
+        moo_syncAll_startStep('taxes');
+        moo_syncAll_updateTaxes();
+    }).fail(function () {
+        moo_syncAll_failStep('ordertypes', "Error when updating order types, please try again");
+    });
+}
+function moo_syncAll_updateTaxes() {
+    jQuery.post(moo_params.ajaxurl,{'action':'moo_update_taxes'}, function (data)
+        {
+            moo_syncAll_setProgress(1.0, '100%');
+        }
+    ).done(function () {
+        moo_syncAll_finishStep('taxes');
+        swal("Sync complete","Items, Categories, Modifiers, Order Types and Taxes have all been updated","success");
+    }).fail(function () {
+        moo_syncAll_failStep('taxes', "Error when updating taxes, please try again");
     });
 }
 

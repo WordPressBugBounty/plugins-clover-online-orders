@@ -83,7 +83,7 @@ class SooDashboardSummary {
             </div>
             <div class="soo-dash-banner-actions">
                 <a href="<?php echo esc_url(add_query_arg('soo_refresh', time())); ?>" class="button"><?php _e('Refresh', 'moo_OnlineOrders'); ?></a>
-                <a href="https://smartonlineorder.com/dashboard" target="_blank" class="button button-primary"><?php _e('Open Dashboard &rarr;', 'moo_OnlineOrders'); ?></a>
+                <a href="https://dashboard.smartonlineorder.com/" target="_blank" class="button button-primary"><?php _e('Open Dashboard &rarr;', 'moo_OnlineOrders'); ?></a>
             </div>
         </div>
         <?php

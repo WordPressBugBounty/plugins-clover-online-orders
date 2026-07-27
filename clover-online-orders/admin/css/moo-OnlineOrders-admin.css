@@ -3232,3 +3232,64 @@ table.main_table td {
         width: 100%;
     }
 }
+/* Manual Sync — step-by-step progress popup */
+.moo-sync-progressbar {
+    width: 100%;
+    height: 8px;
+    position: relative;
+    margin: 6px auto 24px;
+}
+
+.moo-sync-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.moo-sync-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #999;
+}
+
+.moo-sync-step-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 11px;
+}
+
+.moo-sync-step.moo-sync-step-active {
+    color: #06628d;
+    font-weight: 600;
+}
+
+.moo-sync-step.moo-sync-step-active .moo-sync-step-icon {
+    animation: moo-sync-step-pulse 1s ease-in-out infinite;
+}
+
+.moo-sync-step.moo-sync-step-done {
+    color: #496F4E;
+}
+
+.moo-sync-step.moo-sync-step-done .moo-sync-step-icon {
+    color: #496F4E;
+}
+
+.moo-sync-step.moo-sync-step-error {
+    color: #ED6A5A;
+    font-weight: 600;
+}
+
+@keyframes moo-sync-step-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}

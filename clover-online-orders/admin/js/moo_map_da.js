@@ -6,6 +6,10 @@ var moo_delivery_areas = new Array();
 var map;
 var selectedShape;
 var merchantLocation = null;
+var moo_shapeClickPending = false;
+var moo_activeDrawing = null;
+var moo_drawnShape = null; // last shape created, never cleared by moo_clearSelection
+var moo_completeDrawing = null; // call this to finalise an in-progress polygon
 
 document.addEventListener('keydown', function (e){
     if(e.keyCode == '46') {
@@ -81,6 +85,8 @@ function moo_draw_circle(color,radius)
         });
         var newShape = CircleWithRadius;
         newShape.type = 'circle';
+        newShape.mooColor = color;
+        moo_drawnShape = newShape;
         moo_setSelection(newShape);
 
         google.maps.event.addListener(newShape, 'radius_changed', function() {
@@ -90,37 +96,40 @@ function moo_draw_circle(color,radius)
     }
     else
     {
-        var drawingManager = new google.maps.drawing.DrawingManager({
-            drawingMode: google.maps.drawing.OverlayType.CIRCLE,
-            drawingControl: false,
-            circleOptions: {
+        document.querySelector('#moo_Circleradius').innerText = "Click on the map to place the circle center.";
+        map.setOptions({ draggableCursor: 'crosshair' });
+        var clickListener = google.maps.event.addListener(map, 'click', function(event) {
+            google.maps.event.removeListener(clickListener);
+            map.setOptions({ draggableCursor: null });
+
+            var circle = new google.maps.Circle({
                 strokeOpacity: 0.8,
                 strokeWeight: 3.5,
-                strokeColor : color,
+                strokeColor: color,
                 fillColor: color,
                 fillOpacity: 0.35,
                 map: map,
-                editable:true
-            }
+                editable: true,
+                center: event.latLng,
+                radius: 1000
+            });
 
-        });
-        drawingManager.setMap(map);
+            var newShape = circle;
+            newShape.type = 'circle';
+            newShape.mooColor = color;
 
-        google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
-            var newShape = event.overlay;
-            newShape.type = event.type;
-            drawingManager.setMap(null);
-            google.maps.event.addListener(newShape, 'click', function (e) {
+            google.maps.event.addListener(newShape, 'click', function(e) {
+                moo_shapeClickPending = true;
                 moo_setSelection(newShape);
                 document.querySelector('#moo_Circleradius').innerText = "Radius : "+(newShape.getRadius()/1609.34).toFixed(3)+" Miles / "+(newShape.getRadius()/1000).toFixed(3)+" Kilometers";
+                setTimeout(function() { moo_shapeClickPending = false; }, 0);
             });
-            google.maps.event.addListener(drawingManager, 'circlecomplete', function(circle) {
+            google.maps.event.addListener(newShape, 'radius_changed', function() {
                 document.querySelector('#moo_Circleradius').innerText = "Radius : "+(circle.getRadius()/1609.34).toFixed(3)+" Miles / "+(circle.getRadius()/1000).toFixed(3)+" Kilometers";
-
-                google.maps.event.addListener(circle, 'radius_changed', function() {
-                    document.querySelector('#moo_Circleradius').innerText = "Radius : "+(circle.getRadius()/1609.34).toFixed(3)+" Miles / "+(circle.getRadius()/1000).toFixed(3)+" Kilometers";
-                });
             });
+
+            document.querySelector('#moo_Circleradius').innerText = "Radius : "+(circle.getRadius()/1609.34).toFixed(3)+" Miles / "+(circle.getRadius()/1000).toFixed(3)+" Kilometers";
+            moo_drawnShape = newShape;
             moo_setSelection(newShape);
         });
     }
@@ -129,41 +138,148 @@ function moo_draw_circle(color,radius)
 }
 function moo_draw_polygon(color)
 {
-    var drawingManager = new google.maps.drawing.DrawingManager({
-        drawingMode: google.maps.drawing.OverlayType.POLYGON,
-        drawingControl: false,
-        polygonOptions: {
+    // Cancel any drawing session already in progress
+    if (moo_activeDrawing) moo_activeDrawing();
+
+    var path = [];
+    var markers = [];
+    var previewPoly = null;
+
+    document.querySelector('#moo_Circleradius').innerText = "Click to place points (min 3). Click the first point or double-click to finish.";
+    map.setOptions({ draggableCursor: 'crosshair' });
+
+    function addDot(latLng, isFirst) {
+        var dot = new google.maps.Marker({
+            position: latLng,
+            map: map,
+            clickable: false,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 5,
+                fillColor: isFirst ? '#ffffff' : color,
+                fillOpacity: 1,
+                strokeColor: color,
+                strokeWeight: 2
+            }
+        });
+        markers.push(dot);
+    }
+
+    function updatePreview() {
+        if (path.length < 2) return;
+        if (previewPoly) {
+            previewPoly.setPaths([path]);
+        } else {
+            previewPoly = new google.maps.Polygon({
+                paths: [path],
+                strokeColor: color,
+                strokeOpacity: 0.7,
+                strokeWeight: 2,
+                fillColor: color,
+                fillOpacity: 0.15,
+                map: map,
+                clickable: false
+            });
+        }
+    }
+
+    function isNearFirstPoint(latLng) {
+        if (path.length < 3) return false;
+        var projection = map.getProjection();
+        if (!projection) return false;
+        var scale = Math.pow(2, map.getZoom());
+        var p1 = projection.fromLatLngToPoint(path[0]);
+        var p2 = projection.fromLatLngToPoint(latLng);
+        var dx = (p1.x - p2.x) * scale;
+        var dy = (p1.y - p2.y) * scale;
+        return Math.sqrt(dx * dx + dy * dy) < 12;
+    }
+
+    function cancelDrawing() {
+        google.maps.event.removeListener(clickListener);
+        google.maps.event.removeListener(dblClickListener);
+        if (previewPoly) { previewPoly.setMap(null); previewPoly = null; }
+        markers.forEach(function(m) { m.setMap(null); });
+        map.setOptions({ draggableCursor: null });
+        document.querySelector('#moo_Circleradius').innerText = '';
+        moo_activeDrawing = null;
+        moo_completeDrawing = null;
+    }
+
+    function createPolygon() {
+        cancelDrawing();
+        if (path.length < 3) {
+            alert('Please add at least 3 points to create a shape.');
+            return;
+        }
+        var polygon = new google.maps.Polygon({
             fillColor: color,
             strokeColor: color,
             fillOpacity: 0.35,
             strokeWeight: 3.5,
             strokeOpacity: 0.8,
-            editable:true,
-            zIndex: 1
-        }
-    });
-    drawingManager.setMap(map);
-    google.maps.event.addListener(drawingManager, 'overlaycomplete', function(event) {
-        var newShape = event.overlay;
-        newShape.type = event.type;
-        drawingManager.setMap(null);
-        google.maps.event.addListener(newShape, 'click', function (e) {
+            editable: true,
+            zIndex: 1,
+            paths: path,
+            map: map
+        });
+        var newShape = polygon;
+        newShape.type = 'polygon';
+        newShape.mooColor = color;
+        moo_drawnShape = newShape;
+        google.maps.event.addListener(newShape, 'click', function(e) {
+            moo_shapeClickPending = true;
             if (e.vertex !== undefined) {
-                if (newShape.type === google.maps.drawing.OverlayType.POLYGON) {
-                    var path = newShape.getPaths().getAt(e.path);
-                    path.removeAt(e.vertex);
-                    if (path.length < 3) {
-                        newShape.setMap(null);
-                    }
+                var shapePath = newShape.getPaths().getAt(e.path);
+                shapePath.removeAt(e.vertex);
+                if (shapePath.length < 3) {
+                    newShape.setMap(null);
+                    selectedShape = null;
+                    moo_shapeClickPending = false;
+                    return;
                 }
             }
             moo_setSelection(newShape);
+            setTimeout(function() { moo_shapeClickPending = false; }, 0);
         });
+        // Set flag before moo_setSelection so moo_clearSelection cannot fire
+        // between setting the selection and the next event tick
+        moo_shapeClickPending = true;
         moo_setSelection(newShape);
+        setTimeout(function() { moo_shapeClickPending = false; }, 0);
+    }
+
+    moo_activeDrawing = cancelDrawing;
+    moo_completeDrawing = createPolygon;
+
+    var clickListener = google.maps.event.addListener(map, 'click', function(event) {
+        var latLng = event.latLng;
+        // Close polygon by clicking near the first point
+        if (path.length >= 3 && isNearFirstPoint(latLng)) {
+            moo_shapeClickPending = true;
+            createPolygon();
+            // createPolygon sets its own setTimeout to clear the flag
+            return;
+        }
+        addDot(latLng, path.length === 0);
+        path.push(latLng);
+        updatePreview();
+    });
+
+    var dblClickListener = google.maps.event.addListener(map, 'dblclick', function(event) {
+        event.stop();
+        // Remove the vertex added by the click that fires just before dblclick
+        if (path.length > 0 && path[path.length - 1].equals(event.latLng)) {
+            path.pop();
+            var lastDot = markers.pop();
+            if (lastDot) lastDot.setMap(null);
+        }
+        createPolygon();
     });
 }
 function moo_clearSelection()
 {
+    if (moo_shapeClickPending) return;
     document.querySelector('#moo_Circleradius').innerText = '';
     if (selectedShape) {
         if (selectedShape.type !== 'marker') {
@@ -238,7 +354,18 @@ function moo_draw_zone()
 }
 function moo_validate_selected_zone()
 {
-    if(typeof selectedShape == 'undefined' || selectedShape == null || selectedShape.map == null)
+    // If polygon drawing is still in progress, complete it now
+    if (moo_completeDrawing) {
+        moo_completeDrawing();
+    }
+
+    // Fall back to the last drawn shape if selectedShape was cleared
+    if (!selectedShape || selectedShape.getMap() == null) {
+        if (moo_drawnShape && moo_drawnShape.getMap && moo_drawnShape.getMap() != null) {
+            selectedShape = moo_drawnShape;
+        }
+    }
+    if (!selectedShape || !selectedShape.getMap || selectedShape.getMap() == null)
     {
         alert('Please select the zone');
         return;
@@ -247,7 +374,7 @@ function moo_validate_selected_zone()
     zone.id =  new Date().getUTCMilliseconds();
 
     var type = selectedShape.type;
-    var color = selectedShape.fillColor;
+    var color = selectedShape.mooColor || selectedShape.get('fillColor') || selectedShape.fillColor;
     var tmpMinAmount = jQuery('#moo_dz_min').val();
     var tmpFee = jQuery('#moo_dz_fee').val();
 
@@ -356,6 +483,7 @@ function moo_create_areas_infos()
 }
 function moo_cancel_adding_form()
 {
+    if (moo_activeDrawing) moo_activeDrawing();
     jQuery('#moo_dz_name').val('');
     jQuery('#moo_dz_min').val('');
     jQuery('#moo_dz_fee').val('');
@@ -486,6 +614,7 @@ function moo_setup_existing_zones() {
     }
     for (var i in zones) {
         var tmp_zone = zones[i];
+        if (!tmp_zone) continue;
         tmp_zone.shape = null;
 
         if(tmp_zone.type=='circle') {

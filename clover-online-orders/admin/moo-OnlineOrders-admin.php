@@ -940,6 +940,34 @@ class moo_OnlineOrders_Admin {
                                     <div class="fromToSection"></div>
                                     <div>You can change this from the Holidays section or pause ordering on your POS.</div>
                                 </div>
+                                <div class="Moo_option-item" style="display: none">
+                                    <div class="moo-col-md-8">
+                                        <h4>Sync Clover Online Names and descriptions</h4>
+                                    </div>
+                                    <div class="moo-col-md-2">
+                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
+                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
+                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
+                                                <span class="soo-onoffswitch-inner"></span>
+                                                <span class="soo-onoffswitch-switch"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="Moo_option-item" style="display: none">
+                                    <div class="moo-col-md-8">
+                                        <h4>Sync Clover Items Images</h4>
+                                    </div>
+                                    <div class="moo-col-md-2">
+                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
+                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
+                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
+                                                <span class="soo-onoffswitch-inner"></span>
+                                                <span class="soo-onoffswitch-switch"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="moo-col-md-2"></div>
                         </div>
@@ -1044,17 +1072,17 @@ class moo_OnlineOrders_Admin {
                                 <img width="80px" src="<?php echo plugin_dir_url(dirname(__FILE__))."admin/img/iconSooNew.svg";?>" alt=""/>
                             </div>
                             <div class="moo-col-md-8">
-                                <h3 style="margin-bottom: 5px"><?php _e("Settings Source","moo_OnlineOrders"); ?></h3>
+                                <h3 style="margin-bottom: 5px"><?php _e("Enable Centralized Settings","moo_OnlineOrders"); ?></h3>
                                 <div>
-                                    <?php _e("Choose where checkout settings (hours, lead time, ASAP, scheduled orders, fraud tools) come from.", "moo_OnlineOrders"); ?>
+                                    <?php _e("Manage your settings from one central dashboard.", "moo_OnlineOrders"); ?>
                                     <br>
-                                    <strong><?php _e("Global Dashboard","moo_OnlineOrders"); ?></strong>: <?php _e("managed centrally for your business group.", "moo_OnlineOrders"); ?>
+                                    <strong><?php _e("On","moo_OnlineOrders"); ?></strong>: <?php _e("settings come from your central dashboard, so all the websites and apps for this location use the same settings. The matching options become read-only here.", "moo_OnlineOrders"); ?>
                                     <br>
-                                    <strong><?php _e("Customized","moo_OnlineOrders"); ?></strong>: <?php _e("managed locally in this plugin admin.", "moo_OnlineOrders"); ?>
+                                    <strong><?php _e("Off","moo_OnlineOrders"); ?></strong>: <?php _e("settings are managed right here in the plugin admin and apply to this website only.", "moo_OnlineOrders"); ?>
                                 </div>
                             </div>
                             <div class="moo-col-md-2">
-                                <div class="soo-onoffswitch" title="<?php esc_attr_e('Use global dashboard settings', 'moo_OnlineOrders'); ?>" style="float: right;margin-top: 38px;margin-right: 20px;">
+                                <div class="soo-onoffswitch" title="<?php esc_attr_e('Enable centralized settings', 'moo_OnlineOrders'); ?>" style="float: right;margin-top: 38px;margin-right: 20px;">
                                     <input type="checkbox" name="sooSettingsSourceFeature" id="sooSettingsSourceFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableGlobalSettings()" <?php echo $settingsSourceMode === 'global' ? 'checked' : ''; ?>>
                                     <label class="soo-onoffswitch-label" for="sooSettingsSourceFeature">
                                         <span class="soo-onoffswitch-inner"></span>
@@ -1222,34 +1250,6 @@ class moo_OnlineOrders_Admin {
                                         </div>
                                     </div>
                                 </div>
-                                <div class="Moo_option-item" style="display: none">
-                                    <div class="moo-col-md-8">
-                                        <h4>Sync Clover Online Names and descriptions</h4>
-                                    </div>
-                                    <div class="moo-col-md-2">
-                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
-                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
-                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
-                                                <span class="soo-onoffswitch-inner"></span>
-                                                <span class="soo-onoffswitch-switch"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="Moo_option-item" style="display: none">
-                                    <div class="moo-col-md-8">
-                                        <h4>Sync Clover Items Images</h4>
-                                    </div>
-                                    <div class="moo-col-md-2">
-                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
-                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
-                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
-                                                <span class="soo-onoffswitch-inner"></span>
-                                                <span class="soo-onoffswitch-switch"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                             <div id="mooAutoSyncDeactivated" class="Moo_option-item mooAutoSyncSection"  style="display: none">
 
@@ -1306,15 +1306,11 @@ class moo_OnlineOrders_Admin {
                         </div>
                         <div class="MooPanelItem">
                             <h3 style="font-size: 15px">Manual Sync "Use manual sync if changes have been made to your inventory and it hasn't synced"</h3>
-                            <div id="moo_progressbar_container"></div>
                             <div class="Moo_option-item">
                                 <div class="button_center">
-                                    <a href="#" onclick="MooPanel_UpdateItems(event)" class="button button-secondary"
-                                       style="margin-left: 30px;" >Update all Items</a>
-                                    <a href="#" onclick="MooPanel_UpdateCategories(event)" class="button button-secondary">Update Categories</a>
-                                    <a href="#" onclick="MooPanel_UpdateModifiers(event)" class="button button-secondary">Update Modifiers</a>
-                                    <a href="#" onclick="MooPanel_UpdateOrderTypes(event)" class="button button-secondary">Update Order Types</a>
-                                    <a href="#" onclick="MooPanel_UpdateTaxes(event)" class="button button-secondary">Update Taxes</a>
+                                    <a href="#" onclick="MooPanel_SyncAll(event)" class="button button-secondary"
+                                       title="Syncs Items, Categories, Modifiers, Order Types &amp; Taxes" style="margin-left: 30px;">Sync All</a>
+                                    <p class="description">Updates Items, Categories, Modifiers, Order Types &amp; Taxes</p>
                                 </div>
 
                             </div>
@@ -3573,7 +3569,7 @@ class moo_OnlineOrders_Admin {
         wp_register_style( 'moo-grid-css', plugin_dir_url(dirname(__FILE__)) . "public/css/dist/grid12.min.css", array(), $this->version);
         wp_enqueue_style( 'moo-grid-css' );
 
-        wp_enqueue_style( 'moo-OnlineOrders-admin-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin.css', array(), $this->version, 'all');
+        wp_enqueue_style( 'moo-OnlineOrders-admin-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin.css', array(), filemtime(plugin_dir_path(__FILE__).'css/moo-OnlineOrders-admin.css'), 'all');
         wp_enqueue_style( 'moo-OnlineOrders-admin-small-devices-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin-small-devices.css', array(), $this->version, 'only screen and (max-device-width: 1200px)');
 
         wp_enqueue_style( 'moo-OnlineOrders-dashboard-css', plugin_dir_url( __FILE__ ).'css/moo-dashboard.css', array(), $this->version,'all');
@@ -3656,7 +3652,7 @@ class moo_OnlineOrders_Admin {
         //wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/moo-OnlineOrders-admin.js', array( 'jquery' ), $this->version, false );
         wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc&libraries=drawing&geometry');
 
-        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), $this->version);
+        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), filemtime(plugin_dir_path(__FILE__).'js/moo-OnlineOrders-admin.js'));
         wp_add_inline_script(
             'moo-publicAdmin-js',
             'var sooGlobalModeActive = ' . (SooSettingsSource::current() === 'global' ? 'true' : 'false') . ';',
@@ -3669,7 +3665,7 @@ class moo_OnlineOrders_Admin {
         wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ));
 
         wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->version);
-        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), $this->version);
+        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), filemtime(plugin_dir_path(__FILE__).'js/moo_map_da.js'));
 
         wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'));
         wp_enqueue_script('moo-magnific-modal');

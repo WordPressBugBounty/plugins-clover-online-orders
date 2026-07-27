@@ -15,19 +15,19 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $this->api = new Moo_OnlineOrders_SooApi();
         $this->itemsPageUrl = admin_url('admin.php?page=moo_items');
 
-        /** Process bulk action */
-        $this->process_bulk_action();
-        $this->getAllCustomHours();
-        $this->getAllImages();
-        $this->placeholderImg = plugin_dir_url(dirname(__FILE__))."img/placeholder-150x150.png";
-        $this->editIcon = plugin_dir_url(dirname(__FILE__))."img/edit-icon.png";
-
         parent::__construct( array(
             'singular' => __( 'Item',"moo_OnlineOrders"), //singular name of the listed records
             'plural'   => __( 'Items',"moo_OnlineOrders"), //plural name of the listed records
             'ajax'     => false //should this table support ajax?
 
         ) );
+
+        /** Process bulk action */
+        $this->process_bulk_action();
+        $this->getAllCustomHours();
+        $this->getAllImages();
+        $this->placeholderImg = plugin_dir_url(dirname(__FILE__))."img/placeholder-150x150.png";
+        $this->editIcon = plugin_dir_url(dirname(__FILE__))."img/edit-icon.png";
     }
     /**
      * Retrieve item’s data from the database
@@ -434,6 +434,10 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $this->items = $this->get_items( $per_page, $current_page );
     }
     public function process_bulk_action() {
+        // Verify the bulk-action nonce before running any bulk action. Only checked
+        // when a bulk action is actually being processed so normal page loads (which
+        // carry no bulk nonce) are unaffected. The nonce name must match the one WP
+        // emits via wp_nonce_field('bulk-' . $this->_args['plural']) in the table form.
         $action = $this->current_action();
         $bulkActions = array( 'bulk-hide', 'bulk-show', 'bulk-enable-ot', 'bulk-disable-ot', 'bulk-feature', 'bulk-unfeature' );
         if ( $action && in_array( $action, $bulkActions, true ) ) {

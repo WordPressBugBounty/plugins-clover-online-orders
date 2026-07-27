@@ -79,13 +79,20 @@ class Coupons_List_Moo extends WP_List_Table_MOO {
         $delete_nonce = wp_create_nonce( 'moo_delete_coupon' );
         $title = '<strong>' . stripslashes($coupon['name']) . '</strong>';
 
-        if($coupon['isEnabled']=="1")
-            $actions['Disable'] = sprintf( '<a href="%s">Disable</a>', wp_nonce_url( admin_url('admin.php?page=' . ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):'') . '&paged=' . ((isset($_REQUEST['paged']))?intval($_REQUEST['paged']):'') . '&action=disable&coupon=' . urlencode($coupon['code'])), 'moo_disable_coupon_' . $coupon['code'] ) );
-        else
-            $actions['Enable']  = sprintf( '<a href="%s">Enable</a>', wp_nonce_url( admin_url('admin.php?page=' . ((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):'') . '&paged=' . ((isset($_REQUEST['paged']))?intval($_REQUEST['paged']):'') . '&action=enable&coupon=' . urlencode($coupon['code'])), 'moo_enable_coupon_' . $coupon['code'] ) );
+        // Sanitize reflected request values before building the row-action URLs.
+        // $paged must be an integer (absint blocks the reflected-XSS vector);
+        // $page is restricted to a slug; every href is additionally run through esc_url().
+        $page  = isset($_REQUEST['page'])  ? sanitize_key( $_REQUEST['page'] ) : '';
+        $paged = isset($_REQUEST['paged']) ? absint( $_REQUEST['paged'] ) : 0;
+        $code  = urlencode( $coupon['code'] );
 
-        $actions['Edit']   = sprintf( '<a href="?page=%s&paged=%s&action=%s&coupon=%s">Edit</a>', ((isset($_REQUEST['page']))?$_REQUEST['page']:''), ((isset($_REQUEST['paged']))?sanitize_text_field($_REQUEST['paged']):''), 'edit_coupon',urlencode( $coupon['code']) );
-        $actions['Delete'] = sprintf( '<a onclick="mooDeleteCoupon(event)" href="?page=%s&paged=%s&action=%s&coupon=%s&_wpnonce=%s">Delete</a>',((isset($_REQUEST['page']))?sanitize_text_field($_REQUEST['page']):''),((isset($_REQUEST['paged']))?$_REQUEST['paged']:''), 'delete',urlencode($coupon['code']), $delete_nonce );
+        if($coupon['isEnabled']=="1")
+            $actions['Disable'] = sprintf( '<a href="%s">Disable</a>', wp_nonce_url( admin_url( 'admin.php?page=' . $page . '&paged=' . $paged . '&action=disable&coupon=' . $code ), 'moo_disable_coupon_' . $coupon['code'] ) );
+        else
+            $actions['Enable']  = sprintf( '<a href="%s">Enable</a>', wp_nonce_url( admin_url( 'admin.php?page=' . $page . '&paged=' . $paged . '&action=enable&coupon=' . $code ), 'moo_enable_coupon_' . $coupon['code'] ) );
+
+        $actions['Edit']   = sprintf( '<a href="%s">Edit</a>', esc_url( sprintf('?page=%s&paged=%s&action=%s&coupon=%s', $page, $paged, 'edit_coupon', $code) ) );
+        $actions['Delete'] = sprintf( '<a onclick="mooDeleteCoupon(event)" href="%s">Delete</a>', esc_url( sprintf('?page=%s&paged=%s&action=%s&coupon=%s&_wpnonce=%s', $page, $paged, 'delete', $code, $delete_nonce) ) );
 
         return
             sprintf( '%s',$title) . $this->row_actions( $actions );

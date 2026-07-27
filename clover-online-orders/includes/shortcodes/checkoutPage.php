@@ -2558,7 +2558,7 @@ class checkoutPage extends sooShortCode
             $this->enqueueSweetAlerts11Js();
 
             //New Checkout JS
-            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array('jquery','sooCloverSdk','SooSweetalerts'), SOO_VERSION);
+            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array('jquery','sooCloverSdk','SooSweetalerts'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/sooCheckout.min.js'));
             wp_enqueue_script('sooCheckoutScript');
 
             //Soo Auth Module
@@ -2573,7 +2573,7 @@ class checkoutPage extends sooShortCode
 
         } else {
             //Checkout JS
-            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/moo_checkout.min.js', array('jquery','sooCloverSdk'), SOO_VERSION);
+            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/moo_checkout.min.js', array('jquery','sooCloverSdk'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/moo_checkout.min.js'));
             wp_enqueue_script('sooCheckoutScript');
 
             wp_register_script('moo-icheck-js', SOO_PLUGIN_URL . '/public/js/dist/icheck.min.js', array('jquery'), SOO_VERSION);

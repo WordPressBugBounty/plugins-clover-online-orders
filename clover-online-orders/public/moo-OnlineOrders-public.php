@@ -749,7 +749,7 @@ class Moo_OnlineOrders_Public {
          if (! current_user_can( 'manage_options' ) ){
              return false;
          }
-        $page = sanitize_text_field($_POST['page']);
+        $page = isset($_POST['page']) ? sanitize_text_field($_POST['page']) : 0;
         if($page < 0 || !is_numeric($page)) {
             $page = 0;
         }
@@ -1236,8 +1236,8 @@ class Moo_OnlineOrders_Public {
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
-        $page = sanitize_text_field($_POST['page']);
-        $per_page = sanitize_text_field($_POST['per_page']);
+        $page = isset($_POST['page']) ? sanitize_text_field($_POST['page']) : 0;
+        $per_page = isset($_POST['per_page']) ? sanitize_text_field($_POST['per_page']) : null;
 
         if($page < 0 || !is_numeric($page)) {
             $page = 0;

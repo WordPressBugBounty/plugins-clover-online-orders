@@ -5,7 +5,7 @@ Tags: clover,online orders for clover, Online orders for Clover, Wordpress and C
 Requires at least: 4.7.1
 Tested up to: 6.9.4
 Requires PHP: 5.2.0
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -148,6 +148,13 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.2 =
+* Fixed a checkout error when a saved delivery zone was empty.
+* Improved the delivery-zone map editor for the latest Google Maps version.
+* Manual Sync: new single "Sync All" action with step-by-step progress.
+* Security improvements and hardening on admin list pages.
+* Fixed PHP warnings in the manual sync handlers.
+
 = 1.6.1 =
 * Security improvements and hardening.
 * Improved admin-side handling of order data.
