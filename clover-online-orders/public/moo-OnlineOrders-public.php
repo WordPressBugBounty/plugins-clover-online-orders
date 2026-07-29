@@ -162,9 +162,9 @@ class Moo_OnlineOrders_Public {
         wp_enqueue_script( 'jquery' );
 
         // Promise polyfill for IE
-        wp_enqueue_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js', [], null, true);
+        wp_enqueue_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js', [], SOO_VERSION, true);
 
-        wp_register_script('moo_public_js',  plugins_url( 'js/dist/moo-OnlineOrders-public.min.js', __FILE__ ),array('jquery'), $this->version);
+        wp_register_script('moo_public_js',  plugins_url( 'js/dist/moo-OnlineOrders-public.min.js', __FILE__ ),array('jquery'), $this->version, false);
         wp_enqueue_script('moo_public_js');
 
         // Page URLs

@@ -59,37 +59,37 @@ class sooShortCode
         wp_enqueue_style(  'moo-sweetalert-css-2' );
 
         //SweetAlerts Scripts
-        wp_register_script('moo-sweetalert-js-2', SOO_PLUGIN_URL .'/public/js/dist/sweetalert2.min.js',array('jquery','moo-bluebird'), SOO_VERSION);
+        wp_register_script('moo-sweetalert-js-2', SOO_PLUGIN_URL .'/public/js/dist/sweetalert2.min.js',array('jquery','moo-bluebird'), SOO_VERSION, false);
         wp_enqueue_script('moo-sweetalert-js-2');
     }
 
     protected function enqueueSweetAlerts11Css() {
-        wp_register_style('SooSweetalerts',  '//cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css');
+        wp_register_style('SooSweetalerts',  '//cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css', array(), SOO_VERSION);
         wp_enqueue_style('SooSweetalerts');
     }
 
     protected function enqueueSweetAlerts11Js() {
         //use the new version of Sweetalerts
-        wp_register_script('SooSweetalerts', SOO_PLUGIN_URL . '/public/js/dist/sweetalert2-v11-7-10.all.min.js',array(),SOO_VERSION);
+        wp_register_script('SooSweetalerts', SOO_PLUGIN_URL . '/public/js/dist/sweetalert2-v11-7-10.all.min.js',array(),SOO_VERSION, false);
         wp_enqueue_script('SooSweetalerts');
     }
     protected function enqueueRecaptchaJs($reCAPTCHA_site_key) {
-        wp_register_script('SooGoogleRecaptcha',  '//www.google.com/recaptcha/api.js?render='.$reCAPTCHA_site_key,array(),false);
+        wp_register_script('SooGoogleRecaptcha',  '//www.google.com/recaptcha/api.js?render='.$reCAPTCHA_site_key,array(),SOO_VERSION, false);
         wp_enqueue_script('SooGoogleRecaptcha');
     }
 
     protected function enqueueApplePaySDK() {
-        wp_register_script('SooApplePAySdk',  '//applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js',array(),false);
+        wp_register_script('SooApplePAySdk',  '//applepay.cdn-apple.com/jsapi/1.latest/apple-pay-sdk.js',array(),SOO_VERSION, false);
         wp_enqueue_script('SooApplePAySdk');
     }
 
     protected function enqueueModifiersPopUp() {
         //Modifiers Styles
         wp_register_style( 'sooModifiersPopUp',SOO_PLUGIN_URL . '/public/css/dist/sooModifiersSelector.min.css', array(), SOO_VERSION);
-        wp_enqueue_style( 'sooModifiersPopUp' ,array('moo-grid-css'));
+        wp_enqueue_style( 'sooModifiersPopUp' );
 
         //Modifiers Scripts
-        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION);
+        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooModifiersPopUp');
     }
     protected function enqueueCssGrid() {
@@ -104,12 +104,12 @@ class sooShortCode
     }
     protected function enqueueCartJs() {
         //Cart JS
-        wp_register_script('moo-script-cart-v3', SOO_PLUGIN_URL . '/public/js/dist/sooCartPage.min.js',array('jquery'), SOO_VERSION);
+        wp_register_script('moo-script-cart-v3', SOO_PLUGIN_URL . '/public/js/dist/sooCartPage.min.js',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('moo-script-cart-v3');
     }
     protected function enqueueGiftCardsJs() {
         //GiftCards JS
-        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/sooGiftCards.js',array('jquery'), SOO_VERSION);
+        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/sooGiftCards.js',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooGiftCards');
     }
     protected function enqueueCloverSDK()
@@ -117,7 +117,7 @@ class sooShortCode
         $cloverSkd = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/sdk.js' : 'https://checkout.clover.com/sdk.js';
 
         //Clover iframe SDK
-        wp_register_script('sooCloverSdk', $cloverSkd, array('jquery'));
+        wp_register_script('sooCloverSdk', $cloverSkd, array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooCloverSdk');
     }
 }

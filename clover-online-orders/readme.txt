@@ -3,9 +3,9 @@ Contributors: elbanyaoui, khalid995
 Donate link: http://www.zaytech.com/
 Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
-Tested up to: 6.9.4
+Tested up to: 7.0.2
 Requires PHP: 5.2.0
-Stable tag: 1.6.2
+Stable tag: 1.6.3
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -45,27 +45,21 @@ If you don’t have any kind of website and don’t know where to start, give us
 
 Below are just a few websites currently using Smart Online Order with their Clover POS.
 
-[Bahia Bowls](https://bahiabowls.com)
-[Hawaiian Style Grill](https://hawaiianstylegrill.smartonlineorder.com)
-[Rocco's Italian Deli](https://www.roccosdetroit.com)
-[DA REGGAE CAFE](https://dareggaecafe.com)
-[CAFE NUNE](https://www.cafenune.com/)
-[Full Service Restaurant](https://www.theoriginalturkey.com)
-[Island Smoothie Cafe](https://www.islandsmoothiecafe.com)
-[Pizza shop Example 1](https://pomodoropizzafl.com/store)
-[Pizza shop Example 2](http://www.fastpizzaonline.com)
-[Pizza shop Example 3](https://www.zifaros.com)
-[Oasis Grill ](https://oasisgrill.com)
-[Cake Shop](https://nolandscakes.com)
-[Pizza Shop Example 4](https://villaromarestaurant.net)
-[Pizza Shop Example 5](https://venuspizzeriafl.com)
-[Coffee Shop Example 2](https://www.teabocoffee.com)
-[Another Cafe Example](https://misskellyscafe.com)
-[Indian Food Example](https://www.himalayanfusiononline.com)
-[Cookie Store Example](https://rucookiemunchers.com/)
-[Minami](https://minamisushi.com/)
-[HANA TEA](https://hanatea8088.smartonlineorder.com)
-[ACME SMOKED FISH](https://acmesmokedfish.smartonlineorder.com/)
+[Deli Zone](https://delizone.com/)
+[Dragon Wok](https://dragonwok.biz/)
+[Fast Pizza](https://www.fastpizzaonline.com/)
+[Halal Burgers](https://halalburgers.co/home)
+[Hawaiian Style Grill](https://www.hawaiianstylegrill.com/)
+[Himalayan Fusion](https://www.himalayanfusiononline.com/store/)
+[Lake Avenue](https://lakeavenueusa.com/)
+[Minami Sushi](https://minamisushi.com/order/)
+[Mount Everest Cuisine](https://mounteverestcuisinepa.com/)
+[Pho Kitchen](https://phokitchenusa.com/)
+[Pretzel Stop](https://pretzelstop.com/)
+[RU Cookie Munchers](https://rucookiemunchers.com/store/)
+[She's Cafe and Catering](https://shescafeandcatering.com/)
+[Vin House Tea & Coffee](https://vinhouseteancoffee.com/)
+[Yoway Eatery](https://yowayeatery.com/)
 
 Some websites we built, other websites were built by the merchant themselves or developers they hired.
 
@@ -148,12 +142,14 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.3 =
+* Checkout: optional combined "Taxes & fees" line that groups taxes, convenience fee and service fees into a single total.
+
 = 1.6.2 =
 * Fixed a checkout error when a saved delivery zone was empty.
 * Improved the delivery-zone map editor for the latest Google Maps version.
 * Manual Sync: new single "Sync All" action with step-by-step progress.
 * Security improvements and hardening on admin list pages.
-* Fixed PHP warnings in the manual sync handlers.
 
 = 1.6.1 =
 * Security improvements and hardening.

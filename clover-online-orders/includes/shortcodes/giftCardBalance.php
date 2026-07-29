@@ -40,7 +40,7 @@ class giftCardBalance extends sooShortCode
        // wp_register_style( 'soo-gift-cards',SOO_PLUGIN_URL . '/public/css/dist/sooCartStyle.min.css', array(), SOO_VERSION );
        // wp_enqueue_style( 'soo-gift-cards');
         wp_register_style('sooGiftCardsStyles', SOO_PLUGIN_URL . '/public/css/dist/sooGiftCards-light.min.css', array(), SOO_VERSION);
-        wp_enqueue_style('sooGiftCardsStyles',array());
+        wp_enqueue_style('sooGiftCardsStyles');
 
 
     }

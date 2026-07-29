@@ -391,12 +391,12 @@ if ($_mktEnabled) : ?>
         wp_enqueue_style( 'sooMyOrders' );
 
 
-        wp_register_script('sooMyOrdersScript', SOO_PLUGIN_URL . '/public/js/dist/sooMyOrders.min.js', array('jquery'), SOO_VERSION);
-        wp_enqueue_script('sooMyOrdersScript', array('jquery'));
+        wp_register_script('sooMyOrdersScript', SOO_PLUGIN_URL . '/public/js/dist/sooMyOrders.min.js', array('jquery'), SOO_VERSION, false);
+        wp_enqueue_script('sooMyOrdersScript');
 
 
-        wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery'), SOO_VERSION);
-        wp_enqueue_script('sooAuthScript',array('sooMyOrdersScript','SooSweetalerts'));
+        wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery'), SOO_VERSION, false);
+        wp_enqueue_script('sooAuthScript');
 
         $this->localizeScripts();
 

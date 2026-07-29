@@ -2260,7 +2260,38 @@ class checkoutPage extends sooShortCode
                                             <label id="sooPointslabel" tabindex="0" for="sooPointsValue"></label>
                                             <div id="sooPointsValue" class="moo-totals-value" tabindex="0"></div>
                                         </div>
-                                        <div class="moo-totals-item">
+                                        <?php
+                                        $combineTaxesFees = isset($this->pluginSettings['combine_taxes_fees']) && $this->pluginSettings['combine_taxes_fees'] === 'enabled';
+                                        if ($combineTaxesFees) {
+                                            $combinedInitialTaxes = $totals['taxes'];
+                                            $combinedInitialFees = ($showServiceFee ? $serviceFeeAmount : 0) + ($convenienceFeeCents > 0 ? $convenienceFeeCents : 0);
+                                            $combinedTaxesFees = $combinedInitialTaxes + $combinedInitialFees;
+                                            if ($combinedInitialTaxes > 0 && $combinedInitialFees > 0) {
+                                                $combinedLabel = __("Taxes & fees", "moo_OnlineOrders");
+                                            } elseif ($combinedInitialTaxes > 0) {
+                                                $combinedLabel = __("Taxes", "moo_OnlineOrders");
+                                            } else {
+                                                $combinedLabel = __("Fees", "moo_OnlineOrders");
+                                            }
+                                            ?>
+                                            <style>
+                                                #sooTaxesFeesBreakdown .moo-totals-item label { width: calc(70% - 14px); }
+                                            </style>
+                                            <div class="moo-totals-item" id="sooTaxesFeesCombined" style="cursor:pointer;<?php if ($combinedTaxesFees <= 0) { echo 'display:none;'; } ?>">
+                                                <label class="moo-checkoutText-taxesFees" tabindex="0" style="cursor:pointer;">
+                                                    <span id="sooTaxesFeesLabel"
+                                                          data-label-both="<?php echo esc_attr(__("Taxes & fees", "moo_OnlineOrders")); ?>"
+                                                          data-label-taxes="<?php echo esc_attr(__("Taxes", "moo_OnlineOrders")); ?>"
+                                                          data-label-fees="<?php echo esc_attr(__("Fees", "moo_OnlineOrders")); ?>"><?php echo esc_html($combinedLabel); ?></span>
+                                                    <span id="sooTaxesFeesChevron" aria-hidden="true" style="display:inline-block;transition:transform .2s;">&#9662;</span>
+                                                </label>
+                                                <div class="moo-totals-value" id="moo-cart-taxes-fees" tabindex="0">
+                                                    <?php echo '$'.number_format($combinedTaxesFees/100, 2); ?>
+                                                </div>
+                                            </div>
+                                            <div id="sooTaxesFeesBreakdown" style="display:none;overflow:auto;border-left:2px solid #e0e0e0;padding-left:12px;margin-bottom:8px;">
+                                        <?php } ?>
+                                        <div class="moo-totals-item" id="sooTaxTotalSection" style="<?php if ($combineTaxesFees && $totals['taxes'] <= 0) { echo 'display:none;'; } ?>">
                                             <label class="moo-checkoutText-tax"  tabindex="0" ><?php _e("Tax", "moo_OnlineOrders"); ?></label>
                                             <div class="moo-totals-value" id="moo-cart-tax"  tabindex="0">
                                                 <?php
@@ -2284,16 +2315,19 @@ class checkoutPage extends sooShortCode
                                             echo '$'. number_format($serviceFeeAmount/100,2);
                                             ?>
                                         </div>
-                                    </div>
-                                    <?php
-                                    $convenienceFee = $convenienceFeeCents / 100;
-                                    ?>
-                                    <div class="moo-totals-item" id="sooConvenienceFeeTotalSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
-                                        <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
-                                        <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
-                                            <?php echo '$'. number_format($convenienceFee, 2); ?>
                                         </div>
-                                    </div>
+                                        <?php
+                                        $convenienceFee = $convenienceFeeCents / 100;
+                                        ?>
+                                        <div class="moo-totals-item" id="sooConvenienceFeeTotalSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
+                                            <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
+                                            <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
+                                                <?php echo '$'. number_format($convenienceFee, 2); ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($combineTaxesFees) { ?>
+                                            </div>
+                                        <?php } ?>
 
                                         <div class="moo-totals-item" id="sooDeliveryFeeTotalSection">
                                             <label class="moo-checkoutText-deliveryFees"  tabindex="0">
@@ -2513,7 +2547,7 @@ class checkoutPage extends sooShortCode
             wp_enqueue_style('sooAuthStyles');
 
             wp_register_style('sooCheckoutStyles', SOO_PLUGIN_URL . '/public/css/dist/sooCheckout-light.min.css', array(), SOO_VERSION);
-            wp_enqueue_style('sooCheckoutStyles',array('sooAuthStyles'));
+            wp_enqueue_style('sooCheckoutStyles');
 
 
 
@@ -2546,11 +2580,11 @@ class checkoutPage extends sooShortCode
         $clover3dsSdk = (defined('SOO_ENV') && (SOO_ENV === "DEV"))? 'https://checkout.sandbox.dev.clover.com/clover3DS/clover3DS-sdk.js' : 'https://checkout.clover.com/clover3DS/clover3DS-sdk.js';
 
         //Clover iframe SDK
-        wp_register_script('sooCloverSdk', $cloverSdk, array('jquery'), null);
+        wp_register_script('sooCloverSdk', $cloverSdk, array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooCloverSdk');
 
         //clover3DS SDK
-        wp_register_script('sooClover3DSSdk', $clover3dsSdk, array('jquery'), null);
+        wp_register_script('sooClover3DSSdk', $clover3dsSdk, array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooClover3DSSdk');
 
         if ($isAdvancedCheckout) {
@@ -2558,11 +2592,11 @@ class checkoutPage extends sooShortCode
             $this->enqueueSweetAlerts11Js();
 
             //New Checkout JS
-            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array('jquery','sooCloverSdk','SooSweetalerts'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/sooCheckout.min.js'));
+            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/sooCheckout.min.js', array('jquery','sooCloverSdk','SooSweetalerts'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/sooCheckout.min.js'), false);
             wp_enqueue_script('sooCheckoutScript');
 
             //Soo Auth Module
-            wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery','sooCheckoutScript'), SOO_VERSION);
+            wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery','sooCheckoutScript'), SOO_VERSION, false);
             wp_enqueue_script('sooAuthScript');
 
             //Add Google reCAPTCHA
@@ -2573,18 +2607,18 @@ class checkoutPage extends sooShortCode
 
         } else {
             //Checkout JS
-            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/moo_checkout.min.js', array('jquery','sooCloverSdk'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/moo_checkout.min.js'));
+            wp_register_script('sooCheckoutScript', SOO_PLUGIN_URL . '/public/js/dist/moo_checkout.min.js', array('jquery','sooCloverSdk'), filemtime(SOO_PLUGIN_PATH . '/public/js/dist/moo_checkout.min.js'), false);
             wp_enqueue_script('sooCheckoutScript');
 
-            wp_register_script('moo-icheck-js', SOO_PLUGIN_URL . '/public/js/dist/icheck.min.js', array('jquery'), SOO_VERSION);
+            wp_register_script('moo-icheck-js', SOO_PLUGIN_URL . '/public/js/dist/icheck.min.js', array('jquery'), SOO_VERSION, false);
             wp_enqueue_script('moo-icheck-js');
         }
 
         //Google Maps
-        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc',array('jquery'));
+        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('moo-google-map');
 
-        wp_register_script('display-merchant-map', SOO_PLUGIN_URL . '/public/js/dist/moo_map.min.js',array('jquery'), SOO_VERSION);
+        wp_register_script('display-merchant-map', SOO_PLUGIN_URL . '/public/js/dist/moo_map.min.js',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('display-merchant-map');
     }
 

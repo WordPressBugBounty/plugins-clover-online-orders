@@ -270,7 +270,7 @@ class storePage extends sooShortCode
                     if(strtoupper($file_extension) === "JS")
                     {
                         $jsFileName = 'moo-'.$file.'-js';
-                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, array('jquery'), SOO_VERSION);
+                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, array('jquery'), SOO_VERSION, false);
                         wp_enqueue_script( $jsFileName );
                     }
                 }
@@ -307,10 +307,10 @@ class storePage extends sooShortCode
         }
 
         wp_register_style( 'mooStyle-style3',  SOO_PLUGIN_URL .'/public/css/dist/sooStoreInterface3.min.css',array(), SOO_VERSION );
-        wp_enqueue_style ( 'mooStyle-style3', array( 'SooCssGrid','sooModifiersPopUp' ) );
+        wp_enqueue_style ( 'mooStyle-style3' );
 
-        wp_register_script('mooScript-style3', SOO_PLUGIN_URL . '/public/js/dist/sooStoreInterface3.min.js',array(),SOO_VERSION);
-        wp_enqueue_script( 'mooScript-style3', array( 'jquery','sooModifiersPopUp' ) );
+        wp_register_script('mooScript-style3', SOO_PLUGIN_URL . '/public/js/dist/sooStoreInterface3.min.js',array(),SOO_VERSION, false);
+        wp_enqueue_script( 'mooScript-style3' );
 
         wp_add_inline_style( "mooStyle-style3", $custom_css );
 

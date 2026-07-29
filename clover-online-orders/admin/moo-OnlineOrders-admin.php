@@ -799,9 +799,9 @@ class moo_OnlineOrders_Admin {
         wp_enqueue_script('moo-grid');
 
         /* Start Map Delivery area section */
-        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc');
+        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc', array(), $this->version, false);
         wp_enqueue_script('moo-google-map');
-        wp_enqueue_script('moo-map-da',array('jquery','moo-google-map'));
+        wp_enqueue_script('moo-map-da');
 
 
         wp_localize_script("moo-map-da", "moo_merchantLatLng",array(
@@ -1092,17 +1092,11 @@ class moo_OnlineOrders_Admin {
                             </div>
                         </div>
                         <div class="moo-row moo-subSection">
-                            <div class="moo-col-md-12">
-                                <!--[if lte IE 8]>
-                                <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2-legacy.js"></script>
-                                <![endif]-->
-                                <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2.js"></script>
-                                <script>
-                                    hbspt.forms.create({
-                                        portalId: "7182906",
-                                        formId: "0fb22630-4931-4eb4-a206-49d2001bd7b6"
-                                    });
-                                </script>
+                            <div class="moo-col-md-12" id="sooHsFormSupport">
+                                <?php
+                                wp_enqueue_script('soo-hsforms', 'https://js.hsforms.net/forms/v2.js', array(), SOO_VERSION, true);
+                                wp_add_inline_script('soo-hsforms', 'hbspt.forms.create({portalId:"7182906",formId:"0fb22630-4931-4eb4-a206-49d2001bd7b6",target:"#sooHsFormSupport"});');
+                                ?>
                             </div>
                         </div>
                     </div>
@@ -1544,17 +1538,11 @@ class moo_OnlineOrders_Admin {
                 <!-- Announcements / Social Media -->
                 <div id="MooPanel_tabContent4">
                     <h2>Smart Online Order Announcements</h2><hr>
-                    <div class="MooPanelItem">
-                        <!--[if lte IE 8]>
-                        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2-legacy.js"></script>
-                        <![endif]-->
-                        <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/v2.js"></script>
-                        <script>
-                            hbspt.forms.create({
-                                portalId: "7182906",
-                                formId: "ca2c3d93-f276-4446-b541-42439ea5968c"
-                            });
-                        </script>
+                    <div class="MooPanelItem" id="sooHsFormAnnouncements">
+                        <?php
+                        wp_enqueue_script('soo-hsforms', 'https://js.hsforms.net/forms/v2.js', array(), SOO_VERSION, true);
+                        wp_add_inline_script('soo-hsforms', 'hbspt.forms.create({portalId:"7182906",formId:"ca2c3d93-f276-4446-b541-42439ea5968c",target:"#sooHsFormAnnouncements"});');
+                        ?>
                     </div>
                 </div>
                 <!-- Image categorie -->
@@ -2031,6 +2019,23 @@ class moo_OnlineOrders_Admin {
                                         <?php } ?>
                                     </span>.
                                     <a href="#" onclick="mooSyncConvenienceFee(event)">Sync from Clover</a>
+                                </div>
+                            </div>
+                            <div class="Moo_option-item" >
+                                <div class="normal_text">
+                                    Combine taxes and fees into a single "Taxes &amp; fees" line on the checkout page, with an expandable breakdown
+                                </div>
+                            </div>
+                            <div class="Moo_option-item">
+                                <div style="float:left; width: 100%;padding-left: 60px;">
+                                    <label style="display:block; margin-bottom:8px;">
+                                        <input name="moo_settings[combine_taxes_fees]" id="MooCombineTaxesFees" type="radio" value="disabled" <?php echo (!isset($mooOptions["combine_taxes_fees"]) || $mooOptions["combine_taxes_fees"]!="enabled")?"checked":""; ?> >
+                                        Disabled
+                                    </label>
+                                    <label style="display:block; margin-bottom:8px;">
+                                        <input name="moo_settings[combine_taxes_fees]" id="MooCombineTaxesFees" type="radio" value="enabled" <?php echo (isset($mooOptions["combine_taxes_fees"]) && $mooOptions["combine_taxes_fees"]=="enabled")?"checked":""; ?> >
+                                        Enabled
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -3460,7 +3465,7 @@ class moo_OnlineOrders_Admin {
         </div>
 
         <!-- Start of HubSpot Embed Code -->
-        <script type="text/javascript" id="hs-script-loader" async defer src="//js.hs-scripts.com/7182906.js"></script>
+        <?php wp_enqueue_script('soo-hs-loader', 'https://js.hs-scripts.com/7182906.js', array(), SOO_VERSION, array('in_footer' => true, 'strategy' => 'async')); ?>
         <!-- End of HubSpot Embed Code -->
         <?php
     }
@@ -3576,16 +3581,16 @@ class moo_OnlineOrders_Admin {
 
         wp_enqueue_style('moo-tooltip-css',   plugin_dir_url( __FILE__ )."css/tooltip.css", array(), $this->version, 'all');
 
-        wp_register_style( 'moo-magnific-popup', plugin_dir_url(dirname(__FILE__))."public/css/dist/magnific-popup.min.css" );
+        wp_register_style( 'moo-magnific-popup', plugin_dir_url(dirname(__FILE__))."public/css/dist/magnific-popup.min.css", array(), $this->version );
         wp_enqueue_style( 'moo-magnific-popup');
 
-        wp_register_style( 'moo-font-awesome-dash', '//cdnjs.cloudflare.com/ajax/libs/font-awesome/5.5.0/css/all.min.css' );
+        wp_register_style( 'moo-font-awesome-dash', '//cdnjs.cloudflare.com/ajax/libs/font-awesome/5.5.0/css/all.min.css', array(), '5.5.0' );
         wp_enqueue_style( 'moo-font-awesome-dash' );
 
         wp_register_style( 'moo-introjs-css',plugin_dir_url(__FILE__)."css/introjs.min.css",array(), $this->version);
         wp_enqueue_style( 'moo-introjs-css' );
 
-        wp_register_style('moo-jquery-ui', '//ajax.googleapis.com/ajax/libs/jqueryui/1.8/themes/base/jquery-ui.css');
+        wp_register_style('moo-jquery-ui', '//ajax.googleapis.com/ajax/libs/jqueryui/1.8/themes/base/jquery-ui.css', array(), '1.8');
         wp_enqueue_style('moo-jquery-ui');
 
         wp_enqueue_style( 'wp-color-picker' );
@@ -3596,7 +3601,7 @@ class moo_OnlineOrders_Admin {
 
         //Modifiers Styles
         wp_register_style( 'sooModifiersPopUp',SOO_PLUGIN_URL . '/public/css/dist/sooModifiersSelector.min.css', array(), SOO_VERSION);
-        wp_enqueue_style( 'sooModifiersPopUp' ,array('moo-grid-css'));
+        wp_enqueue_style( 'sooModifiersPopUp' );
 
     }
 
@@ -3642,8 +3647,10 @@ class moo_OnlineOrders_Admin {
         if($this->external_ui) {
             wp_enqueue_script(
                 'uicore',
-                'http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.12/jquery-ui.min.js',
-                array('jquery')
+                'https://ajax.googleapis.com/ajax/libs/jqueryui/1.8.12/jquery-ui.min.js',
+                array('jquery'),
+                '1.8.12',
+                false
             );
         }
 
@@ -3652,42 +3659,42 @@ class moo_OnlineOrders_Admin {
         //wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/moo-OnlineOrders-admin.js', array( 'jquery' ), $this->version, false );
         wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc&libraries=drawing&geometry');
 
-        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), filemtime(plugin_dir_path(__FILE__).'js/moo-OnlineOrders-admin.js'));
+        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), filemtime(plugin_dir_path(__FILE__).'js/moo-OnlineOrders-admin.js'), false);
         wp_add_inline_script(
             'moo-publicAdmin-js',
             'var sooGlobalModeActive = ' . (SooSettingsSource::current() === 'global' ? 'true' : 'false') . ';',
             'before'
         );
-        wp_register_script('moo-AdminDashboard-js', plugins_url( 'js/moo-dashboard.js', __FILE__ ),array('jquery','wp-color-picker'), $this->version);
-        wp_register_script('moo-import-wizard-js', plugins_url( 'js/moo-importing-wizard.js', __FILE__ ),array('jquery'), $this->version);
+        wp_register_script('moo-AdminDashboard-js', plugins_url( 'js/moo-dashboard.js', __FILE__ ),array('jquery','wp-color-picker'), $this->version, false);
+        wp_register_script('moo-import-wizard-js', plugins_url( 'js/moo-importing-wizard.js', __FILE__ ),array('jquery'), $this->version, false);
 
-        wp_register_script('moo-tooltip-js', plugins_url( 'js/tooltip.min.js', __FILE__ ),array(), $this->version);
-        wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ));
+        wp_register_script('moo-tooltip-js', plugins_url( 'js/tooltip.min.js', __FILE__ ),array(), $this->version, false);
+        wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ), array(), $this->version, false);
 
-        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->version);
-        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), filemtime(plugin_dir_path(__FILE__).'js/moo_map_da.js'));
+        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->version, false);
+        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), filemtime(plugin_dir_path(__FILE__).'js/moo_map_da.js'), false);
 
-        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'));
+        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'), $this->version, false);
         wp_enqueue_script('moo-magnific-modal');
 
         //Promise for IE
-        wp_register_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js',array(), $this->version);
+        wp_register_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js',array(), $this->version, false);
         wp_enqueue_script('moo-bluebird');
 
-        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js",array('jquery'));
+        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js",array('jquery'), $this->version, false);
         wp_enqueue_script('moo-sweetalert-js');
 
-        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js",array('jquery'));
+        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js",array('jquery'), $this->version, false);
         wp_enqueue_script('moo-introjs-js');
 
-        wp_enqueue_script('moo-progressbar-js',array('jquery'));
-        wp_enqueue_script("moo-tooltip-js",array('jquery'));
+        wp_enqueue_script('moo-progressbar-js');
+        wp_enqueue_script("moo-tooltip-js");
 
         //Modifiers Scripts
-        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION);
+        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooModifiersPopUp');
 
-        wp_enqueue_script('moo-publicAdmin-js',array('jquery','wp-color-picker','jquery-ui-datepicker','jquery-ui-sortable','sooModifiersPopUp'));
+        wp_enqueue_script('moo-publicAdmin-js');
 
         wp_localize_script("moo-publicAdmin-js", "moo_params",$params);
         wp_localize_script("moo-publicAdmin-js", "moo_custom_hours",$merchantCustomHours);
@@ -3709,10 +3716,10 @@ class moo_OnlineOrders_Admin {
                 "moo_merchantLng"=>$mooOptions['lng'],
         );
 
-        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc');
+        wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?libraries=geometry&key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc', array(), $this->version, false);
         wp_enqueue_script('moo-google-map');
 
-        wp_enqueue_script('moo-map-js',array('jquery','moo-google-map'));
+        wp_enqueue_script('moo-map-js');
 
         wp_localize_script("moo-map-js", "mooDeliveryOptions",$mooDeliveryOptions);
 
