@@ -2325,7 +2325,7 @@ class Moo_OnlineOrders_Public {
                             'status'	=> 'APPROVED',
                             'order'	=> $orderCreated['OrderId']
                         );
-                        wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
+                        wp_send_json($response);
                     } else {
                         if($paymentmethod === 'clover'){
                             if( isset($_POST['form']['token']) && !empty($_POST['form']['token'])) {
@@ -2382,7 +2382,7 @@ class Moo_OnlineOrders_Public {
                                         'order'	=> $orderCreated['OrderId']
                                     );
 
-                                    wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
+                                    wp_send_json($response);
                                 } else {
                                     $response = array(
                                         'status'	=> 'Error',
@@ -2453,7 +2453,7 @@ class Moo_OnlineOrders_Public {
 
                                     do_action("moo_action_order_created", $orderCreated['OrderId'], "credit_card" );
 
-                                    wp_send_json($this->addConfirmationMessageToResponse($response, $MooOptions));
+                                    wp_send_json($response);
                                 } else {
                                     //remove the order
                                     $this->api->removeOrderFromClover($orderCreated['OrderId']);
@@ -2766,9 +2766,6 @@ class Moo_OnlineOrders_Public {
 
     private function applyDashboardOrderFlowOverrides(array $options, array $checkoutSettings)
     {
-        $options['confirmation_message'] = $this->dashboardScalarToString(
-            isset($checkoutSettings['confirmation_message']) ? $checkoutSettings['confirmation_message'] : null
-        );
         $options['show_order_number'] = !empty($checkoutSettings['showOrderNumberOnReceipt']) ? 'on' : 'off';
         $options['rollout_order_number_max'] = $this->dashboardScalarToString(
             isset($checkoutSettings['orderNumberRollOverLimit']) ? $checkoutSettings['orderNumberRollOverLimit'] : null,
@@ -2832,11 +2829,6 @@ class Moo_OnlineOrders_Public {
         return !isset($options['_dashboard_notify_on_new_orders']) || $options['_dashboard_notify_on_new_orders'] === 'on';
     }
 
-    private function addConfirmationMessageToResponse(array $response, array $options)
-    {
-        $response['confirmation_message'] = isset($options['confirmation_message']) ? $options['confirmation_message'] : null;
-        return $response;
-    }
 
     /**
      * Send sms to the merchant

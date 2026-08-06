@@ -1007,13 +1007,9 @@ class  CheckoutRoutes extends BaseRoute {
                         }
                     }
                 }
-                $orderResponse = apply_filters("moo_filter_order_creation_response",$orderCreated);
-                if (is_array($orderResponse)) {
-                    $orderResponse["confirmation_message"] = isset($this->pluginSettings["confirmation_message"])
-                        ? $this->pluginSettings["confirmation_message"]
-                        : null;
-                }
-                return $orderResponse;
+                // confirmation_message comes from the API response as-is; there
+                // is no local setting for it.
+                return apply_filters("moo_filter_order_creation_response",$orderCreated);
             } else {
                 return array(
                     "status"=>"failed",
@@ -1304,9 +1300,6 @@ class  CheckoutRoutes extends BaseRoute {
         $this->pluginSettings['use_coupons'] = !empty($checkoutSettings['useCoupons']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock'] = !empty($checkoutSettings['enableStockTracking']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock_hide_items'] = !empty($checkoutSettings['hideUnavailableItems']) ? 'on' : 'off';
-        $this->pluginSettings['confirmation_message'] = $this->dashboardScalarToString(
-            isset($checkoutSettings['confirmation_message']) ? $checkoutSettings['confirmation_message'] : null
-        );
         $this->pluginSettings['show_order_number'] = !empty($checkoutSettings['showOrderNumberOnReceipt']) ? 'on' : 'off';
         $this->pluginSettings['rollout_order_number_max'] = $this->dashboardScalarToString(
             isset($checkoutSettings['orderNumberRollOverLimit']) ? $checkoutSettings['orderNumberRollOverLimit'] : null,

@@ -940,34 +940,6 @@ class moo_OnlineOrders_Admin {
                                     <div class="fromToSection"></div>
                                     <div>You can change this from the Holidays section or pause ordering on your POS.</div>
                                 </div>
-                                <div class="Moo_option-item" style="display: none">
-                                    <div class="moo-col-md-8">
-                                        <h4>Sync Clover Online Names and descriptions</h4>
-                                    </div>
-                                    <div class="moo-col-md-2">
-                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
-                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
-                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
-                                                <span class="soo-onoffswitch-inner"></span>
-                                                <span class="soo-onoffswitch-switch"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="Moo_option-item" style="display: none">
-                                    <div class="moo-col-md-8">
-                                        <h4>Sync Clover Items Images</h4>
-                                    </div>
-                                    <div class="moo-col-md-2">
-                                        <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right">
-                                            <input type="checkbox" name="sooApplePayFeature" id="sooApplePayFeature" class="soo-onoffswitch-checkbox" onchange="enableOrDisableApplePay()" <?php  echo $isApplePayEnabled?'checked':''; ?> >
-                                            <label class="soo-onoffswitch-label" for="sooApplePayFeature">
-                                                <span class="soo-onoffswitch-inner"></span>
-                                                <span class="soo-onoffswitch-switch"></span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                             <div class="moo-col-md-2"></div>
                         </div>

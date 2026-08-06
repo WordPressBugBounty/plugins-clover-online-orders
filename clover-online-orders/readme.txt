@@ -5,7 +5,7 @@ Tags: clover,online orders for clover, Online orders for Clover, Wordpress and C
 Requires at least: 4.7.1
 Tested up to: 7.0.2
 Requires PHP: 5.2.0
-Stable tag: 1.6.3
+Stable tag: 1.6.4
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -142,6 +142,10 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.4 =
+* Fixed the order confirmation message not showing after checkout.
+* Fixed the Apple Pay toggle in the plugin settings not updating until the page was refreshed.
+
 = 1.6.3 =
 * Checkout: optional combined "Taxes & fees" line that groups taxes, convenience fee and service fees into a single total.
 
