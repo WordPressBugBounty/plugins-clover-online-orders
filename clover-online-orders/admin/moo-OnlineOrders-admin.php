@@ -1904,7 +1904,7 @@ class moo_OnlineOrders_Admin {
                                         </div>
                                         <div class="iwl_holder"><div class="iwl_label_holder"><label id="reCAPTCHA_secret_key" >Secret Key</label></div>
                                             <div class="iwl_input_holder">
-                                                <input name="moo_settings[reCAPTCHA_secret_key]" id="reCAPTCHA_secret_key" type="text" value="<?php echo (!empty($mooOptions['reCAPTCHA_secret_key']))?$mooOptions['reCAPTCHA_site_key']:''; ?>" />
+                                                <input name="moo_settings[reCAPTCHA_secret_key]" id="reCAPTCHA_secret_key" type="text" value="<?php echo esc_attr(!empty($mooOptions['reCAPTCHA_secret_key']) ? $mooOptions['reCAPTCHA_secret_key'] : ''); ?>" />
                                             </div>
                                         </div>
                                     </div>

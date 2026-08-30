@@ -557,6 +557,11 @@ class checkoutPage extends sooShortCode
             "locale"=>str_replace("_", "-", get_locale()),
             "showStreetAddressField"=>$this->showStreetAddressFieldOnPaymentForm,
             "showCardNameField"=>$this->showCardNameFieldOnPaymentForm,
+            // Same rule as the new checkout: this is the website, and the disable option is
+            // app-only, so the key ships whenever the merchant has a pair configured.
+            "reCAPTCHA_site_key"=>( !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key']) )
+                ? $this->pluginSettings['reCAPTCHA_site_key']
+                : false,
         );
         $mooDeliveryJsOptions = array(
             "moo_merchantLat"=>$this->pluginSettings['lat'],
@@ -633,6 +638,7 @@ class checkoutPage extends sooShortCode
                                     <div class="moo-col-xs-12 moo-col-sm-6 moo-col-md-7 moo-col-md-offset-3 moo-col-sm-offset-3" >
                                         <a href="#" class="moo-btn moo-btn-lg moo-btn-primary moo-btn-block" onclick="moo_loginViaFacebook(event)" style="margin-top: 12px;" tabindex="0" aria-label="Sign in with your Facebook account">Facebook</a>
                                     </div>
+                                    <?php if ($guestModeEnabled) { ?>
                                     <div class="moo-col-xs-12 moo-col-sm-12 moo-col-md-7 moo-col-md-offset-3" tabindex="0">
                                         <div class="login-or">
                                             <hr class="hr-or">
@@ -642,17 +648,22 @@ class checkoutPage extends sooShortCode
                                             <?php _e("Continue As Guest", "moo_OnlineOrders"); ?>
                                         </a>
                                     </div>
+                                    <?php } ?>
                                 </div>
                             <?php } else { ?>
+                                <?php if ($guestModeEnabled) { ?>
                                 <p>
                                     <?php _e("Don't want an account?", "moo_OnlineOrders"); ?>
                                     <br />
                                     <small><?php _e("You can checkout without registering", "moo_OnlineOrders"); ?></small>
                                 </p>
+                                <?php } ?>
                                 <div class="moo-row">
+                                <?php if ($guestModeEnabled) { ?>
                                     <div class="moo-col-xs-12 moo-col-sm-6 moo-col-md-9 moo-col-md-offset-2 moo-col-sm-offset-3">
                                         <a  role="button" tabindex="0" href="#" class="moo-btn moo-btn-lg moo-btn-primary moo-btn-block" onclick="moo_loginAsguest(event)" style="margin-top: 12px;"> <?php _e("Continue As Guest", "moo_OnlineOrders"); ?></a>
                                     </div>
+                                <?php } ?>
                                     <div class="moo-col-xs-12 moo-col-sm-12 moo-col-md-9 moo-col-md-offset-2">
                                         <div class="login-or">
                                             <hr class="hr-or">
@@ -1693,10 +1704,12 @@ class checkoutPage extends sooShortCode
             "errorMsg"=>$this->pluginSettings['delivery_errorMsg']
         );
 
-        $googleReCAPTCHADisabled = (bool) get_option('sooDisableGoogleReCAPTCHA',false);
-
         //Add Google reCAPTCHA
-        if ( $googleReCAPTCHADisabled === false && !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
+        // sooDisableGoogleReCAPTCHA is not consulted here: it exists so branded-app merchants
+        // can exempt their native apps, and this page only ever renders the website checkout.
+        // The site key must still reach sooCheckout.js, or it sends no token and the matching
+        // gate in CheckoutRoutes::checkout() rejects every website order.
+        if ( !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
             $jsOptions['reCAPTCHA_site_key'] = $this->pluginSettings['reCAPTCHA_site_key'];
         }
         //If Store is closed, make time required
@@ -1713,7 +1726,13 @@ class checkoutPage extends sooShortCode
 
         $authOptionsJsOptions  = [
             'restApiUrl' =>  get_rest_url(),
-            "fbAppId"=>$this->pluginSettings['fb_appid']
+            "fbAppId"=>$this->pluginSettings['fb_appid'],
+            // Only sent when the merchant has both keys; sooAuth.js skips the token when it
+            // is absent, and the verifier treats a keyless site as nothing to check. A
+            // merchant without keys keeps working exactly as before.
+            "reCAPTCHA_site_key" => ( !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key']) )
+                ? $this->pluginSettings['reCAPTCHA_site_key']
+                : false
         ];
 
 
@@ -2600,8 +2619,10 @@ class checkoutPage extends sooShortCode
             wp_enqueue_script('sooAuthScript');
 
             //Add Google reCAPTCHA
-            $googleReCAPTCHADisabled = (bool) get_option('sooDisableGoogleReCAPTCHA',false);
-            if ($googleReCAPTCHADisabled === false && !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
+            // See the note in advancedCheckout(): the disable option is app-only, and this
+            // branch is the website checkout, so the reCAPTCHA script always loads when keys
+            // are configured.
+            if (!empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
                 $this->enqueueRecaptchaJs($this->pluginSettings['reCAPTCHA_site_key']);
             }
 
@@ -2612,6 +2633,13 @@ class checkoutPage extends sooShortCode
 
             wp_register_script('moo-icheck-js', SOO_PLUGIN_URL . '/public/js/dist/icheck.min.js', array('jquery'), SOO_VERSION, false);
             wp_enqueue_script('moo-icheck-js');
+
+            //Add Google reCAPTCHA
+            // The legacy checkout is a website-only surface, so it follows the same rule as
+            // the new one: load whenever the merchant has a key pair configured.
+            if (!empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
+                $this->enqueueRecaptchaJs($this->pluginSettings['reCAPTCHA_site_key']);
+            }
         }
 
         //Google Maps

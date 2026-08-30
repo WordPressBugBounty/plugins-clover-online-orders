@@ -5,7 +5,7 @@ Tags: clover,online orders for clover, Online orders for Clover, Wordpress and C
 Requires at least: 4.7.1
 Tested up to: 7.0.2
 Requires PHP: 5.2.0
-Stable tag: 1.6.4
+Stable tag: 1.6.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -142,6 +142,14 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.5 =
+* Fixed the "Guest checkout" setting from the dashboard not being applied on the checkout page.
+* Google reCAPTCHA now protects checkout, customer login, registration and password reset, with the level of protection adapted to the action and to whether the visitor is a guest or a signed-in customer. Applies only when reCAPTCHA keys are configured.
+* Added protection against automated ordering and against repeated verification-code (SMS) requests.
+* The plugin data-reset link now asks for confirmation before deleting plugin data and deactivating the plugin.
+* Fixed the reCAPTCHA Secret Key field in the settings showing the Site Key instead.
+* Security improvements and hardening.
+
 = 1.6.4 =
 * Fixed the order confirmation message not showing after checkout.
 * Fixed the Apple Pay toggle in the plugin settings not updating until the page was refreshed.

@@ -16,7 +16,7 @@
  * Plugin Name:       Smart Online Order for Clover
  * Plugin URI:        https://www.zaytech.com
  * Description:       Start taking orders from your Wordpress website and have them sent to your Clover Station
- * Version:           1.6.4
+ * Version:           1.6.5
  * Author:            Zaytech
  * Author URI:        https://www.zaytech.com
  * License:           GPLv2 or later
@@ -37,7 +37,7 @@ define(
 define('SOO_PLUGIN_PATH', untrailingslashit(plugin_dir_path(__FILE__)));
 define('SOO_ENV', 'PROD');
 define('SOO_DEFAULT_CDN', false);
-define('SOO_VERSION', "1.6.4");
+define('SOO_VERSION', "1.6.5");
 define('SOO_G_RECAPTCHA_URL', 'https://www.google.com/recaptcha/api/siteverify');
 define('SOO_DEBUG', false);
 
@@ -212,20 +212,45 @@ function moo_add_action_links($links)
     return array_merge($plugin_links_1, $links);
 }
 function moo_deactivateAndClean() {
-    if (current_user_can( 'manage_options' ) && isset($_GET['page']) &&  $_GET['page'] === 'moo_deactivateAndClean') {
-        require_once plugin_dir_path(__FILE__)."/includes/moo-OnlineOrders-deactivator.php";
-
-        if (function_exists("is_plugin_active_for_network") && !is_plugin_active_for_network(plugin_basename(__FILE__))) {
-            Moo_OnlineOrders_Deactivator::deactivateAndClean();
-            deactivate_plugins(plugin_basename(__FILE__), true);
-        } else {
-            Moo_OnlineOrders_Deactivator::onlyClean();
-        }
-
-        $url = admin_url('plugins.php?deactivate=true');
-        header("Location: $url");
-        die();
+    if ( ! isset($_GET['page']) || $_GET['page'] !== 'moo_deactivateAndClean' ) {
+        return;
     }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+
+    // This drops every plugin table and option and deactivates the plugin, so it must not be
+    // reachable by a link an admin can be tricked into loading. A plain GET only renders the
+    // confirmation screen below; the destructive part needs a POST with a valid nonce.
+    if ( ! isset($_POST['moo_confirm_deactivate_and_clean']) ) {
+        $form  = '<form method="post" action="'.esc_url(admin_url('admin.php?page=moo_deactivateAndClean')).'">';
+        $form .= wp_nonce_field('moo_deactivate_and_clean', '_wpnonce', true, false);
+        $form .= '<input type="hidden" name="moo_confirm_deactivate_and_clean" value="1" />';
+        $form .= '<p>'.esc_html__('This permanently deletes all Smart Online Order data (menu, settings, orders and customers) and deactivates the plugin. This cannot be undone.', 'moo_OnlineOrders').'</p>';
+        $form .= '<p><button type="submit" class="button button-primary">'.esc_html__('Delete all data and deactivate', 'moo_OnlineOrders').'</button> ';
+        $form .= '<a class="button" href="'.esc_url(admin_url('plugins.php')).'">'.esc_html__('Cancel', 'moo_OnlineOrders').'</a></p>';
+        $form .= '</form>';
+
+        wp_die(
+            $form,
+            esc_html__('Smart Online Order', 'moo_OnlineOrders'),
+            array( 'response' => 200, 'back_link' => false )
+        );
+    }
+
+    check_admin_referer('moo_deactivate_and_clean');
+
+    require_once plugin_dir_path(__FILE__)."/includes/moo-OnlineOrders-deactivator.php";
+
+    if (function_exists("is_plugin_active_for_network") && !is_plugin_active_for_network(plugin_basename(__FILE__))) {
+        Moo_OnlineOrders_Deactivator::deactivateAndClean();
+        deactivate_plugins(plugin_basename(__FILE__), true);
+    } else {
+        Moo_OnlineOrders_Deactivator::onlyClean();
+    }
+
+    wp_safe_redirect( admin_url('plugins.php?deactivate=true') );
+    exit;
 }
 
 /*

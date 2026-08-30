@@ -146,8 +146,14 @@ class DashboardCheckoutMapper {
     public function mapCheckoutSettings() {
         $cs = isset($this->dash['checkout_settings']) ? $this->dash['checkout_settings'] : array();
         return array(
-            'fraudTools'      => isset($cs['fraudTools']) ? $cs['fraudTools'] : null,
-            'convenience_fee' => isset($cs['convenienceFee']) ? $cs['convenienceFee'] : 0,
+            'fraudTools'       => isset($cs['fraudTools']) ? $cs['fraudTools'] : null,
+            'convenience_fee'  => isset($cs['convenienceFee']) ? $cs['convenienceFee'] : 0,
+            // Dropping this key made the dashboard's guest-checkout switch a no-op in Global
+            // mode: both the checkout page and CheckoutRoutes fall back to "guests allowed"
+            // when it is absent, so the merchant saw "Guest checkout: No" in the dashboard
+            // summary (which reads the raw payload) while checkout kept offering it.
+            // null when unset, which both consumers read as "not configured, allow".
+            'guestModeEnabled' => isset($cs['guestModeEnabled']) ? $cs['guestModeEnabled'] : null,
         );
     }
 

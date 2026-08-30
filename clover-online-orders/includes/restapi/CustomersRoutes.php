@@ -435,14 +435,52 @@ class CustomersRoutes extends BaseRoute {
     }
     public function customerLogin( $request ) {
         $endPoint = 'merchants/customers/login';
+
+        $body = $request->get_json_params();
+        $recaptcha = $this->verifyAuthRequest(array(
+            'token'   => isset($body['reCAPTCHA_token']) ? $body['reCAPTCHA_token'] : null,
+            'action'  => 'login',
+            'surface' => 'login',
+        ));
+        if ( is_wp_error($recaptcha) ) {
+            return $recaptcha;
+        }
+
         return $this->sendRequest($request, $endPoint);
     }
     public function customerSignup( $request ) {
         $endPoint = 'merchants/customers/register';
+
+        // Sign-up is checked as well as login: it is the route that mints an account, and
+        // with it a token the rest of the API accepts.
+        $body = $request->get_json_params();
+        $recaptcha = $this->verifyAuthRequest(array(
+            'token'   => isset($body['reCAPTCHA_token']) ? $body['reCAPTCHA_token'] : null,
+            'action'  => 'signup',
+            'surface' => 'signup',
+        ));
+        if ( is_wp_error($recaptcha) ) {
+            return $recaptcha;
+        }
+
         return $this->sendRequest($request, $endPoint);
     }
     public function customerResetPassword( $request ) {
         $endPoint = 'merchants/customers/password/email';
+
+        // The email step is the abuse target: unauthenticated, and it sends a message and
+        // leaks whether an address exists. The two later steps require the emailed code, so
+        // they are left to that gate. Fail-closed here.
+        $body = $request->get_json_params();
+        $recaptcha = $this->verifyAuthRequest(array(
+            'token'   => isset($body['reCAPTCHA_token']) ? $body['reCAPTCHA_token'] : null,
+            'action'  => 'passwordReset',
+            'surface' => 'password',
+        ));
+        if ( is_wp_error($recaptcha) ) {
+            return $recaptcha;
+        }
+
         return $this->sendRequest($request, $endPoint);
     }
     public function checkOtp( $request ) {
@@ -489,6 +527,16 @@ class CustomersRoutes extends BaseRoute {
     }
     public function sendCodeToVerifyPhone( $request ) {
         $endPoint = 'merchants/customers/phone/verify';
+
+        $body = $request->get_json_params();
+        if ( ! Moo_OnlineOrders_Helpers::smsSendAllowed(isset($body['phone']) ? $body['phone'] : '') ) {
+            return new WP_Error(
+                'too_many_requests',
+                __('Too many verification codes requested. Please wait a few minutes and try again.', 'moo_OnlineOrders'),
+                array( 'status' => 429 )
+            );
+        }
+
         return $this->sendRequest($request, $endPoint);
     }
     public function checkCodeToVerifyPhone( $request ) {
@@ -507,6 +555,15 @@ class CustomersRoutes extends BaseRoute {
                 array( 'status' => 400 )
             );
         }
+
+        if ( ! Moo_OnlineOrders_Helpers::smsSendAllowed($phone) ) {
+            return new WP_Error(
+                'too_many_requests',
+                __('Too many verification codes requested. Please wait a few minutes and try again.', 'moo_OnlineOrders'),
+                array( 'status' => 429 )
+            );
+        }
+
         //Generate a code
         $code = wp_rand(111111,999999);
 
@@ -591,6 +648,8 @@ class CustomersRoutes extends BaseRoute {
         $authorization = $request->get_header("authorization");
         $request_body = $request->get_json_params();
         $res = $this->api->customerRequestsWrapper($endPoint, $request_body, $authorization, $isDelete);
+        $lastError = $this->api->last_error;
+        unset($lastError['headers']);
         if ( $res === false ){
             if ( isset($this->api->last_error['httpCode']) && $this->api->last_error['httpCode'] >= 400  && $this->api->last_error['httpCode'] <= 499) {
                 $errorMessage = "An error has occurred, Please check your submission";
@@ -607,13 +666,19 @@ class CustomersRoutes extends BaseRoute {
                 return new WP_Error(
                     'bad_request',
                     $errorMessage,
-                    array( 'status' => $this->api->last_error['httpCode'] )
+                    array(
+                        'status' => $this->api->last_error['httpCode'],
+                        'api_response' => $lastError
+                    )
                 );
             } else {
                 return new WP_Error(
                     'bad_request',
                     __('An error has occurred, try again',"moo_OnlineOrders"),
-                    array( 'status' => 500 )
+                    array(
+                        'status' => 500,
+                        'api_response' => $lastError
+                    )
                 );
             }
 

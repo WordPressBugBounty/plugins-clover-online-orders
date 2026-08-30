@@ -5,6 +5,108 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Moo_OnlineOrders_Helpers
 {
+    /**
+     * Client IP used for abuse counting.
+     *
+     * REMOTE_ADDR only: X-Forwarded-For is caller-supplied and would let a bot rotate the
+     * bucket key at will. Sites behind a proxy or CDN should map the real client IP in via
+     * the soo_client_ip filter.
+     *
+     * @return string
+     */
+    public static function clientIp() {
+        return (string) apply_filters('soo_client_ip', isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '');
+    }
+
+    /**
+     * Sliding-window counter shared by the public-endpoint abuse guards.
+     *
+     * Transient-backed, so this is per web node — a load-balanced site would need a shared
+     * store. Every window must allow the call before any of them are incremented, so a call
+     * rejected by the wider window does not also burn the narrower one's allowance.
+     *
+     * @param string $bucket   short namespace for the transient key
+     * @param string $identity what is being counted (IP, phone, cart signature, ...)
+     * @param array  $windows  window length in seconds => calls allowed within it
+     * @return bool true when the call is allowed, false when it is over the limit
+     */
+    public static function throttle($bucket, $identity, array $windows) {
+        if ($identity === '' || $identity === null) {
+            return true;
+        }
+
+        $now    = time();
+        $hash   = md5((string) $identity);
+        $states = array();
+
+        foreach ($windows as $seconds => $max) {
+            $seconds = (int) $seconds;
+            $key     = 'soo_' . $bucket . '_' . $seconds . '_' . $hash;
+            $state   = get_transient($key);
+
+            if ( ! is_array($state) || ! isset($state['start'], $state['count']) || ($now - (int) $state['start']) >= $seconds ) {
+                $state = array('start' => $now, 'count' => 0);
+            }
+
+            if ((int) $state['count'] >= (int) $max) {
+                return false;
+            }
+
+            $states[$key] = array($state, $seconds);
+        }
+
+        foreach ($states as $key => $entry) {
+            list($state, $seconds) = $entry;
+            $state['count']++;
+            $ttl = $seconds - ($now - (int) $state['start']);
+            set_transient($key, $state, $ttl > 0 ? $ttl : $seconds);
+        }
+
+        return true;
+    }
+
+    /**
+     * Pre-filter for the endpoints that send a verification SMS.
+     *
+     * Every SMS costs money, and all four senders are public, so this stops the obvious
+     * abuse before it reaches the API. The backend enforces its own limits — these caps are
+     * deliberately loose so the two do not fight; this exists to avoid paying for traffic
+     * that never had a chance of being legitimate.
+     *
+     * Counted per phone number (so one victim cannot be SMS-bombed) and per IP (so one
+     * caller cannot walk a list of numbers).
+     *
+     * @param string $phone destination number, as supplied by the caller
+     * @return bool true when the send is allowed
+     */
+    public static function smsSendAllowed($phone) {
+        // Bucket on the trailing 10 digits so the same number cannot be re-sent under a
+        // different format: 4085551234, +1 408 555 1234 and 001-408-555-1234 all normalise
+        // together. Without this an attacker doubles their allowance by toggling the country
+        // code.
+        $phone = preg_replace('/[^0-9]/', '', (string) $phone);
+        if (strlen($phone) > 10) {
+            $phone = substr($phone, -10);
+        }
+
+        $perPhone = apply_filters('soo_sms_throttle_phone_windows', array(
+            600   => 3,
+            3600  => 8,
+            86400 => 15,
+        ));
+        $perIp = apply_filters('soo_sms_throttle_ip_windows', array(
+            600   => 6,
+            3600  => 20,
+            86400 => 60,
+        ));
+
+        if ($phone !== '' && ! self::throttle('smsph', $phone, $perPhone)) {
+            return false;
+        }
+
+        return self::throttle('smsip', self::clientIp(), $perIp);
+    }
+
     public static function getCharsetOfDbTable($table_name) {
         global $wpdb;
         $result = $wpdb->get_row("SHOW CREATE TABLE `{$wpdb->prefix}$table_name`",'ARRAY_A');

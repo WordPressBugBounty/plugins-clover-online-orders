@@ -522,6 +522,7 @@ class Moo_OnlineOrders_Public {
      * OrderTypes CRUD Functions
      */
     public function moo_getAllOrderTypes() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -981,6 +982,7 @@ class Moo_OnlineOrders_Public {
 
    public function moo_GetStats()
    {
+       check_ajax_referer('moo_admin_ajax', '_moo_nonce');
        if (! current_user_can( 'manage_options' ) ){
            return false;
        }
@@ -1136,6 +1138,7 @@ class Moo_OnlineOrders_Public {
      * since v1.1.3
      */
     public function moo_getItemWithImages() {
+        check_ajax_referer('moo_admin_ajax', '_moo_nonce');
         if (! current_user_can( 'manage_options' ) ){
             return false;
         }
@@ -1923,6 +1926,16 @@ class Moo_OnlineOrders_Public {
     public function moo_SendVerifSMS()
     {
         $phone_number = sanitize_text_field($_POST['phone']);
+
+        // Same pre-filter as the REST senders: this endpoint is nopriv, so leaving it
+        // unguarded would just move the abuse here.
+        if ( ! Moo_OnlineOrders_Helpers::smsSendAllowed($phone_number) ) {
+            wp_send_json(array(
+                'status'  => 'error',
+                'message' => __('Too many verification codes requested. Please wait a few minutes and try again.', 'moo_OnlineOrders')
+            ));
+        }
+
         if(! $this->session->isEmpty("moo_verification_code") && $phone_number == $this->session->get("moo_phone_number") ) {
             $verification_code = $this->session->get("moo_verification_code");
         } else {

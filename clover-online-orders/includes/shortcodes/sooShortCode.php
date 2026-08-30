@@ -109,7 +109,7 @@ class sooShortCode
     }
     protected function enqueueGiftCardsJs() {
         //GiftCards JS
-        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/sooGiftCards.js',array('jquery'), SOO_VERSION, false);
+        wp_register_script('sooGiftCards', SOO_PLUGIN_URL . '/public/js/dist/sooGiftCards.min.js',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooGiftCards');
     }
     protected function enqueueCloverSDK()

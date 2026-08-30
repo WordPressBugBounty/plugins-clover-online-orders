@@ -158,7 +158,6 @@ class  CheckoutRoutes extends BaseRoute {
         }
 
         $response = array();
-        $googleReCAPTCHADisabled = (bool) get_option('sooDisableGoogleReCAPTCHA',false);
 
         $response["use_coupons"] = isset($this->pluginSettings['use_coupons']) && $this->pluginSettings['use_coupons'] == "enabled";
         $sooSource = SooSettingsSource::instance($this->api);
@@ -303,7 +302,12 @@ class  CheckoutRoutes extends BaseRoute {
         // to call in both modes — there's no Global override for the
         // merchant identity pubkey itself.
         $response["pubkey"] = $this->api->getMerchantPubKey();
-        $response["recaptchaKey"] = !$googleReCAPTCHADisabled && !empty($this->pluginSettings['reCAPTCHA_site_key']) ? $this->pluginSettings['reCAPTCHA_site_key'] : null;
+        // Offer a site key unless a provider has cleared this merchant's clients from the
+        // check, or no key is configured to begin with.
+        $verdict = $this->verifyRequest(array('surface' => 'options', 'action' => 'createOrder'));
+        $response["recaptchaKey"] = ($verdict['outcome'] !== 'pass' && !empty($this->pluginSettings['reCAPTCHA_site_key']))
+            ? $this->pluginSettings['reCAPTCHA_site_key']
+            : null;
         $response["allowScOrders"] = self::asBool($sooSource->get('order_later'));
         $response["allowAsap"] = $this->isAsapAllowed();
         $response["hideUnavailableItems"] = $this->isHideUnavailableItemsEnabled();
@@ -530,11 +534,188 @@ class  CheckoutRoutes extends BaseRoute {
         return $oppening_status;
     }
     /**
+     * Thin wrapper over Moo_OnlineOrders_Helpers::throttle() that shapes a REST error.
+     *
+     * @return true|WP_Error
+     */
+    private function throttle($bucket, $identity, array $windows, $message) {
+        if (Moo_OnlineOrders_Helpers::throttle($bucket, $identity, $windows)) {
+            return true;
+        }
+
+        return new WP_Error('too_many_requests', $message, array('status' => 429));
+    }
+
+    /**
+     * Throttle checkout attempts per client IP.
+     *
+     * /checkout is registered with permission_callback => '__return_true', so this is one
+     * of only two channel-agnostic brakes on automated order creation.
+     *
+     * REMOTE_ADDR is used deliberately: forwarding headers are caller-supplied and would
+     * make the bucket key unreliable. Sites behind a proxy or CDN should map the real
+     * client IP through the soo_checkout_rate_limit_ip filter.
+     *
+     * @return true|WP_Error
+     */
+    private function checkoutRateLimit() {
+        $ip = apply_filters('soo_checkout_rate_limit_ip', Moo_OnlineOrders_Helpers::clientIp());
+        if (empty($ip)) {
+            return true;
+        }
+
+        // window length in seconds => attempts allowed within that window. The ten-minute
+        // cap is the looser of the two so a customer retrying a declined card is not
+        // caught. Tune per merchant volume via the filter — a busy store whose customers
+        // share a carrier NAT may need the hourly and daily caps raised.
+        $windows = apply_filters('soo_checkout_rate_limit_windows', array(
+            600   => 5,
+            3600  => 8,
+            86400 => 50,
+        ));
+
+        return $this->throttle(
+            'cort',
+            $ip,
+            $windows,
+            'Too many checkout attempts from this location. Please wait a few minutes and try again.'
+        );
+    }
+
+    /**
+     * Whether guest (unauthenticated) checkout is allowed for this merchant.
+     *
+     * Resolved the same way as getCheckoutOptions() and the checkout page, so all three
+     * agree. Defaults to allowed: a settings payload that fails to load, or predates the
+     * flag, must not start turning away real orders on its own.
+     *
+     * @return bool
+     */
+    private function guestCheckoutEnabled() {
+        if (SooSettingsSource::current() === 'global') {
+            $dash = SooSettingsSource::instance($this->api)->dashboardClient()->fetch();
+            $checkoutSettings = (new DashboardCheckoutMapper($dash))->mapCheckoutSettings();
+        } else {
+            $checkoutSettings = $this->api->getCheckoutSettings();
+        }
+
+        if ( ! is_array($checkoutSettings) || ! array_key_exists('guestModeEnabled', $checkoutSettings) ) {
+            return true;
+        }
+
+        $raw = $checkoutSettings['guestModeEnabled'];
+        if ($raw === null || $raw === '') {
+            return true;
+        }
+
+        // Only an unambiguous false disables guest checkout. checkoutPage.php resolves ''
+        // to false, which is harmless when it merely hides the "Continue As Guest" button,
+        // but here it would reject every guest order on an empty or malformed value. The
+        // two diverge only in that case, and only in the direction that still takes the
+        // order.
+        $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return ($parsed === null) ? true : $parsed;
+    }
+
+    /**
+     * Stable fingerprint of a cart, or null when there is nothing usable to fingerprint.
+     *
+     * Built from item ids and their counts plus the order type — deliberately not from the
+     * whole payload, because a per-line uuid or timestamp would make every cart unique and
+     * silently disable duplicateCartGuard().
+     *
+     * @param array $body decoded request body
+     * @return string|null
+     */
+    private function cartSignature($body) {
+        if ( ! isset($body['cart']['items']) || ! is_array($body['cart']['items']) ) {
+            return null;
+        }
+
+        $counts = array();
+        foreach ($body['cart']['items'] as $line) {
+            if ( ! is_array($line) || ! isset($line['item']['id']) ) {
+                continue;
+            }
+            $id = (string) $line['item']['id'];
+            $counts[$id] = isset($counts[$id]) ? $counts[$id] + 1 : 1;
+        }
+
+        if (empty($counts)) {
+            return null;
+        }
+
+        ksort($counts);
+        $parts = array();
+        foreach ($counts as $id => $n) {
+            $parts[] = $id . 'x' . $n;
+        }
+        $parts[] = 'ot:' . (isset($body['order_type']) ? (string) $body['order_type'] : '');
+
+        return sha1(implode('|', $parts));
+    }
+
+    /**
+     * Reject an identical guest cart arriving far more often than real demand explains.
+     *
+     * Keyed on the order rather than the source identity, and sized from real guest
+     * ordering patterns so that normal repeat demand stays well inside the limits.
+     *
+     * Signed-in requests are not counted: a regular reordering their usual cart is exactly
+     * the false positive worth avoiding.
+     *
+     * @param array       $body          decoded request body
+     * @param string|null $customerToken set when the customer is signed in
+     * @return true|WP_Error
+     */
+    private function duplicateCartGuard($body, $customerToken) {
+        if ( ! empty($customerToken) ) {
+            return true;
+        }
+
+        if ( ! apply_filters('soo_duplicate_cart_guard_enabled', true) ) {
+            return true;
+        }
+
+        $signature = $this->cartSignature($body);
+        if ($signature === null) {
+            return true;
+        }
+
+        // Thresholds carry roughly 2-3x headroom over the busiest guest demand observed for
+        // a single cart. High-volume merchants selling one dominant combo will need these
+        // raised — the cost of getting it wrong is turning away a real order.
+        $windows = apply_filters('soo_duplicate_cart_windows', array(
+            3600  => 6,
+            86400 => 15,
+        ));
+
+        $result = $this->throttle(
+            'dupcart',
+            $signature,
+            $windows,
+            'We are seeing an unusual number of identical orders right now. Please try again shortly, or sign in to continue.'
+        );
+
+        if (is_wp_error($result)) {
+            error_log('SOO duplicate-cart guard rejected a checkout. signature=' . $signature);
+        }
+
+        return $result;
+    }
+
+    /**
      * @param $request
      * @body json
      * @return array
      */
     public function checkout( $request ) {
+        $rateLimited = $this->checkoutRateLimit();
+        if (is_wp_error($rateLimited)) {
+            return $rateLimited;
+        }
+
         // Fail loud when in Global mode but the dashboard is unreachable —
         // mirrors the guard at the top of getCheckoutOptions(). Without it,
         // the order would be processed against a mix of dashboard overrides
@@ -557,10 +738,22 @@ class  CheckoutRoutes extends BaseRoute {
             $body["idempotency_key"] = wp_generate_uuid4();
         }
         $customer_token =  (!empty($body["customer_token"])) ?  $body["customer_token"] : null;
-        $googleReCAPTCHADisabled =  (bool) get_option('sooDisableGoogleReCAPTCHA',false);
 
-        if (get_option('moo_old_checkout_enabled') === 'yes') {
-            $googleReCAPTCHADisabled = true;
+        // guestModeEnabled used to be honoured only by the checkout page, which hid the
+        // "Continue As Guest" button while this route kept accepting guest orders — so a
+        // merchant who switched it off was still taking them. Enforce it here, where it
+        // counts: with guest mode off, an order needs a signed-in customer.
+        if ( empty($customer_token) && ! $this->guestCheckoutEnabled() ) {
+            return array(
+                'status'  => 'failed',
+                'code'    => 'login_required',
+                'message' => __('Please sign in to place your order.', 'moo_OnlineOrders')
+            );
+        }
+
+        $duplicateCart = $this->duplicateCartGuard($body, $customer_token);
+        if (is_wp_error($duplicateCart)) {
+            return $duplicateCart;
         }
 
         if (SooSettingsSource::current() === 'global') {
@@ -570,52 +763,30 @@ class  CheckoutRoutes extends BaseRoute {
             }
         }
 
-        //Check Google recaptcha
-        if (!$googleReCAPTCHADisabled && !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])) {
-            $reCaptchaErrorMessage = "Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused.";
-            $args = array(
-                'method'    => 'POST',
-                'body'=>array(
-                    'secret'   => $this->pluginSettings['reCAPTCHA_secret_key'],
-                    'response' => $body["reCAPTCHA_token"]
-                )
+        // Verify the request. Resolved after the settings overrides above, which are the
+        // last thing to touch the plugin settings the provider reads.
+        $recaptchaVerdict = $this->verifyRequest(array(
+            'token'         => isset($body["reCAPTCHA_token"]) ? $body["reCAPTCHA_token"] : null,
+            'action'        => 'createOrder',
+            'body'          => $body,
+            'authenticated' => !empty($customer_token),
+            'surface'       => 'checkout',
+        ));
+
+        if ($recaptchaVerdict['outcome'] === 'fail') {
+            // The upstream response is not echoed back to the caller.
+            return array(
+                'status'	=> 'failed',
+                'message'	=> "Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused."
             );
-            $gcaptcha = wp_remote_post( SOO_G_RECAPTCHA_URL, $args );
-            if ( is_wp_error( $gcaptcha ) ) {
-                return array(
-                    'status'	=> 'failed',
-                    'message'	=> $reCaptchaErrorMessage
-                );
-            }
-            $gcaptchaBody = wp_remote_retrieve_body( $gcaptcha );
-            if ( empty( $gcaptchaBody ) ) {
-                return array(
-                    'status'	=> 'failed',
-                    'message'	=> $reCaptchaErrorMessage
-                );
-            }
-            $result = json_decode( $gcaptchaBody );
-            if ( empty( $result ) ) {
-                return array(
-                    'status'	=> 'failed',
-                    'message'	=> $reCaptchaErrorMessage
-                );
-            }
-            if ( ! isset( $result->success ) ) {
-                return array(
-                    'status'	=> 'failed',
-                    'message'	=> $reCaptchaErrorMessage
-                );
-            }
-            if ($result->success){
-                $body["reCAPTCHA_token"] = 'isValid';
-            } else {
-                return array(
-                    'status'	=> 'failed',
-                    'message'	=> $reCaptchaErrorMessage,
-                    'data'=>$result
-                );
-            }
+        }
+
+        // The order carries how it was cleared: a pass, an unreachable verifier the backend
+        // should hold to stricter limits, or nothing to verify against.
+        if ($recaptchaVerdict['outcome'] === 'pass') {
+            $body["reCAPTCHA_token"] = 'isValid';
+        } elseif ($recaptchaVerdict['outcome'] === 'unavailable') {
+            $body["reCAPTCHA_token"] = 'unverified';
         } else {
             $body["reCAPTCHA_token"] = 'disabled';
         }
@@ -973,6 +1144,17 @@ class  CheckoutRoutes extends BaseRoute {
           ["name"=>"pluginVersion","value"=>$this->version],
           ["name"=>"settingsSource","value"=>SooSettingsSource::current()]
         );
+
+        // Carry the reCAPTCHA verdict through to the backend. Until now the raw token was
+        // overwritten with 'isValid' before the order was sent, so the score — the only part
+        // of v3 that says anything about the caller — never left the site.
+        if (is_array($recaptchaVerdict)) {
+            $metaData[] = ["name"=>"recaptchaOutcome","value"=>$recaptchaVerdict['outcome']];
+            $metaData[] = ["name"=>"recaptchaScore","value"=>($recaptchaVerdict['score'] === null) ? '' : (string) $recaptchaVerdict['score']];
+            $metaData[] = ["name"=>"recaptchaAction","value"=>(string) $recaptchaVerdict['action']];
+            $metaData[] = ["name"=>"recaptchaHostname","value"=>(string) $recaptchaVerdict['hostname']];
+            $metaData[] = ["name"=>"recaptchaReason","value"=>$recaptchaVerdict['reason']];
+        }
         //Add Few MetaData to the Order
         if (isset($body["metainfo"])  && is_array($body["metainfo"])){
             $body["metainfo"] = array_merge($body["metainfo"],$metaData);
@@ -1035,6 +1217,12 @@ class  CheckoutRoutes extends BaseRoute {
             return array(
                 'status'	=> 'error',
                 'message'   => 'Please send the phone number'
+            );
+        }
+        if ( ! Moo_OnlineOrders_Helpers::smsSendAllowed($phone_number) ) {
+            return array(
+                'status'	=> 'error',
+                'message'   => __('Too many verification codes requested. Please wait a few minutes and try again.', 'moo_OnlineOrders')
             );
         }
         if(! $this->session->isEmpty("moo_verification_code") && $phone_number == $this->session->get("moo_phone_number") ) {

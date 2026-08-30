@@ -398,6 +398,11 @@ if ($_mktEnabled) : ?>
         wp_register_script('sooAuthScript', SOO_PLUGIN_URL . '/public/js/dist/sooAuth.min.js', array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('sooAuthScript');
 
+        //Add Google reCAPTCHA — this page renders the login/signup forms as well
+        if (!empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key'])){
+            $this->enqueueRecaptchaJs($this->pluginSettings['reCAPTCHA_site_key']);
+        }
+
         $this->localizeScripts();
 
         if (!empty($this->pluginSettings["custom_css"])){
@@ -408,7 +413,13 @@ if ($_mktEnabled) : ?>
     private function localizeScripts(){
         $authOptionsJsOptions  = [
             'restApiUrl' =>  get_rest_url(),
-            "fbAppId"=>$this->pluginSettings['fb_appid']
+            "fbAppId"=>$this->pluginSettings['fb_appid'],
+            // Only sent when the merchant has both keys; sooAuth.js skips the token when it
+            // is absent, and the verifier treats a keyless site as nothing to check. A
+            // merchant without keys keeps working exactly as before.
+            "reCAPTCHA_site_key" => ( !empty($this->pluginSettings['reCAPTCHA_site_key']) && !empty($this->pluginSettings['reCAPTCHA_secret_key']) )
+                ? $this->pluginSettings['reCAPTCHA_site_key']
+                : false
         ];
 
         $sooOptions = array(
