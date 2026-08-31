@@ -1885,7 +1885,7 @@ class moo_OnlineOrders_Admin {
                         </div>
 
                         <!-- Google recaptcha -->
-                        <div id="sooGoogleReCAPTCHA" class="MooPanelItem" style="display: none">
+                        <div id="sooGoogleReCAPTCHA" class="MooPanelItem">
                             <?php if(!empty(SOO_DEFAULT_CDN)){?>
                                 <h4 style="color: gray">Google reCAPTCHA v3 : ( Enabled by default on Smartonlineorder.com Subdomains )</h4>
                                 <div class="sooReCaptchaSection"></div>
@@ -3635,6 +3635,13 @@ class moo_OnlineOrders_Admin {
         wp_add_inline_script(
             'moo-publicAdmin-js',
             'var sooGlobalModeActive = ' . (SooSettingsSource::current() === 'global' ? 'true' : 'false') . ';',
+            'before'
+        );
+        // On Smartonlineorder.com subdomains reCAPTCHA is provided automatically, so the
+        // key fields are not rendered and the setup reminder must stay silent.
+        wp_add_inline_script(
+            'moo-publicAdmin-js',
+            'var sooRecaptchaAutomatic = ' . (!empty(SOO_DEFAULT_CDN) ? 'true' : 'false') . ';',
             'before'
         );
         wp_register_script('moo-AdminDashboard-js', plugins_url( 'js/moo-dashboard.js', __FILE__ ),array('jquery','wp-color-picker'), $this->version, false);

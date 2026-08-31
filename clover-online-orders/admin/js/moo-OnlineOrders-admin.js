@@ -3898,10 +3898,10 @@ function mooCheckApiKeyOnLoading() {
 
                 }
             }
-            //Show recaptcha
-            if (response.brandedApp === false){
-                jQuery("#sooGoogleReCAPTCHA").show();
-            }
+
+            // API key is valid here — nudge the merchant to set up reCAPTCHA if they
+            // have not, so their website checkout is protected from fraud.
+            mooMaybePromptRecaptcha();
 
             //Check if Clover Hours already configured
             if (response.cloverOpeningHoursExist === false){
@@ -5419,4 +5419,142 @@ function sooShowToast(message = 'Done', type = 'success') {
         toast.style.opacity = '0';
         setTimeout(() => toast.remove(), 300);
     }, 1800);
+}
+
+
+/* ---------------------------------------------------------------------------
+ * reCAPTCHA setup reminder
+ *
+ * When the API key is configured (this runs from the key-check success branch)
+ * but no reCAPTCHA keys are set, nudge the merchant to enable it. Shown once per
+ * browser session. Configure opens a dialog whose keys are saved via the
+ * settings endpoint and written straight back into the on-page fields.
+ * ------------------------------------------------------------------------- */
+function mooRecaptchaField(which) {
+    var ids = which === 'site'
+        ? '#reCAPTCHA_site_key, #reCAPTCHA_site_key_global'
+        : '#reCAPTCHA_secret_key, #reCAPTCHA_secret_key_global';
+    return jQuery(ids);
+}
+
+function mooRecaptchaConfigured() {
+    return !!(mooRecaptchaField('site').first().val() || '').trim()
+        && !!(mooRecaptchaField('secret').first().val() || '').trim();
+}
+
+function mooEscAttr(v) {
+    return String(v)
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function mooMaybePromptRecaptcha() {
+    // Automatic on Smartonlineorder.com subdomains — nothing for the merchant to set up.
+    if (typeof sooRecaptchaAutomatic !== 'undefined' && sooRecaptchaAutomatic) return;
+    // Only when the fields exist on this view and are empty.
+    if (!mooRecaptchaField('site').length) return;
+    if (mooRecaptchaConfigured()) return;
+
+    try {
+        if (sessionStorage.getItem('sooRecaptchaPromptShown')) return;
+        sessionStorage.setItem('sooRecaptchaPromptShown', '1');
+    } catch (e) { /* sessionStorage unavailable — show once and move on */ }
+
+    swal({
+        type: 'warning',
+        title: 'Protect your checkout from fraud',
+        html: 'Your online ordering is live, but Google reCAPTCHA is not set up. '
+            + 'reCAPTCHA helps block fraudulent and automated orders on your website checkout. '
+            + 'Set it up now to protect your store.',
+        showCancelButton: true,
+        confirmButtonText: 'Configure',
+        cancelButtonText: 'Later',
+        reverseButtons: true
+    }).then(function (result) {
+        if (result.value) {
+            mooOpenRecaptchaConfig();
+        }
+    });
+}
+
+function mooOpenRecaptchaConfig() {
+    var site = (mooRecaptchaField('site').first().val() || '');
+    var secret = (mooRecaptchaField('secret').first().val() || '');
+
+    swal({
+        title: 'Google reCAPTCHA v3',
+        html:
+            '<p style="margin:0 0 14px;font-size:13px;line-height:1.5;text-align:left">'
+            + 'Enter your reCAPTCHA v3 key pair. '
+            + '<a href="https://www.google.com/recaptcha/admin" target="_blank" rel="noopener">Get a key pair</a>.'
+            + '</p>'
+            + '<input id="sooRcSite" class="swal2-input" placeholder="Site Key" value="' + mooEscAttr(site) + '">'
+            + '<input id="sooRcSecret" class="swal2-input" placeholder="Secret Key" value="' + mooEscAttr(secret) + '">',
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        cancelButtonText: 'Cancel',
+        focusConfirm: false,
+        reverseButtons: true,
+        preConfirm: function () {
+            var s = (document.getElementById('sooRcSite').value || '').trim();
+            var k = (document.getElementById('sooRcSecret').value || '').trim();
+            if (!s || !k) {
+                swal.showValidationMessage('Both the Site Key and Secret Key are required.');
+                return false;
+            }
+            return { site: s, secret: k };
+        }
+    }).then(function (result) {
+        if (result.value) {
+            mooSaveRecaptchaKeys(result.value.site, result.value.secret);
+        }
+    });
+}
+
+function mooSaveRecaptchaKeys(site, secret) {
+    // Reflect the new keys on the page immediately.
+    mooRecaptchaField('site').val(site);
+    mooRecaptchaField('secret').val(secret);
+
+    mooShowWaitMessage();
+    jQuery.ajax({
+        type: 'POST',
+        url: moo_RestUrl + 'moo-clover/v2/dash/save_settings',
+        contentType: 'application/json; charset=UTF-8',
+        beforeSend: function (jqXhr) {
+            jqXhr.setRequestHeader('X-WP-Nonce', moo_params.nonce);
+        },
+        data: JSON.stringify([
+            { name: 'reCAPTCHA_site_key', value: site },
+            { name: 'reCAPTCHA_secret_key', value: secret }
+        ])
+    }).done(function (response) {
+        mooHideWaitMessage();
+        if (response && response.status === 'success') {
+            swal({
+                type: 'success',
+                title: 'reCAPTCHA enabled',
+                text: 'Your website checkout is now protected.'
+            });
+            var panel = document.getElementById('sooGoogleReCAPTCHA')
+                || document.getElementById('sooGoogleReCAPTCHAGlobal');
+            if (panel) {
+                jQuery(panel).addClass('MooPanelItemExpanded');
+                panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        } else {
+            swal({
+                type: 'error',
+                title: 'Error',
+                text: (response && response.message) || 'Could not save the keys. Please try again.'
+            });
+        }
+    }).fail(function () {
+        mooHideWaitMessage();
+        swal({
+            type: 'error',
+            title: 'Error',
+            text: 'Could not save the keys. Please try again.'
+        });
+    });
 }
