@@ -2657,6 +2657,20 @@ function mooSaveItemCustomName(item_uuid) {
                 jQuery("#item-name-section-for-"+item_uuid+">.moo-item-name").html("<strong>"+newItemName+"</strong>");
                 //Show edit icon
                 jQuery("#item-name-section-for-"+item_uuid+">img").show();
+                //A name that differs from the Clover name is a custom name: offer the revert button
+                var cloverName = jQuery("#item-name-section-for-"+item_uuid).closest("tr").find("td.column-name").text().trim();
+                var isCustom = jQuery.trim(newItemName) !== cloverName;
+                var revertButton = jQuery("#moo-revert-item-name-"+item_uuid);
+                if(isCustom && revertButton.length === 0) {
+                    jQuery('<a href="#" class="moo-revert-item-name" style="font-size:11px">Revert to Clover Name</a>')
+                        .attr("id", "moo-revert-item-name-"+item_uuid)
+                        .on("click", function (e) { mooRevertItemName(e, item_uuid); })
+                        .insertAfter("#item-name-section-for-"+item_uuid);
+                    mooAdjustCustomNamesCount(1);
+                } else if(!isCustom && revertButton.length) {
+                    revertButton.remove();
+                    mooAdjustCustomNamesCount(-1);
+                }
                 mooHideWaitMessage();
             } else {
                 swal({
@@ -2673,6 +2687,118 @@ function mooSaveItemCustomName(item_uuid) {
             });
         })
     }
+}
+function mooRevertItemName(event, item_uuid) {
+    event.preventDefault();
+    if(moo_RestUrl.indexOf("?rest_route") !== -1){
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/revert_item_name&_wpnonce=' + moo_params.nonce ;
+    } else {
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/revert_item_name?_wpnonce=' + moo_params.nonce ;
+    }
+    swal({
+        title: 'Revert this name?',
+        text: 'The item will show its Clover name again. Images, description and price stay the same.',
+        type: 'warning',
+        showCancelButton: true,
+        showLoaderOnConfirm: true,
+        confirmButtonText: 'Yes, revert it',
+        allowOutsideClick: false,
+        preConfirm: function () {
+            return new Promise(function (resolve, reject) {
+                jQuery.post(endpoint, {
+                    "item_uuid":item_uuid
+                }, function (response) {
+                    if(response && response.status === "success") {
+                        resolve(response);
+                    } else {
+                        reject(response && response.message ? response.message : 'The name could not be reverted, please try again');
+                    }
+                }).fail(function () {
+                    reject('The name could not be reverted, please try again');
+                });
+            });
+        }
+    }).then(function (result) {
+        if(result.value) {
+            //Show the Clover name, and drop the revert link: there is no custom name left
+            jQuery("#item-name-section-for-"+item_uuid+">.moo-item-name").empty().append(jQuery("<strong>").text(result.value.name));
+            jQuery("#moo-revert-item-name-"+item_uuid).remove();
+            mooAdjustCustomNamesCount(-1);
+            swal({
+                title: 'Name reverted',
+                text: 'Now showing: ' + result.value.name,
+                type: 'success'
+            });
+        }
+    }, function (rejectionMessage) {
+        swal({
+            title: 'An error has occurred',
+            text: rejectionMessage,
+            type: 'error'
+        });
+    });
+}
+//Keep the "Revert All to Clover Names" count in step with per-item renames and reverts
+function mooAdjustCustomNamesCount(delta) {
+    var button = jQuery("#mooRevertAllItemNames");
+    var count = (parseInt(button.attr("data-count"), 10) || 0) + delta;
+    button.attr("data-count", Math.max(count, 0));
+}
+function mooRevertAllItemNames(event) {
+    event.preventDefault();
+    var count = parseInt(jQuery("#mooRevertAllItemNames").attr("data-count"), 10) || 0;
+    if (count === 0) {
+        swal({
+            title: 'Nothing to revert',
+            text: 'No item has a custom name: every item already uses its Clover name.',
+            type: 'info'
+        });
+        return;
+    }
+    if(moo_RestUrl.indexOf("?rest_route") !== -1){
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/revert_all_item_names&_wpnonce=' + moo_params.nonce ;
+    } else {
+        var endpoint = moo_RestUrl+'moo-clover/v2/dash/revert_all_item_names?_wpnonce=' + moo_params.nonce ;
+    }
+    swal({
+        title: 'Revert all names?',
+        text: count + (count === 1 ? ' item' : ' items') + ' will show their Clover name again. Custom names can\'t be restored afterwards. Images, descriptions and prices stay the same.',
+        type: 'warning',
+        showCancelButton: true,
+        showLoaderOnConfirm: true,
+        confirmButtonText: 'Yes, revert all',
+        allowOutsideClick: false,
+        preConfirm: function () {
+            return new Promise(function (resolve, reject) {
+                jQuery.post(endpoint, {}, function (response) {
+                    if(response && response.status === "success") {
+                        resolve(response);
+                    } else {
+                        reject(response && response.message ? response.message : 'The names could not be reverted, please try again');
+                    }
+                }).fail(function () {
+                    reject('The names could not be reverted, please try again');
+                });
+            });
+        }
+    }).then(function (result) {
+        if(result.value) {
+            var reverted = result.value.reverted;
+            swal({
+                title: 'Names reverted',
+                text: reverted + (reverted === 1 ? ' item now shows its' : ' items now show their') + ' Clover name.',
+                type: 'success'
+            }).then(function () {
+                window.location.reload();
+            });
+        }
+    }, function (rejectionMessage) {
+        swal({
+            title: 'An error has occurred',
+            text: rejectionMessage,
+            type: 'error'
+        });
+    });
 }
 function mooCancelItemCustomName(item_uuid, item_original_name) {
     var itemName = jQuery("#item-name-section-for-"+item_uuid+">.moo-item-name>.mooOriginalItemName").text();
@@ -3283,20 +3409,38 @@ function enableOrDisableApplePay() {
                 });
             } else {
                 handleToggleError();
-                elm.prop('checked',!enable)
-                swal({
-                    type:"error",
-                    text:'Error Occurred: Please Refresh and Retry'
-                });
             }
 
         })
-        .fail(function () {
+        .fail(function (xhr) {
+            const error = xhr.responseJSON;
+            if (error && error.code === 'apple_pay_domain_file_missing') {
+                $elm.prop('checked', false);
+                const escape = function (value) {
+                    return jQuery('<div>').text(value).html().replace(/"/g, '&quot;');
+                };
+                const fileUrl = escape(error.data.url);
+                const domain = escape(new URL(error.data.url).hostname);
+                swal({
+                    type: "warning",
+                    title: "Verify your domain first",
+                    confirmButtonText: "Got it",
+                    html: '<div style="text-align: left; font-size: 15px; line-height: 1.5">' +
+                        '<p style="margin: 0 0 12px">Apple Pay only shows at checkout on domains verified with Apple, ' +
+                        'and the verification file isn\'t on <b>' + domain + '</b> yet.</p>' +
+                        '<ol style="margin: 0 0 12px; padding-left: 20px">' +
+                        '<li>In your Clover dashboard, start Apple Pay domain verification for <b>' + domain + '</b> and download the file.</li>' +
+                        '<li>Upload it to your website so it opens at:' +
+                        '<div style="margin: 6px 0; padding: 8px; background: #f3f4f6; border-radius: 4px; font-family: monospace; font-size: 13px; word-break: break-all">' +
+                        '<a href="' + fileUrl + '" target="_blank">' + fileUrl + '</a></div></li>' +
+                        '<li>Come back here and turn on Apple Pay.</li>' +
+                        '</ol>' +
+                        '<p style="margin: 0">Need help? <a href="https://docs.zaytech.com/knowledge/how-to-verify-website-domain-apple-pay" target="_blank">Read the step-by-step guide</a>.</p>' +
+                        '</div>'
+                });
+                return;
+            }
             handleToggleError();
-            elm.prop('checked',!enable)
-            swal({
-                text: 'Error Occurred: Please Refresh and Retry'
-            });
         });
     // Handle toggle state and error message
     function handleToggleError() {
@@ -5451,6 +5595,9 @@ function mooEscAttr(v) {
 function mooMaybePromptRecaptcha() {
     // Automatic on Smartonlineorder.com subdomains — nothing for the merchant to set up.
     if (typeof sooRecaptchaAutomatic !== 'undefined' && sooRecaptchaAutomatic) return;
+    // Keys can arrive through moo_filter_plugin_settings without ever appearing in the
+    // fields below, so trust what the checkout resolves over what the form shows.
+    if (typeof sooRecaptchaConfigured !== 'undefined' && sooRecaptchaConfigured) return;
     // Only when the fields exist on this view and are empty.
     if (!mooRecaptchaField('site').length) return;
     if (mooRecaptchaConfigured()) return;
@@ -5477,9 +5624,16 @@ function mooMaybePromptRecaptcha() {
     });
 }
 
-function mooOpenRecaptchaConfig() {
-    var site = (mooRecaptchaField('site').first().val() || '');
-    var secret = (mooRecaptchaField('secret').first().val() || '');
+// prefillSite/prefillSecret carry a rejected attempt back into the dialog, so a merchant
+// correcting one bad key does not have to retype the other. Omitted on a normal open,
+// where the stored keys are the right starting point.
+function mooOpenRecaptchaConfig(prefillSite, prefillSecret) {
+    var site = (typeof prefillSite === 'string')
+        ? prefillSite
+        : (mooRecaptchaField('site').first().val() || '');
+    var secret = (typeof prefillSecret === 'string')
+        ? prefillSecret
+        : (mooRecaptchaField('secret').first().val() || '');
 
     swal({
         title: 'Google reCAPTCHA v3',
@@ -5512,9 +5666,17 @@ function mooOpenRecaptchaConfig() {
 }
 
 function mooSaveRecaptchaKeys(site, secret) {
-    // Reflect the new keys on the page immediately.
+    // Reflect the new keys on the page immediately. The server refuses a pair that
+    // cannot work, so remember what was there and put it back if it does.
+    var previousSite = (mooRecaptchaField('site').first().val() || '');
+    var previousSecret = (mooRecaptchaField('secret').first().val() || '');
     mooRecaptchaField('site').val(site);
     mooRecaptchaField('secret').val(secret);
+
+    function mooRestoreRecaptchaFields() {
+        mooRecaptchaField('site').val(previousSite);
+        mooRecaptchaField('secret').val(previousSecret);
+    }
 
     mooShowWaitMessage();
     jQuery.ajax({
@@ -5542,15 +5704,31 @@ function mooSaveRecaptchaKeys(site, secret) {
                 jQuery(panel).addClass('MooPanelItemExpanded');
                 panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-        } else {
+            return;
+        }
+
+        // The server rejected the pair: nothing was stored, so the fields must not keep
+        // showing it. Offer the dialog again so the keys can be corrected.
+        mooRestoreRecaptchaFields();
+        if (response && response.code === 'recaptcha_invalid') {
             swal({
                 type: 'error',
-                title: 'Error',
-                text: (response && response.message) || 'Could not save the keys. Please try again.'
+                title: 'Keys not saved',
+                text: response.message,
+                confirmButtonText: 'Try again'
+            }).then(function () {
+                mooOpenRecaptchaConfig(site, secret);
             });
+            return;
         }
+        swal({
+            type: 'error',
+            title: 'Error',
+            text: (response && response.message) || 'Could not save the keys. Please try again.'
+        });
     }).fail(function () {
         mooHideWaitMessage();
+        mooRestoreRecaptchaFields();
         swal({
             type: 'error',
             title: 'Error',

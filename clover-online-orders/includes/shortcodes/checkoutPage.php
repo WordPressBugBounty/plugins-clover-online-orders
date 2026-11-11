@@ -21,6 +21,30 @@ class checkoutPage extends sooShortCode
             ? $dashData['checkout_settings']
             : array();
 
+        // store_status, not checkout_settings: this method only ever read the
+        // latter, which is why the closed-store flags below silently fell back
+        // to local values in Global mode even though the dashboard sends them.
+        $ss = isset($dashData['store_status']) && is_array($dashData['store_status'])
+            ? $dashData['store_status']
+            : array();
+
+        // "Accept orders while closed" was read from the dashboard in exactly
+        // one place (the close-reason branch reads $cs['acceptOrdersWhileClosed'])
+        // and from the local setting in three others, so a merchant who set it
+        // in the dashboard got it honoured in one code path and ignored in the
+        // rest. Map it once, here, so every read agrees.
+        //
+        // Guarded with array_key_exists rather than !empty(): an absent key
+        // read through !empty() would force these OFF for every Global-mode
+        // merchant who has them on locally, turning a mapping gap into a
+        // behaviour change on live sites. Absent, the local value stands.
+        if (array_key_exists('acceptOrdersWhileClosed', $ss)) {
+            $this->pluginSettings['accept_orders_w_closed'] = !empty($ss['acceptOrdersWhileClosed']) ? 'on' : 'off';
+        }
+        if (array_key_exists('closureMessage', $ss) && $ss['closureMessage'] !== '') {
+            $this->pluginSettings['closing_msg'] = (string) $ss['closureMessage'];
+        }
+
         $this->pluginSettings['tips'] = !empty($cs['tipsEnabled']) ? 'enabled' : 'disabled';
         $this->pluginSettings['tips_selection'] = $this->dashboardListToCsv(
             isset($cs['tipsSuggested']) ? $cs['tipsSuggested'] : array()
@@ -38,6 +62,27 @@ class checkoutPage extends sooShortCode
         $this->pluginSettings['service_fees_name'] = $this->dashboardScalarToString(
             isset($cs['serviceFeeName']) ? $cs['serviceFeeName'] : null
         );
+        // Order scheduling. The registry declares these global paths, but the checkout kept
+        // reading them from the local option while the time slots came from the dashboard.
+        // With Schedule Orders off the dashboard returns no pickup_slots, yet the picker was
+        // still rendered because it is gated on the local order_later — a slot prompt with no
+        // slots to offer. Mapping them here keeps both halves on the same source.
+        $this->pluginSettings['order_later'] = !empty($cs['scheduleOrder']) ? 'on' : 'off';
+        $this->pluginSettings['order_later_mandatory'] = !empty($cs['isScheduledTimeRequired']) ? 'on' : 'off';
+        if (isset($cs['scheduleDayRange'])) {
+            $this->pluginSettings['order_later_days'] = (int) $cs['scheduleDayRange'];
+            $this->pluginSettings['order_later_days_delivery'] = (int) $cs['scheduleDayRange'];
+        }
+        if (isset($cs['leadTime'])) {
+            $this->pluginSettings['order_later_minutes'] = (int) $cs['leadTime'];
+            $this->pluginSettings['order_later_minutes_delivery'] = (int) $cs['leadTime'];
+        }
+        // One ASAP toggle on the dashboard covers both channels, matching v1 where the pickup
+        // slots double as the delivery slots.
+        $dashAsap = !empty($cs['allowAsap']) ? 'on' : 'off';
+        $this->pluginSettings['order_later_asap_for_p'] = $dashAsap;
+        $this->pluginSettings['order_later_asap_for_d'] = $dashAsap;
+
         $this->pluginSettings['use_sms_verification'] = !empty($cs['smsVerificationEnabled']) ? 'enabled' : 'disabled';
         $this->pluginSettings['use_special_instructions'] = !empty($cs['specialInstructionsEnabled']) ? 'enabled' : 'disabled';
         $this->pluginSettings['special_instructions_required'] = !empty($cs['specialInstructionsRequired']) ? 'yes' : 'no';
@@ -48,6 +93,18 @@ class checkoutPage extends sooShortCode
         $this->pluginSettings['marketing_checkbox_text'] = $this->dashboardScalarToString(
             isset($cs['marketingCheckboxText']) ? $cs['marketingCheckboxText'] : null
         );
+        $this->pluginSettings['utensils_checkbox_enabled'] = !empty($cs['utensilsCheckboxEnabled']) ? 'on' : 'off';
+        $this->pluginSettings['utensils_checkbox_text'] = $this->dashboardScalarToString(
+            isset($cs['utensilsCheckboxText']) ? $cs['utensilsCheckboxText'] : null
+        );
+        // The modern cart beta is deliberately NOT dashboard-managed: its
+        // registry entries carry no global_path, so it stays local in both
+        // modes. Overriding it here would reintroduce a split brain --
+        // storePage.php and cartPage.php read the local setting (cartPage
+        // applies no dashboard overrides at all), so a dashboard value
+        // would have applied to checkout alone. A customer would then
+        // build a browser cart on the store page and arrive at a checkout
+        // still reading the empty PHP session.
         $this->pluginSettings['use_coupons'] = !empty($cs['useCoupons']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock'] = !empty($cs['enableStockTracking']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock_hide_items'] = !empty($cs['hideUnavailableItems']) ? 'on' : 'off';
@@ -194,7 +251,9 @@ class checkoutPage extends sooShortCode
             return '';
         }
 
-        return strtolower(preg_replace('/[^a-z0-9]+/', '', $raw));
+        // Lowercase first: the dashboard sends camelCase ("giftCard", "googlePay"), and
+        // stripping with a lowercase-only class dropped the capitals ("giftard").
+        return preg_replace('/[^a-z0-9]+/', '', strtolower($raw));
     }
 
     /**
@@ -260,7 +319,22 @@ class checkoutPage extends sooShortCode
         // Global mode is only fully supported via advancedCheckout. Reroute
         // here so Global merchants on a [moo_checkout] (legacy) shortcode get
         // the same experience as those on the advanced shortcode.
-        if (SooSettingsSource::current() === 'global') {
+        //
+        // The modern cart beta is the same situation: this legacy path
+        // renders public/js/moo_checkout.js, which has zero awareness of
+        // it -- no read of SooCartStore/SooCartBridge, no cart_document
+        // sent -- so a merchant with new_cart_enabled on would otherwise
+        // land here to a checkout page with no browser cart at all, and
+        // nothing would warn them (pre-existing since Tasks 3/5 of the
+        // cart-ui-and-flag phase routed add-to-cart through the browser
+        // store regardless of which checkout is active). Reroute for the
+        // same reason as Global mode above: legacy cannot render the
+        // beta cart, so a beta merchant gets the advanced path
+        // regardless of the "Return to Previous Checkout" toggle. Flag
+        // off: isNewCartEnabled() is false, so this evaluates exactly as
+        // it did before for every non-beta merchant -- their
+        // moo_old_checkout_enabled escape hatch is untouched.
+        if (SooSettingsSource::current() === 'global' || $this->isNewCartEnabled()) {
             return $this->advancedCheckout($atts, $content);
         }
 
@@ -333,7 +407,7 @@ class checkoutPage extends sooShortCode
         }
         /*
         if($nbOfOrderTypes === $nbOfUnvailableOrderTypes ){
-            echo '<div id="moo_checkout_msg">This store cannot accept orders right now, please come back later</div>';
+            echo '<div id="moo_checkout_msg">' . esc_html__('This store cannot accept orders right now, please come back later', 'moo_OnlineOrders') . '</div>';
             return ob_get_clean();
         }
         */
@@ -544,7 +618,7 @@ class checkoutPage extends sooShortCode
             "moo_pay_online"=>$this->pluginSettings['payment_creditcard'],
             "moo_pickup_time"=>$oppening_status["pickup_time"],
             "moo_pickup_time_for_delivery"=>$oppening_status_d["pickup_time"],
-            "moo_fb_app_id"=>$this->pluginSettings['fb_appid'],
+            "moo_fb_app_id"=>(isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : ''),
             "moo_scp"=>$this->pluginSettings['scp'],
             "moo_use_sms_verification"=>$this->pluginSettings['use_sms_verification'],
             "moo_checkout_login"=>$this->pluginSettings['checkout_login'],
@@ -636,7 +710,7 @@ class checkoutPage extends sooShortCode
                                 </p>
                                 <div class="moo-row">
                                     <div class="moo-col-xs-12 moo-col-sm-6 moo-col-md-7 moo-col-md-offset-3 moo-col-sm-offset-3" >
-                                        <a href="#" class="moo-btn moo-btn-lg moo-btn-primary moo-btn-block" onclick="moo_loginViaFacebook(event)" style="margin-top: 12px;" tabindex="0" aria-label="Sign in with your Facebook account">Facebook</a>
+                                        <a href="#" class="moo-btn moo-btn-lg moo-btn-primary moo-btn-block" onclick="moo_loginViaFacebook(event)" style="margin-top: 12px;" tabindex="0" aria-label="<?php esc_attr_e("Sign in with your Facebook account", "moo_OnlineOrders"); ?>">Facebook</a>
                                     </div>
                                     <?php if ($guestModeEnabled) { ?>
                                     <div class="moo-col-xs-12 moo-col-sm-12 moo-col-md-7 moo-col-md-offset-3" tabindex="0">
@@ -1030,6 +1104,19 @@ class checkoutPage extends sooShortCode
                                 </div>
                                 <?php
                             }
+                            if ($this->isUtensilsCheckboxEnabled()) {
+                                ?>
+                                <div id="moo-checkout-form-utensils">
+                                    <div class="moo-checkout-bloc-content">
+                                        <label class="soo-marketing-checkbox">
+                                            <input type="checkbox" id="MooUtensilsRequested">
+                                            <span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>
+                                            <span class="soo-marketing-label"><?php echo esc_html($this->utensilsCheckboxLabel()); ?></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <?php
+                            }
                             //Check if coupons are enabled
                             if ($this->pluginSettings['use_coupons'] == "enabled" ) {
                                 ?>
@@ -1172,7 +1259,7 @@ class checkoutPage extends sooShortCode
                                     </div>
                                     <div class="moo-totals-item" id="MooDeliveryfeesInTotalsSection">
                                         <label class="moo-checkoutText-deliveryFees"  tabindex="0">
-                                            <?php echo ($this->pluginSettings["delivery_fees_name"] === "")?"Delivery Charge":$this->pluginSettings["delivery_fees_name"];?>
+                                            <?php echo ($this->pluginSettings["delivery_fees_name"] === "") ? esc_html__("Delivery Charge", "moo_OnlineOrders") : $this->pluginSettings["delivery_fees_name"];?>
                                         </label>
                                         <div class="moo-totals-value" id="moo-cart-delivery-fee"  tabindex="0">
                                             <?php
@@ -1342,6 +1429,21 @@ class checkoutPage extends sooShortCode
         $this->enqueueStyles(true);
         $this->enqueueScripts(true);
 
+        // One-time hand-off of a pre-existing session cart (from before
+        // the beta flag was switched on) into the browser store. No-op
+        // when the flag is off, or when there is nothing to hand off --
+        // see sooShortCode::captureSessionCartForImport() for how "once"
+        // is guaranteed. The read-and-clear must run before $totals is
+        // computed below, so a stale session cart never renders a moment
+        // of session-based totals just before this clears it out from
+        // under itself -- but the actual wp_localize_script() call
+        // (localizeSessionCartImport(), below) has to wait until
+        // enqueueCheckoutCartUiAssets() has registered 'sooCartUI',
+        // deep inside the cart-section HTML block further down; see
+        // that method's own doc comment for why the handle and the
+        // timing both matter.
+        $this->prepareSessionCartImport();
+
         ob_start();
 
         //--- Settings source branching (determined early so legacy checks can be skipped) ---
@@ -1405,6 +1507,20 @@ class checkoutPage extends sooShortCode
 
         //Get Totals
         $totals = $session->getTotalsV2(0, 0);
+        if ($this->isNewCartEnabled() && $totals === false) {
+            // The beta cart lives in localStorage, not the session -- an
+            // empty session cart here is the normal steady state (either
+            // nothing was ever imported, or the one-time import above
+            // already ran and cleared it). This is a zeroed placeholder
+            // only, not a claim that the cart is empty: the real totals
+            // come from SooCartPricing.price() once the page's JS runs
+            // (sooCheckout.js), and the browser-cart emptiness check that
+            // actually matters is client-side (SooCartStore.isEmpty()),
+            // not this PHP-session read. Prevents the array-offset
+            // warnings every subsequent read of $totals[...] below would
+            // otherwise emit against `false`.
+            $totals = array('sub_total' => 0, 'taxes' => 0, 'taxes_after_discount' => 0, 'nb_items' => 0);
+        }
 
 
         $orderTypes = $this->model->getVisibleOrderTypes(true);
@@ -1469,7 +1585,7 @@ class checkoutPage extends sooShortCode
         }
 
         if($nbOfOrderTypes === $nbOfUnvailableOrderTypes ) {
-            echo '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">This store cannot accept orders right now, please come back later</div>';
+            echo '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' . esc_html__('This store cannot accept orders right now, please come back later', 'moo_OnlineOrders') . '</div>';
             return ob_get_clean();
         }
 
@@ -1674,7 +1790,7 @@ class checkoutPage extends sooShortCode
             "pickupTimes"=>(!empty($oppening_status["pickup_time"])) ? $oppening_status["pickup_time"]:null,
             "deliveryTimes"=>(!empty($oppening_status_d["pickup_time"])) ? $oppening_status_d["pickup_time"] : null,
             "throttledTimes"=>$throttledTimes,
-            "fbAppId"=>$this->pluginSettings['fb_appid'],
+            "fbAppId"=>(isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : ''),
             "useSmsVerification"=>$this->pluginSettings['use_sms_verification'] === 'enabled',
             "feeType"=>$serviceFeesType,
             "feeAmount"=>$serviceFees,
@@ -1726,7 +1842,7 @@ class checkoutPage extends sooShortCode
 
         $authOptionsJsOptions  = [
             'restApiUrl' =>  get_rest_url(),
-            "fbAppId"=>$this->pluginSettings['fb_appid'],
+            "fbAppId"=>(isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : ''),
             // Only sent when the merchant has both keys; sooAuth.js skips the token when it
             // is absent, and the verifier treats a keyless site as nothing to check. A
             // merchant without keys keeps working exactly as before.
@@ -1740,7 +1856,12 @@ class checkoutPage extends sooShortCode
         wp_localize_script("sooAuthScript", "sooAuthOptions", $authOptionsJsOptions);
 
 
-        if ($totals === false || !isset($totals['nb_items']) || $totals['nb_items'] < 1) {
+        // Flag on: emptiness is a client-side question (SooCartStore
+        // holds the real cart, not the session), so this PHP-side gate
+        // -- which can only ever see the zeroed placeholder set above --
+        // never fires here. sooCheckout.js redirects to the cart page
+        // itself once it can see the browser cart is actually empty.
+        if (!$this->isNewCartEnabled() && ($totals === false || !isset($totals['nb_items']) || $totals['nb_items'] < 1)) {
             return $this->cartIsEmpty();
         };
 
@@ -1757,8 +1878,17 @@ class checkoutPage extends sooShortCode
                 <?php echo $oppening_msg; ?>
                 <div id="moo_merchantmap"></div>
                 <!--   Accounts Function (login, signUp, reset password)   -->
-                <div id="sooAuthSection" data-soo-auth-page="checkout">
+                <?php
+                // Modern cart (beta): the sign-in area as cards (guest / sign in),
+                // per the design mockup -- see renderModernCheckoutAuth(). Flag
+                // off: the legacy block below, untouched.
+                $modernAuth = $this->isNewCartEnabled();
+                $fbEnabled  = !empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret']);
+                ?>
+                <div id="sooAuthSection" data-soo-auth-page="checkout"<?php if ($modernAuth) { echo ' class="soo-auth-modern soo-auth-modern--checkout' . ($guestModeEnabled ? ' soo-auth-modern--two-col' : '') . '"'; } ?>>
+                    <?php if ($modernAuth) { echo $this->renderModernCheckoutAuthHero($atts, $guestModeEnabled); } ?>
                     <div class="sooAuthContainer">
+                        <?php if ($modernAuth) { echo $this->renderModernCheckoutAuth($guestModeEnabled, $fbEnabled); } else { ?>
                         <!--   login   -->
                         <div id="moo-login-section" class="moo-col-md-12 moo-section" style="min-height: 300px;">
                             <!--   Loading Section   -->
@@ -1768,7 +1898,7 @@ class checkoutPage extends sooShortCode
                             <div class="moo-row login-top-section" tabindex="-1">
                                 <div class="login-header" style="padding-left: 15px;">
                                     <?php
-                                    printf("Why create a <a href='%s' target='_blank'>Smart Online Order</a> account?", "https://www.smartonlineorder.com");
+                                    printf(__("Why create a <a href='%s' target='_blank'>Smart Online Order</a> account?", 'moo_OnlineOrders'), "https://www.smartonlineorder.com");
                                     ?>
                                 </div>
                                 <div class="moo-col-md-6">
@@ -1802,7 +1932,7 @@ class checkoutPage extends sooShortCode
                                             <span class="fbIconSvg">
                                                 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0,0,256,256" width="20px" height="20px" fill-rule="nonzero"><g fill="#ffffff" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g transform="scale(5.12,5.12)"><path d="M25,3c-12.15,0 -22,9.85 -22,22c0,11.03 8.125,20.137 18.712,21.728v-15.897h-5.443v-5.783h5.443v-3.848c0,-6.371 3.104,-9.168 8.399,-9.168c2.536,0 3.877,0.188 4.512,0.274v5.048h-3.612c-2.248,0 -3.033,2.131 -3.033,4.533v3.161h6.588l-0.894,5.783h-5.694v15.944c10.738,-1.457 19.022,-10.638 19.022,-21.775c0,-12.15 -9.85,-22 -22,-22z"></path></g></g></svg>
                                             </span>
-                                                    <span>Continue with Facebook</span>
+                                                    <span><?php esc_html_e("Continue with Facebook", "moo_OnlineOrders"); ?></span>
                                                 </button>
                                             </div>
                                             <?php if ($guestModeEnabled) { ?>
@@ -1854,7 +1984,7 @@ class checkoutPage extends sooShortCode
                                 <?php } ?>
                                 <div class="<?php echo $loginColumnClass; ?>" tabindex="0" >
                                 <div class="sooLoginTitle moo-hidden-md moo-hidden-lg">
-                                    <div>Log in</div>
+                                    <div><?php esc_html_e("Log in", "moo_OnlineOrders"); ?></div>
                                 </div>
                                 <form id="moo-login-form" action="#" method="post" autocomplete="on" aria-label="Sign in with your account">
                                     <div class="moo-form-group">
@@ -1896,6 +2026,7 @@ class checkoutPage extends sooShortCode
                                 </div>
                             </div>
                         </div>
+                        <?php } ?>
                         <!--   Register   -->
                         <div id="moo-signing-section" class="moo-col-md-12 moo-section" style="display: none">
                             <div class="moo-col-md-8 moo-col-md-offset-2 sooBorderedArea">
@@ -1974,6 +2105,7 @@ class checkoutPage extends sooShortCode
 
                         </div>
                         <!--   Reset Password   -->
+                        <?php if (!$modernAuth) { // modern: the reset form is inline in the sign-in card ?>
                         <div  id="moo-forgotpassword-section" class="moo-col-md-12 moo-section" style="display: none">
                             <div class="moo-col-md-8 moo-col-md-offset-2 sooBorderedArea">
                                 <form  id="moo-resetPassword-form" action="#" method="post" aria-label="reset your password">
@@ -1995,6 +2127,7 @@ class checkoutPage extends sooShortCode
                                 </form>
                             </div>
                         </div>
+                        <?php } ?>
                     </div>
                 </div>
                 <!--   Checkout form   -->
@@ -2018,14 +2151,14 @@ class checkoutPage extends sooShortCode
                                                 </div>
                                             </div>
                                             <div class="moo-col-xs-3 soo-contact-logout" onclick="mooCheckout.logout(event)">
-                                                Logout
+                                                <?php esc_html_e("Logout", "moo_OnlineOrders"); ?>
                                             </div>
                                         </div>
                                     </div>
                                     <div id="moo-checkout-contact-form">
                                         <div class="moo-row">
                                             <div class="moo-col-md-12 soo-contact-loginButtonContainer">
-                                               <span class="soo-contact-login" onclick="mooCheckout.showLoginSection()">Login</span>
+                                               <span class="soo-contact-login" onclick="mooCheckout.showLoginSection()"><?php esc_html_e("Login", "moo_OnlineOrders"); ?></span>
                                             </div>
                                         </div>
                                         <div class="moo-row">
@@ -2171,7 +2304,7 @@ class checkoutPage extends sooShortCode
                                                 </div>
                                             </div>
                                             <div class="soo-list-of-addresses">
-                                                List Of Addresses
+                                                <?php esc_html_e("List Of Addresses", "moo_OnlineOrders"); ?>
                                             </div>
                                         </div>
                                     </div>
@@ -2198,6 +2331,10 @@ class checkoutPage extends sooShortCode
                             if ($this->pluginSettings['use_special_instructions'] === "enabled") {
                                $this->specialInstructionsSection();
                             }
+                            //Utensils request
+                            if ($this->isUtensilsCheckboxEnabled()) {
+                               $this->utensilsSection();
+                            }
                             //Coupons
                             if ($this->pluginSettings['use_coupons']  === "enabled") {
                                 $this->couponsSection();
@@ -2206,6 +2343,75 @@ class checkoutPage extends sooShortCode
                         ?>
                         </div>
                         <!--            Checkout form - Cart section       -->
+                        <?php if ($this->isNewCartEnabled()) : ?>
+                        <div class="moo-col-sm-5 moo-checkout-cart soo-sticky-cart">
+                            <?php
+                            // The line list below is driven from the PHP
+                            // session, which the beta never writes to --
+                            // the browser cart is the cart now. Mount the
+                            // same SooCartUI component cartPage.php mounts
+                            // inline (Task 5), rather than reimplementing
+                            // item-name lookup here a second time. The
+                            // mount's own "Checkout" link was removed for
+                            // this page; FINALIZE ORDER below is the real
+                            // submit action.
+                            $this->enqueueCheckoutCartUiAssets();
+                            // Only now is 'sooCartUI' registered -- this
+                            // must run after enqueueCheckoutCartUiAssets()
+                            // above, not up near prepareSessionCartImport()
+                            // at the top of this method. See
+                            // sooShortCode::localizeSessionCartImport()'s
+                            // doc comment.
+                            $this->localizeSessionCartImport();
+                            ?>
+                            <?php
+                            // Fix round 4 (cart-surfaces-and-feedback):
+                            // c9c72d2 wrapped the totals below in
+                            // ".cartContainer .moo-shopping-cart" purely
+                            // to reuse the legacy panel's CSS scope
+                            // (sooCheckout-light.less ~line 630) -- that
+                            // fixed "unstyled" but it also inherited the
+                            // legacy checkout's card border/radius and
+                            // its ~15px/700 type scale, built for a
+                            // different panel. Dropped in favour of a
+                            // beta-only wrapper styled fresh in
+                            // sooCartDrawer.less against the *drawer's*
+                            // own rhythm (--soo-cart-ui-font labels,
+                            // --soo-cart-mono-font figures) so the mount
+                            // above and the totals below read as one
+                            // continuous panel and one component,
+                            // rather than reopening a specificity fight
+                            // against ~15 legacy declarations. The
+                            // legacy branch below is untouched -- it
+                            // still gets its card from
+                            // ".cartContainer .moo-shopping-cart" as
+                            // before.
+                            ?>
+                            <div class="soo-checkout-cart-panel soo-checkout-cart-panel">
+                                <div id="soo-checkout-cart-mount"></div>
+                                <?php
+                                // The mount deliberately renders no totals
+                                // of its own (see
+                                // enqueueCheckoutCartUiAssets()'s
+                                // context: 'checkout' comment) -- render
+                                // the same shared totals block the legacy
+                                // panel uses (renderCheckoutTotalsSection()
+                                // is not duplicated -- only its wrapper
+                                // differs by branch) so
+                                // updateTotalsFromDocument() ->
+                                // mooCheckout.updateTotalsSection() has
+                                // real ids to paint. $totals is the
+                                // zeroed placeholder here (see the
+                                // isNewCartEnabled() guard above), so mark
+                                // it pending instead of flashing $0.00 --
+                                // /v3/cart/price fills in the real
+                                // numbers.
+                                echo $this->renderCheckoutTotalsSection($totals, $showServiceFee, $serviceFeeAmount, $convenienceFeeCents, true, true);
+                                ?>
+                                <a class="soo-checkout-continue" href="<?php echo esc_url($store_page_url); ?>"><span aria-hidden="true">&larr;</span> <?php esc_html_e('Continue shopping', 'moo_OnlineOrders'); ?></a>
+                            </div>
+                        </div>
+                        <?php else : ?>
                         <div class="moo-col-sm-5 moo-checkout-cart soo-sticky-cart">
                             <div class="cartContainer">
                                 <div class="moo-shopping-cart sooCartInCheckout" tabindex="0" aria-label="the cart">
@@ -2264,121 +2470,7 @@ class checkoutPage extends sooShortCode
                                             <div class="moo-scl-itemPrice moo-col-xs-3" tabindex="0"><strong>$<?php echo number_format(($line_price*$line['quantity']/100), 2)?></strong></div>
                                         </div>
                                     <?php } ?>
-                                    <div class="moo-totals" style="padding-right: 10px;">
-                                        <div class="moo-totals-item">
-                                            <label class="moo-checkoutText-subtotal"  tabindex="0"><?php _e("Subtotal", "moo_OnlineOrders"); ?></label>
-                                            <div class="moo-totals-value" id="moo-cart-subtotal"  tabindex="0">
-                                                <?php echo '$'.number_format(($totals['sub_total']/100), 2)?>
-                                            </div>
-                                        </div>
-                                        <div class="moo-totals-item" id="sooCouponTotalSection" style="color: green;">
-                                            <label id="sooCouponName" tabindex="0" for="sooCouponValue"></label>
-                                            <div id="sooCouponValue" class="moo-totals-value"  tabindex="0"></div>
-                                        </div>
-                                        <div class="moo-totals-item" id="sooPointsTotalSection" style="color: green;">
-                                            <label id="sooPointslabel" tabindex="0" for="sooPointsValue"></label>
-                                            <div id="sooPointsValue" class="moo-totals-value" tabindex="0"></div>
-                                        </div>
-                                        <?php
-                                        $combineTaxesFees = isset($this->pluginSettings['combine_taxes_fees']) && $this->pluginSettings['combine_taxes_fees'] === 'enabled';
-                                        if ($combineTaxesFees) {
-                                            $combinedInitialTaxes = $totals['taxes'];
-                                            $combinedInitialFees = ($showServiceFee ? $serviceFeeAmount : 0) + ($convenienceFeeCents > 0 ? $convenienceFeeCents : 0);
-                                            $combinedTaxesFees = $combinedInitialTaxes + $combinedInitialFees;
-                                            if ($combinedInitialTaxes > 0 && $combinedInitialFees > 0) {
-                                                $combinedLabel = __("Taxes & fees", "moo_OnlineOrders");
-                                            } elseif ($combinedInitialTaxes > 0) {
-                                                $combinedLabel = __("Taxes", "moo_OnlineOrders");
-                                            } else {
-                                                $combinedLabel = __("Fees", "moo_OnlineOrders");
-                                            }
-                                            ?>
-                                            <style>
-                                                #sooTaxesFeesBreakdown .moo-totals-item label { width: calc(70% - 14px); }
-                                            </style>
-                                            <div class="moo-totals-item" id="sooTaxesFeesCombined" style="cursor:pointer;<?php if ($combinedTaxesFees <= 0) { echo 'display:none;'; } ?>">
-                                                <label class="moo-checkoutText-taxesFees" tabindex="0" style="cursor:pointer;">
-                                                    <span id="sooTaxesFeesLabel"
-                                                          data-label-both="<?php echo esc_attr(__("Taxes & fees", "moo_OnlineOrders")); ?>"
-                                                          data-label-taxes="<?php echo esc_attr(__("Taxes", "moo_OnlineOrders")); ?>"
-                                                          data-label-fees="<?php echo esc_attr(__("Fees", "moo_OnlineOrders")); ?>"><?php echo esc_html($combinedLabel); ?></span>
-                                                    <span id="sooTaxesFeesChevron" aria-hidden="true" style="display:inline-block;transition:transform .2s;">&#9662;</span>
-                                                </label>
-                                                <div class="moo-totals-value" id="moo-cart-taxes-fees" tabindex="0">
-                                                    <?php echo '$'.number_format($combinedTaxesFees/100, 2); ?>
-                                                </div>
-                                            </div>
-                                            <div id="sooTaxesFeesBreakdown" style="display:none;overflow:auto;border-left:2px solid #e0e0e0;padding-left:12px;margin-bottom:8px;">
-                                        <?php } ?>
-                                        <div class="moo-totals-item" id="sooTaxTotalSection" style="<?php if ($combineTaxesFees && $totals['taxes'] <= 0) { echo 'display:none;'; } ?>">
-                                            <label class="moo-checkoutText-tax"  tabindex="0" ><?php _e("Tax", "moo_OnlineOrders"); ?></label>
-                                            <div class="moo-totals-value" id="moo-cart-tax"  tabindex="0">
-                                                <?php
-                                                echo  '$'.number_format($totals['taxes']/100, 2);
-                                                ?>
-                                            </div>
-                                        </div>
-                                        <div class="moo-totals-item" id="sooServiceFeeTotalSection"
-                                             style="<?php echo ($showServiceFee) ? 'display:block;' : '' ; ?>">
-                                            <label id="MooServiceChargesName" tabindex="0">
-                                                <?php
-                                                if (isset($this->pluginSettings['service_fees_name']) && !empty($this->pluginSettings['service_fees_name'])) {
-                                                    echo $this->pluginSettings['service_fees_name'];
-                                                } else {
-                                                    echo "Service Fees";
-                                                }
-                                                ?>
-                                            </label>
-                                        <div class="moo-totals-value" id="moo-cart-service-fee"  tabindex="0">
-                                            <?php
-                                            echo '$'. number_format($serviceFeeAmount/100,2);
-                                            ?>
-                                        </div>
-                                        </div>
-                                        <?php
-                                        $convenienceFee = $convenienceFeeCents / 100;
-                                        ?>
-                                        <div class="moo-totals-item" id="sooConvenienceFeeTotalSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
-                                            <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
-                                            <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
-                                                <?php echo '$'. number_format($convenienceFee, 2); ?>
-                                            </div>
-                                        </div>
-                                        <?php if ($combineTaxesFees) { ?>
-                                            </div>
-                                        <?php } ?>
-
-                                        <div class="moo-totals-item" id="sooDeliveryFeeTotalSection">
-                                            <label class="moo-checkoutText-deliveryFees"  tabindex="0">
-                                                <?php echo ($this->pluginSettings["delivery_fees_name"] === "")?"Delivery Charge":$this->pluginSettings["delivery_fees_name"];?>
-                                            </label>
-                                            <div class="moo-totals-value" id="moo-cart-delivery-fee"  tabindex="0"></div>
-                                        </div>
-
-                                        <?php if ($this->pluginSettings['tips'] === 'enabled') {?>
-                                            <div class="moo-totals-item" id="sooTipsTotalSection">
-                                                <label class="moo-checkoutText-tipAmount" tabindex="0" ><?php _e("Tip", "moo_OnlineOrders"); ?></label>
-                                                <div class="moo-totals-value" id="moo-cart-tip" tabindex="0">
-                                                    $0.00
-                                                </div>
-                                            </div>
-                                        <?php } ?>
-                                        <div class="moo-totals-item moo-totals-item-total" style="font-weight: 700;" >
-                                            <label class="moo-checkoutText-grandTotal" tabindex="0" ><?php _e("Total", "moo_OnlineOrders"); ?></label>
-                                            <div class="moo-totals-value" id="moo-cart-total" tabindex="0" >
-                                                <?php
-                                                $grandTotal = $totals['sub_total'] + $totals['taxes'];
-
-                                                if ($showServiceFee) {
-                                                    $grandTotal += $serviceFeeAmount;
-                                                }
-
-
-                                                echo '$'.number_format($grandTotal/100, 2);
-                                                ?>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <?php echo $this->renderCheckoutTotalsSection($totals, $showServiceFee, $serviceFeeAmount, $convenienceFeeCents); ?>
                                 </div>
                                 <div class="moo-shopping-links" style="text-align: center;text-decoration: none;">
                                     <a href="<?php echo $cart_page_url?>" class="moo-checkoutText-updateCart">
@@ -2391,6 +2483,7 @@ class checkoutPage extends sooShortCode
                             </div>
 
                         </div>
+                        <?php endif; ?>
                     </div>
                     <div class="moo-row">
                         <!--  Checkout form - Buttons section     -->
@@ -2467,7 +2560,7 @@ class checkoutPage extends sooShortCode
                                 <?php _e("FINALIZE ORDER", "moo_OnlineOrders"); ?>
                             </button>
                             <div style="margin-top: 10px">
-                                <div class="moo-row"><div class="moo-col-md-12"><span style="font-size: 12px">All transactions are encrypted and secure</span></div></div>
+                                <div class="moo-row"><div class="moo-col-md-12"><span style="font-size: 12px"><?php esc_html_e("All transactions are encrypted and secure", "moo_OnlineOrders"); ?></span></div></div>
                                 <div class="moo-row"><div class="moo-col-md-12"><img style="height: 15px;margin-top: 5px;" src="<?php echo SOO_PLUGIN_URL .'/public/img/cards-icons.png'; ?>"  alt="Visa, MC, Amex"/></div></div>
                             </div>
                         </div>
@@ -2568,6 +2661,14 @@ class checkoutPage extends sooShortCode
             wp_register_style('sooCheckoutStyles', SOO_PLUGIN_URL . '/public/css/dist/sooCheckout-light.min.css', array(), SOO_VERSION);
             wp_enqueue_style('sooCheckoutStyles');
 
+            // Modern cart (beta): the card presentation of the sign-in area.
+            if ($this->isNewCartEnabled()) {
+                wp_register_style('sooFonts', SOO_PLUGIN_URL . '/public/css/dist/sooFonts.min.css', array(), SOO_VERSION);
+                wp_enqueue_style('sooFonts');
+                wp_register_style('sooAuthModern', SOO_PLUGIN_URL . '/public/css/dist/sooAuthModern.min.css', array('sooAuthStyles', 'sooCheckoutStyles'), SOO_VERSION);
+                wp_enqueue_style('sooAuthModern');
+            }
+
 
 
         } else {
@@ -2648,6 +2749,331 @@ class checkoutPage extends sooShortCode
 
         wp_register_script('display-merchant-map', SOO_PLUGIN_URL . '/public/js/dist/moo_map.min.js',array('jquery'), SOO_VERSION, false);
         wp_enqueue_script('display-merchant-map');
+    }
+
+    /**
+     * The .moo-totals block: subtotal, coupon/loyalty rows, tax/fees,
+     * delivery fee, tip and grand total. Shared verbatim between the
+     * legacy cart panel and the beta cart mount -- one source of the
+     * totals markup, two branches using it, instead of duplicating it.
+     * The legacy branch calls this in place of its old inline block; the
+     * beta branch calls it after #soo-checkout-cart-mount so the beta
+     * client's painter (mooCheckout.updateTotalsSection(), see
+     * updateTotalsFromDocument() in sooCheckout.js) has real ids to
+     * write into -- the mount itself deliberately renders no totals.
+     *
+     * $pending: true only for the beta branch's first server render,
+     * where $totals is the zeroed placeholder advancedCheckout() builds
+     * when isNewCartEnabled() and the session cart came back false (real
+     * money is not known until /v3/cart/price returns client-side).
+     * Swaps the subtotal/tax/service-fee/convenience-fee/grand-total
+     * figures for the same .soo-cart-inline-spinner already used by the
+     * cart mount's own pending state (sooCartUI.js) instead of flashing
+     * $0.00. Delivery fee, tip, coupon and loyalty rows are untouched:
+     * they already render blank (or, for tip, a legitimate starting
+     * $0.00 the customer has not changed yet) in both branches.
+     */
+    /**
+     * Modern cart (beta): an optional hero above the checkout sign-in
+     * area. Off unless the shortcode asks for it -- the page usually
+     * prints its own "Checkout" title:
+     *
+     *   [moo_checkout auth_title="Welcome" auth_subtitle="Sign in or continue as a guest"]
+     */
+    private function renderModernCheckoutAuthHero($atts, $guestModeEnabled)
+    {
+        $a = shortcode_atts(array(
+            'auth_title'     => '',
+            'auth_subtitle'  => '',
+            'hide_auth_hero' => 'no',
+        ), is_array($atts) ? $atts : array(), 'moo_checkout');
+        $title    = trim((string) $a['auth_title']);
+        $subtitle = trim((string) $a['auth_subtitle']);
+        if (in_array(strtolower($a['hide_auth_hero']), array('yes', 'true', '1', 'on'), true) || ($title === '' && $subtitle === '')) {
+            return '';
+        }
+        $html = '<div class="soo-auth-hero soo-auth-hero--checkout">';
+        if ($title !== '') {
+            $html .= '<h2 class="soo-auth-hero__title">' . esc_html($title) . '</h2>';
+        }
+        if ($subtitle !== '') {
+            $html .= '<p class="soo-auth-hero__subtitle">' . esc_html($subtitle) . '</p>';
+        }
+        $html .= '</div>';
+        return $html;
+    }
+
+    /**
+     * Modern cart (beta): the checkout's login section as cards.
+     *
+     *   guest ON  -> two cards: "Checkout as a guest" | "Already have an account?"
+     *   guest OFF -> one centred card: "Sign in to your account"
+     *
+     * Facebook, when configured, is a button inside the sign-in card
+     * above an "or" rule -- it never changes where anything else goes.
+     * "Create one" is always the link under Log In. The ids, form and
+     * handlers are the legacy ones, so sooAuth.js / sooCheckout.js need
+     * no changes; the benefits strip replaces the old headline + bullets.
+     */
+    private function renderModernCheckoutAuth($guestModeEnabled, $fbEnabled)
+    {
+        $benefits = array(
+            array('truck',   __('Save your address', 'moo_OnlineOrders')),
+            array('bolt',    __('Faster checkout', 'moo_OnlineOrders')),
+            array('receipt', __('View your past orders', 'moo_OnlineOrders')),
+            array('tag',     __('Get exclusive deals and coupons', 'moo_OnlineOrders')),
+        );
+        ob_start();
+        ?>
+        <div id="moo-login-section" class="moo-col-md-12 moo-section soo-auth-login" style="min-height: 300px;">
+            <div class="sooOverlayLoader" style="background-color: #fff;position: absolute;height: 100%;width: 100%;z-index: 10000000;">
+                <div class="dot-flashing-2"></div>
+            </div>
+
+            <h3 class="soo-auth-benefits__title">
+                <?php printf(__("Why create a <a href='%s' target='_blank'>Smart Online Order</a> account?", 'moo_OnlineOrders'), "https://www.smartonlineorder.com"); ?>
+            </h3>
+            <ul class="soo-auth-benefits" aria-label="<?php esc_attr_e('Why create an account', 'moo_OnlineOrders'); ?>">
+                <?php foreach ($benefits as $b) { ?>
+                <li class="soo-auth-benefits__item"><span class="soo-auth-icon soo-auth-icon--<?php echo esc_attr($b[0]); ?>" aria-hidden="true"></span><span><?php echo esc_html($b[1]); ?></span></li>
+                <?php } ?>
+            </ul>
+
+            <div class="soo-auth-cards">
+                <?php if ($guestModeEnabled) { ?>
+                <div class="soo-auth-card soo-auth-card--guest">
+                    <span class="soo-auth-card__badge"><span class="soo-auth-icon soo-auth-icon--bag" aria-hidden="true"></span></span>
+                    <h3 class="soo-auth-card__title"><?php esc_html_e('Checkout as a guest', 'moo_OnlineOrders'); ?></h3>
+                    <p class="soo-auth-card__subtitle"><?php esc_html_e('No account required. Fast and simple.', 'moo_OnlineOrders'); ?></p>
+                    <ul class="soo-auth-card__checks">
+                        <li><?php esc_html_e('Complete your order in a few steps', 'moo_OnlineOrders'); ?></li>
+                        <li><?php esc_html_e('No registration needed', 'moo_OnlineOrders'); ?></li>
+                        <li><?php esc_html_e('You can create an account later', 'moo_OnlineOrders'); ?></li>
+                    </ul>
+                    <button type="button" class="sooContinueAsGuestButton soo-auth-btn soo-auth-btn--primary" onclick="mooCheckout.continueAsGuest(event)">
+                        <?php _e('Continue As Guest', 'moo_OnlineOrders'); ?><span class="soo-auth-btn__arrow" aria-hidden="true">&rarr;</span>
+                    </button>
+                </div>
+                <div class="soo-auth-cards__or" aria-hidden="true"><span><?php _e('or', 'moo_OnlineOrders'); ?></span></div>
+                <?php } ?>
+
+                <div class="soo-auth-card soo-auth-card--login">
+                    <span class="soo-auth-card__badge"><span class="soo-auth-icon soo-auth-icon--user" aria-hidden="true"></span></span>
+                    <h3 class="soo-auth-card__title"><?php echo $guestModeEnabled ? esc_html__('Already have an account?', 'moo_OnlineOrders') : esc_html__('Sign in to your account', 'moo_OnlineOrders'); ?></h3>
+                    <p class="soo-auth-card__subtitle"><?php echo $guestModeEnabled ? esc_html__('Log in to access your saved information.', 'moo_OnlineOrders') : esc_html__('Log in to access your saved information and orders.', 'moo_OnlineOrders'); ?></p>
+
+                    <?php if ($fbEnabled) { ?>
+                    <button type="button" class="sooFbLoginButton soo-auth-btn soo-auth-btn--facebook soo-auth-login-only" onclick="sooAuth.loginViaFacebook()" aria-label="<?php esc_attr_e('Sign in with your Facebook account', 'moo_OnlineOrders'); ?>">
+                        <span class="fbIconSvg"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0,0,256,256" width="20px" height="20px" fill-rule="nonzero"><g fill="#ffffff"><g transform="scale(5.12,5.12)"><path d="M25,3c-12.15,0 -22,9.85 -22,22c0,11.03 8.125,20.137 18.712,21.728v-15.897h-5.443v-5.783h5.443v-3.848c0,-6.371 3.104,-9.168 8.399,-9.168c2.536,0 3.877,0.188 4.512,0.274v5.048h-3.612c-2.248,0 -3.033,2.131 -3.033,4.533v3.161h6.588l-0.894,5.783h-5.694v15.944c10.738,-1.457 19.022,-10.638 19.022,-21.775c0,-12.15 -9.85,-22 -22,-22z"></path></g></g></svg></span>
+                        <span><?php esc_html_e('Continue with Facebook', 'moo_OnlineOrders'); ?></span>
+                    </button>
+                    <div class="soo-auth-rule soo-auth-login-only" aria-hidden="true"><span><?php _e('or', 'moo_OnlineOrders'); ?></span></div>
+                    <?php } ?>
+
+                    <form id="moo-login-form" action="#" method="post" autocomplete="on" aria-label="<?php esc_attr_e('Sign in with your account', 'moo_OnlineOrders'); ?>">
+                        <div class="moo-form-group">
+                            <label for="sooInputEmail"><?php _e('Email', 'moo_OnlineOrders'); ?></label>
+                            <div class="soo-auth-field soo-auth-field--email">
+                                <input type="email" id="sooInputEmail" class="moo-form-control sooCheckoutTextInput" autocomplete="email" placeholder="<?php esc_attr_e('you@example.com', 'moo_OnlineOrders'); ?>" onkeyup="sooAuth.onInputChange(this)">
+                            </div>
+                            <span class="moo-error-section"><?php _e('Please enter your email', 'moo_OnlineOrders'); ?></span>
+                        </div>
+                        <div class="moo-form-group">
+                            <label for="sooInputPassword"><?php _e('Password', 'moo_OnlineOrders'); ?></label>
+                            <div class="soo-auth-field soo-auth-field--password">
+                                <input type="password" id="sooInputPassword" class="moo-form-control sooCheckoutTextInput" autocomplete="current-password" placeholder="<?php esc_attr_e('Enter your password', 'moo_OnlineOrders'); ?>" onkeyup="sooAuth.onInputChange(this)">
+                                <button type="button" class="soo-auth-field__eye" aria-label="<?php esc_attr_e('Show password', 'moo_OnlineOrders'); ?>" aria-pressed="false" onclick="var i=document.getElementById('sooInputPassword');var show=i.type==='password';i.type=show?'text':'password';this.setAttribute('aria-pressed',show?'true':'false');this.classList.toggle('soo-auth-field__eye--on',show);"></button>
+                            </div>
+                            <span class="moo-error-section"><?php _e('Please enter your password', 'moo_OnlineOrders'); ?></span>
+                            <a class="sooForgetPasswordButton" href="#" onclick="sooAuth.showInlineReset(true); return false;"><?php _e('Forgot password?', 'moo_OnlineOrders'); ?></a>
+                        </div>
+                        <div class="moo-form-group">
+                            <button class="sooLoginButton soo-auth-btn soo-auth-btn--primary" type="submit"><?php _e('Log In', 'moo_OnlineOrders'); ?></button>
+                        </div>
+                    </form>
+                    <p class="soo-auth-card__foot soo-auth-login-only"><?php esc_html_e("Don't have an account?", 'moo_OnlineOrders'); ?> <a class="sooSignUpLinkButton" href="#" onclick="sooAuth.showOrHideASection('signing-section',true)"><?php esc_html_e('Create one', 'moo_OnlineOrders'); ?></a></p>
+                    <?php echo $this->renderModernResetForm(); ?>
+                </div>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    private function renderCheckoutTotalsSection($totals, $showServiceFee, $serviceFeeAmount, $convenienceFeeCents, $pending = false, $isBeta = false)
+    {
+        $spinner = '<span class="soo-cart-inline-spinner" aria-hidden="true"></span>';
+        ob_start();
+        ?>
+                                    <div class="moo-totals" style="padding-right: 10px;">
+                                        <div class="moo-totals-item">
+                                            <label class="moo-checkoutText-subtotal"  tabindex="0"><?php _e("Subtotal", "moo_OnlineOrders"); ?></label>
+                                            <div class="moo-totals-value" id="moo-cart-subtotal"  tabindex="0">
+                                                <?php echo $pending ? $spinner : '$'.number_format(($totals['sub_total']/100), 2)?>
+                                            </div>
+                                        </div>
+                                        <div class="moo-totals-item" id="sooCouponTotalSection" style="color: green;">
+                                            <label id="sooCouponName" tabindex="0" for="sooCouponValue"></label>
+                                            <div id="sooCouponValue" class="moo-totals-value"  tabindex="0"></div>
+                                        </div>
+                                        <div class="moo-totals-item" id="sooPointsTotalSection" style="color: green;">
+                                            <label id="sooPointslabel" tabindex="0" for="sooPointsValue"></label>
+                                            <div id="sooPointsValue" class="moo-totals-value" tabindex="0"></div>
+                                        </div>
+                                        <?php
+                                        $combineTaxesFees = isset($this->pluginSettings['combine_taxes_fees']) && $this->pluginSettings['combine_taxes_fees'] === 'enabled';
+                                        if ($combineTaxesFees) {
+                                            $combinedInitialTaxes = $totals['taxes'];
+                                            $combinedInitialFees = ($showServiceFee ? $serviceFeeAmount : 0) + ($convenienceFeeCents > 0 ? $convenienceFeeCents : 0);
+                                            $combinedTaxesFees = $combinedInitialTaxes + $combinedInitialFees;
+                                            if ($combinedInitialTaxes > 0 && $combinedInitialFees > 0) {
+                                                $combinedLabel = __("Taxes & fees", "moo_OnlineOrders");
+                                            } elseif ($combinedInitialTaxes > 0) {
+                                                $combinedLabel = __("Taxes", "moo_OnlineOrders");
+                                            } else {
+                                                $combinedLabel = __("Fees", "moo_OnlineOrders");
+                                            }
+                                            ?>
+                                            <style>
+                                                #sooTaxesFeesBreakdown .moo-totals-item label { width: calc(70% - 14px); }
+                                            </style>
+                                            <div class="moo-totals-item" id="sooTaxesFeesCombined" style="cursor:pointer;<?php if ($combinedTaxesFees <= 0) { echo 'display:none;'; } ?>">
+                                                <label class="moo-checkoutText-taxesFees" tabindex="0" style="cursor:pointer;">
+                                                    <span id="sooTaxesFeesLabel"
+                                                          data-label-both="<?php echo esc_attr(__("Taxes & fees", "moo_OnlineOrders")); ?>"
+                                                          data-label-taxes="<?php echo esc_attr(__("Taxes", "moo_OnlineOrders")); ?>"
+                                                          data-label-fees="<?php echo esc_attr(__("Fees", "moo_OnlineOrders")); ?>"><?php echo esc_html($combinedLabel); ?></span>
+                                                    <span id="sooTaxesFeesChevron" aria-hidden="true" style="display:inline-block;transition:transform .2s;">&#9662;</span>
+                                                </label>
+                                                <div class="moo-totals-value" id="moo-cart-taxes-fees" tabindex="0">
+                                                    <?php echo $pending ? $spinner : '$'.number_format($combinedTaxesFees/100, 2); ?>
+                                                </div>
+                                            </div>
+                                            <div id="sooTaxesFeesBreakdown" style="display:none;overflow:auto;border-left:2px solid #e0e0e0;padding-left:12px;margin-bottom:8px;">
+                                        <?php } ?>
+                                        <div class="moo-totals-item" id="sooTaxTotalSection" style="<?php if ($combineTaxesFees && $totals['taxes'] <= 0) { echo 'display:none;'; } ?>">
+                                            <label class="moo-checkoutText-tax"  tabindex="0" ><?php _e("Tax", "moo_OnlineOrders"); ?></label>
+                                            <div class="moo-totals-value" id="moo-cart-tax"  tabindex="0">
+                                                <?php
+                                                echo  $pending ? $spinner : '$'.number_format($totals['taxes']/100, 2);
+                                                ?>
+                                            </div>
+                                        </div>
+                                        <div class="moo-totals-item" id="sooServiceFeeTotalSection"
+                                             style="<?php
+                                                 // block for the legacy panel, flex for the beta one.
+                                                 // sooCheckout-light.css lays these rows out with floats
+                                                 // (.moo-totals-item{float:right}, label{float:left},
+                                                 // .moo-totals-value{float:right;width:30%}) and float is
+                                                 // ignored on a flex item -- so flex here would make this
+                                                 // one row lay out unlike every other row on a non-beta
+                                                 // checkout. The beta panel restyles these rows as flex
+                                                 // itself, so it wants flex.
+                                                 echo ($showServiceFee) ? ($isBeta ? 'display:flex;' : 'display:block;') : '';
+                                             ?>">
+                                            <label id="MooServiceChargesName" tabindex="0">
+                                                <?php
+                                                if (isset($this->pluginSettings['service_fees_name']) && !empty($this->pluginSettings['service_fees_name'])) {
+                                                    echo $this->pluginSettings['service_fees_name'];
+                                                } else {
+                                                    echo "Service Fees";
+                                                }
+                                                ?>
+                                            </label>
+                                        <div class="moo-totals-value" id="moo-cart-service-fee"  tabindex="0">
+                                            <?php
+                                            echo $pending ? $spinner : '$'. number_format($serviceFeeAmount/100,2);
+                                            ?>
+                                        </div>
+                                        </div>
+                                        <?php
+                                        $convenienceFee = $convenienceFeeCents / 100;
+                                        ?>
+                                        <div class="moo-totals-item" id="sooConvenienceFeeTotalSection" style="<?php if ($convenienceFee <= 0) { echo 'display:none;'; }?>">
+                                            <label class="moo-checkoutText-convenienceFee" tabindex="0"><?php _e("Convenience Fee", "moo_OnlineOrders"); ?></label>
+                                            <div class="moo-totals-value" id="moo-cart-convenience-fee" tabindex="0">
+                                                <?php echo $pending ? $spinner : '$'. number_format($convenienceFee, 2); ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($combineTaxesFees) { ?>
+                                            </div>
+                                        <?php } ?>
+
+                                        <div class="moo-totals-item" id="sooDeliveryFeeTotalSection">
+                                            <label class="moo-checkoutText-deliveryFees"  tabindex="0">
+                                                <?php echo ($this->pluginSettings["delivery_fees_name"] === "") ? esc_html__("Delivery Charge", "moo_OnlineOrders") : $this->pluginSettings["delivery_fees_name"];?>
+                                            </label>
+                                            <div class="moo-totals-value" id="moo-cart-delivery-fee"  tabindex="0"></div>
+                                        </div>
+
+                                        <?php if ($this->pluginSettings['tips'] === 'enabled') {?>
+                                            <div class="moo-totals-item" id="sooTipsTotalSection">
+                                                <label class="moo-checkoutText-tipAmount" tabindex="0" ><?php _e("Tip", "moo_OnlineOrders"); ?></label>
+                                                <div class="moo-totals-value" id="moo-cart-tip" tabindex="0">
+                                                    $0.00
+                                                </div>
+                                            </div>
+                                        <?php } ?>
+                                        <div class="moo-totals-item moo-totals-item-total" style="font-weight: 700;" >
+                                            <label class="moo-checkoutText-grandTotal" tabindex="0" ><?php _e("Total", "moo_OnlineOrders"); ?><?php if ($isBeta) { ?><span class="soo-cart-total-caption"><?php esc_html_e("Inclusive of all fees", "moo_OnlineOrders"); ?></span><?php } ?></label>
+                                            <div class="moo-totals-value" id="moo-cart-total" tabindex="0" >
+                                                <?php
+                                                $grandTotal = $totals['sub_total'] + $totals['taxes'];
+
+                                                if ($showServiceFee) {
+                                                    $grandTotal += $serviceFeeAmount;
+                                                }
+
+
+                                                echo $pending ? $spinner : '$'.number_format($grandTotal/100, 2);
+                                                ?>
+                                            </div>
+                                        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Registers/enqueues the drawer bundle (sooCartUI.js + its CSS) and
+     * mounts it inline into #soo-checkout-cart-mount -- the same
+     * SooCartUI component cartPage.php mounts into #soo-cart-page-mount
+     * (Task 5), reused here rather than duplicated, so the order summary
+     * on the checkout page is always the same cart the customer built,
+     * priced the same way. sooCartStore (SooCartStore/SooCartBridge/
+     * SooCartPricing) is already registered unconditionally by
+     * Moo_OnlineOrders_Public::enqueue_scripts(), so it is only declared
+     * as a dependency here, not re-registered. Only called from the
+     * isNewCartEnabled() branch above -- never enqueued flag-off.
+     */
+    private function enqueueCheckoutCartUiAssets() {
+        $this->enqueueFontsCss();
+
+        wp_register_style('sooCartDrawer-css', SOO_PLUGIN_URL . '/public/css/dist/sooCartDrawer.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooCartDrawer-css');
+
+        // Line editing on checkout (extends Phase 4, cartPage.php's own
+        // enqueueCartUiAssets() does the identical thing for the /cart
+        // page): the chip picker sooCartUI.js's own Edit affordance
+        // opens. Registered as a dependency of 'sooCartUI' (not enqueued
+        // separately) so it is guaranteed to exist by the time
+        // SooCartUI.mount()'s inline script below runs. Same isolation
+        // approach as the drawer's own CSS -- see sooModifierPicker.less.
+        wp_register_style('sooModifierPicker-css', SOO_PLUGIN_URL . '/public/css/dist/sooModifierPicker.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooModifierPicker-css');
+        wp_register_script('sooModifierPicker', SOO_PLUGIN_URL . '/public/js/dist/sooModifierPicker.min.js', array('jquery'), SOO_VERSION, false);
+
+        wp_register_script('sooCartUI', SOO_PLUGIN_URL . '/public/js/dist/sooCartUI.min.js', array('jquery', 'sooCartStore', 'sooModifierPicker'), SOO_VERSION, false);
+        wp_enqueue_script('sooCartUI');
+        // context: 'checkout' selects the lines-only surface (Task 2,
+        // cart-surfaces-and-feedback) -- no totals block, no Checkout
+        // button, even with editing enabled: paintTotals() short-circuits
+        // for this surface regardless of the Edit affordance. sooCheckout.
+        // options.totals (kept in sync by this page's own
+        // updateTotalsFromDocument(), re-run on every SooCartStore change
+        // including a saved edit -- see that function's own doc comment)
+        // is the sole source of money here; FINALIZE ORDER above is the
+        // real submit action.
+        wp_add_inline_script('sooCartUI', 'if (window.SooCartUI) { SooCartUI.mount("#soo-checkout-cart-mount", { context: "checkout" }); }', 'after');
     }
 
     private function cartIsEmpty()
@@ -2828,7 +3254,7 @@ HTML;
             $html.= '<option value="25" '.(($defaultTips == 25)?"selected":"").'>25%</option>';
         }
         $html .= <<<HTML
-                            <option value="other">Custom $</option>
+                            <option value="other"><?php esc_html_e("Custom $", "moo_OnlineOrders"); ?></option>
                         </select>
                         </div>
                     </div>
@@ -2889,7 +3315,7 @@ HTML;
                   </div>
                   <div class="moo-col-md-3 moo-col-xs-6 sooValidatePoints">
                     <button class="sooValidatePointsButton sooCheckoutPrimaryButtonInput" onclick="mooCheckout.usePoints()">Use</button>
-                    <button class="sooEditPointsButton sooCheckoutPrimaryButtonInput" onclick="mooCheckout.editPoints()">Edit</button>
+                    <button class="sooEditPointsButton sooCheckoutPrimaryButtonInput" onclick="mooCheckout.editPoints()"><?php esc_html_e("Edit", "moo_OnlineOrders"); ?></button>
                     <span class="sooLoyaltyDetailsButton" >
                         <svg onclick="mooCheckout.openLoyaltyDetails()" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path _ngcontent-vfa-c105="" d="M9.99984 5.83342C9.77883 5.83342 9.56687 5.92121 9.41059 6.07749C9.25431 6.23377 9.16651 6.44573 9.16651 6.66675V10.0001C9.16651 10.2211 9.25431 10.4331 9.41059 10.5893C9.56687 10.7456 9.77883 10.8334 9.99984 10.8334C10.2209 10.8334 10.4328 10.7456 10.5891 10.5893C10.7454 10.4331 10.8332 10.2211 10.8332 10.0001V6.66675C10.8332 6.44573 10.7454 6.23377 10.5891 6.07749C10.4328 5.92121 10.2209 5.83342 9.99984 5.83342ZM10.7665 13.0167C10.7483 12.9636 10.723 12.9132 10.6915 12.8667L10.5915 12.7417C10.4743 12.6261 10.3255 12.5478 10.1639 12.5166C10.0022 12.4855 9.83493 12.5029 9.68317 12.5667C9.58219 12.6089 9.48918 12.6681 9.40817 12.7417C9.33094 12.8196 9.26984 12.912 9.22837 13.0135C9.18689 13.115 9.16587 13.2237 9.16651 13.3334C9.16782 13.4423 9.19047 13.5499 9.23317 13.6501C9.2706 13.7535 9.33031 13.8474 9.40808 13.9252C9.48584 14.0029 9.57976 14.0627 9.68317 14.1001C9.78292 14.1442 9.89078 14.1669 9.99984 14.1669C10.1089 14.1669 10.2168 14.1442 10.3165 14.1001C10.4199 14.0627 10.5138 14.0029 10.5916 13.9252C10.6694 13.8474 10.7291 13.7535 10.7665 13.6501C10.8092 13.5499 10.8319 13.4423 10.8332 13.3334C10.8373 13.2779 10.8373 13.2222 10.8332 13.1667C10.8188 13.1136 10.7963 13.063 10.7665 13.0167ZM9.99984 1.66675C8.35166 1.66675 6.7405 2.15549 5.37009 3.07117C3.99968 3.98685 2.93158 5.28834 2.30084 6.81105C1.67011 8.33377 1.50509 10.0093 1.82663 11.6258C2.14817 13.2423 2.94185 14.7272 4.10728 15.8926C5.27272 17.0581 6.75758 17.8517 8.37409 18.1733C9.9906 18.4948 11.6662 18.3298 13.1889 17.6991C14.7116 17.0683 16.0131 16.0002 16.9288 14.6298C17.8444 13.2594 18.3332 11.6483 18.3332 10.0001C18.3332 8.90573 18.1176 7.8221 17.6988 6.81105C17.28 5.80001 16.6662 4.88135 15.8924 4.10752C15.1186 3.3337 14.1999 2.71987 13.1889 2.30109C12.1778 1.8823 11.0942 1.66675 9.99984 1.66675ZM9.99984 16.6667C8.6813 16.6667 7.39237 16.2758 6.29604 15.5432C5.19971 14.8107 4.34523 13.7695 3.84064 12.5513C3.33606 11.3331 3.20404 9.99269 3.46127 8.69948C3.71851 7.40627 4.35345 6.21839 5.2858 5.28604C6.21815 4.35369 7.40603 3.71875 8.69924 3.46151C9.99245 3.20428 11.3329 3.3363 12.5511 3.84088C13.7692 4.34547 14.8104 5.19995 15.543 6.29628C16.2755 7.39261 16.6665 8.68154 16.6665 10.0001C16.6665 11.7682 15.9641 13.4639 14.7139 14.7141C13.4636 15.9644 11.768 16.6667 9.99984 16.6667Z" fill="#BFBFBF" class="ng-tns-c105-44"></path></svg>
                     </span>
@@ -2945,7 +3371,7 @@ HTML;
             $html.= '<option value="25" '.(($defaultTips == 25)?"selected":"").'>25%</option>';
         }
         $html .= <<<HTML
-                            <option value="other">Custom $</option>
+                            <option value="other"><?php esc_html_e("Custom $", "moo_OnlineOrders"); ?></option>
                         </select>
                         </div>
                     </div>
@@ -2970,7 +3396,7 @@ HTML;
         $dateAndCvv = '<div class="moo-row"><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardDate"></div><div class="date-error"><div class="clover-error"></div></div></div></div><div class="moo-col-md-6"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardCvv"></div><div class="cvv-error"><div class="clover-error"></div></div></div></div></div>';
         $address    = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverStreetAddress"></div><div class="streetAddress-error"><div class="clover-error"></div></div></div></div></div>';
         $zip        = '<div class="moo-row"><div class="moo-col-md-12"><div class="moo-form-group"><div class="moo-form-control" id="moo_CloverCardZip"></div><div class="zip-error"><div class="clover-error"></div></div></div></div></div>';
-        $encrypted  = '<div class="moo-row"><div class="moo-col-md-12"><span>All transactions are encrypted and secure</span></div></div>';
+        $encrypted  = '<div class="moo-row"><div class="moo-col-md-12"><span>' . esc_html__('All transactions are encrypted and secure', 'moo_OnlineOrders') . '</span></div></div>';
         $cardsIcons  = '<div class="moo-row"><div class="moo-col-md-12"><img style="height: 25px;margin-top: 5px;" src="'. SOO_PLUGIN_URL .'/public/img/cards-icons.png"  alt="Visa, MC, Amex"/></div></div>';
 
         $html = $htmBegin;
@@ -3004,9 +3430,9 @@ HTML;
     private function cashSection()
     {
         $html    = '<div id="moo_cashPanel">';
-        $html    .= ' <div class="soo-phone-verif-title">We will send a verification code via SMS to your number</div>';
-        $html    .= ' <div class="soo-phone-input"><input class="sooCheckoutTextInput" type="text" placeholder="Enter 6-digit code"><button onclick="mooCheckout.verifyCodeSentToPhone()" class="sooCheckoutPrimaryButtonInput">Verify</button></div>';
-        $html    .= ' <div class="soo-phone-button"><button class="sooCheckoutPrimaryButtonInput"  onclick="mooCheckout.sendCodeToVerifyPhone()">Send</button></div>';
+        $html    .= ' <div class="soo-phone-verif-title">' . esc_html__('We will send a verification code via SMS to your number', 'moo_OnlineOrders') . '</div>';
+        $html    .= ' <div class="soo-phone-input"><input class="sooCheckoutTextInput" type="text" placeholder="' . esc_attr__('Enter 6-digit code', 'moo_OnlineOrders') . '"><button onclick="mooCheckout.verifyCodeSentToPhone()" class="sooCheckoutPrimaryButtonInput">' . esc_html__('Verify', 'moo_OnlineOrders') . '</button></div>';
+        $html    .= ' <div class="soo-phone-button"><button class="sooCheckoutPrimaryButtonInput"  onclick="mooCheckout.sendCodeToVerifyPhone()">' . esc_html__('Send', 'moo_OnlineOrders') . '</button></div>';
         $html    .= ' <div class="soo-phone-verif-footer"></div>';
         $html    .= '</div>';
         return apply_filters('moo_filter_checkout_cashPanel', $html);
@@ -3176,6 +3602,45 @@ HTML;
         echo  $html;
     }
 
+    /**
+     * Optional "request utensils" checkbox. Unlike the marketing checkbox this one is
+     * off unless the merchant turned it on, so existing checkouts are left untouched.
+     */
+    private function utensilsSection()
+    {
+        $html  =  '<div id="moo-checkout-form-utensils">';
+        $html  .= '<div class="moo-checkout-bloc-content">';
+        $html  .= '<label class="soo-marketing-checkbox">';
+        $html  .= '<input type="checkbox" id="MooUtensilsRequested">';
+        $html  .= '<span class="soo-marketing-checkmark"><svg viewBox="0 0 16 16"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"></polyline></svg></span>';
+        $html  .= '<span class="soo-marketing-label">'.esc_html($this->utensilsCheckboxLabel()).'</span>';
+        $html  .= '</label>';
+        $html  .= '</div></div>';
+        $html = apply_filters('moo_filter_checkout_utensilsSection', $html);
+        echo  $html;
+    }
+
+    /**
+     * Merchant-defined label for the utensils checkbox, falling back to the default wording.
+     */
+    private function utensilsCheckboxLabel()
+    {
+        if (!empty($this->pluginSettings['utensils_checkbox_text'])) {
+            return wp_unslash($this->pluginSettings['utensils_checkbox_text']);
+        }
+
+        return __("Request utensils, napkins, etc.", "moo_OnlineOrders");
+    }
+
+    /**
+     * The utensils checkbox is independent of the special instructions setting.
+     */
+    private function isUtensilsCheckboxEnabled()
+    {
+        return isset($this->pluginSettings['utensils_checkbox_enabled'])
+            && $this->pluginSettings['utensils_checkbox_enabled'] === 'on';
+    }
+
     private function cloverCardSectionOld()
     {
         $htmBegin   = '<div id="moo-cloverCreditCardPanel"><input type="hidden" name="cloverToken" id="moo-CloverToken">';
@@ -3282,7 +3747,7 @@ HTML;
                 }
                 // Schedule-in-advance hint — only for hours-close, not manual/holiday
                 if ($closeReason === 'outside_hours' && !empty($cs['acceptOrdersWhileClosed'])) {
-                    $msg .= '<br/><p style="color: #006b00">' . __("You may schedule your order in advance", "moo_OnlineOrders") . '</p>';
+                    $msg .= '<br/><p class="soo-schedule-hint" style="color: #006b00">' . __("You may schedule your order in advance", "moo_OnlineOrders") . '</p>';
                 }
             }
             $msg .= '</div>';
@@ -3301,7 +3766,7 @@ HTML;
                     }
                     $oppening_msg .= __("Online Ordering Currently Closed", "moo_OnlineOrders");
                     if (isset($this->pluginSettings['accept_orders_w_closed']) && $this->pluginSettings['accept_orders_w_closed'] == 'on') {
-                        $oppening_msg .= "<br/><p style='color: #006b00'>";
+                        $oppening_msg .= "<br/><p class='soo-schedule-hint' style='color: #006b00'>";
                         $oppening_msg .= __("You may schedule your order in advance", "moo_OnlineOrders");
                         $oppening_msg .= "</p>";
                     }
@@ -3309,7 +3774,7 @@ HTML;
                 }
             }
             if (!empty($oppening_status["status"]) && $oppening_status["status"] === 'not_found'){
-                $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">Please contact the Store to update their Online Ordering Hours</div>';
+                $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' . esc_html__('Please contact the Store to update their Online Ordering Hours', 'moo_OnlineOrders') . '</div>';
             }
 
         }

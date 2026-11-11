@@ -129,6 +129,14 @@ class  CheckoutRoutes extends BaseRoute {
             )
         ) );
 
+        register_rest_route( $this->v3Namespace, '/cart/price', array(
+            array(
+                'methods'   => 'POST',
+                'callback'  => array( $this, 'priceCartDocument' ),
+                'permission_callback' => '__return_true'
+            )
+        ) );
+
         register_rest_route( $this->namespace, '/check-merchant', array(
             array(
                 'methods'   => 'POST',
@@ -183,13 +191,19 @@ class  CheckoutRoutes extends BaseRoute {
         $response["use_sms_verification"] = isset($this->pluginSettings['use_sms_verification']) && $this->pluginSettings['use_sms_verification'] == "enabled";
         $response["schedule_orders"] = self::asBool($sooSource->get('order_later'));
         $response["schedule_orders_required"] = self::asBool($sooSource->get('order_later_mandatory'));
-        $response["fb_appid"] = $this->pluginSettings['fb_appid'];
+        $response["fb_appid"] = (isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : '');
         $response["order_types"] = $this->orderTypes($request);
         $response["opening_status"] = $this->openingStatus($request);
         $response["special_instructions"] = array(
             "accept_special_instructions"=> isset($this->pluginSettings['use_special_instructions']) && $this->pluginSettings['use_special_instructions'] == "enabled",
             "text"=>$this->pluginSettings['text_under_special_instructions'],
             "is_required"=> isset($this->pluginSettings['special_instructions_required']) && $this->pluginSettings['special_instructions_required'] === "yes",
+        );
+        $response["utensils_checkbox"] = array(
+            "enabled"=> isset($this->pluginSettings['utensils_checkbox_enabled']) && $this->pluginSettings['utensils_checkbox_enabled'] === "on",
+            "text"=> !empty($this->pluginSettings['utensils_checkbox_text'])
+                ? wp_unslash($this->pluginSettings['utensils_checkbox_text'])
+                : __("Request utensils, napkins, etc.", "moo_OnlineOrders"),
         );
         $suggestedTips = array();
         $tipsValues = explode(",",$this->pluginSettings['tips_selection']);
@@ -564,14 +578,16 @@ class  CheckoutRoutes extends BaseRoute {
             return true;
         }
 
-        // window length in seconds => attempts allowed within that window. The ten-minute
-        // cap is the looser of the two so a customer retrying a declined card is not
-        // caught. Tune per merchant volume via the filter — a busy store whose customers
-        // share a carrier NAT may need the hourly and daily caps raised.
+        // window length in seconds => attempts allowed within that window. Every
+        // attempt counts, refused ones included (a declined card, a full pickup
+        // slot, a backend refusal), and one IP is often a whole office, campus or
+        // carrier NAT, so the caps are set for a busy lunch rush rather than a
+        // single customer: 5/8/50 tripped real customers within one session.
+        // Tune per merchant volume via the filter.
         $windows = apply_filters('soo_checkout_rate_limit_windows', array(
-            600   => 5,
-            3600  => 8,
-            86400 => 50,
+            600   => 15,
+            3600  => 40,
+            86400 => 200,
         ));
 
         return $this->throttle(
@@ -579,6 +595,42 @@ class  CheckoutRoutes extends BaseRoute {
             $ip,
             $windows,
             'Too many checkout attempts from this location. Please wait a few minutes and try again.'
+        );
+    }
+
+    /**
+     * Throttle for pricing a cart document.
+     *
+     * Deliberately a separate bucket from checkoutRateLimit(). Pricing is something a
+     * customer does repeatedly while building an order — every quantity change re-prices —
+     * whereas placing an order is a handful of attempts at most. Sharing one bucket meant a
+     * customer who adjusted a quantity twice and applied a coupon had spent the checkout
+     * budget and was refused their own order.
+     *
+     * The caps are therefore generous: this exists to stop an anonymous caller hammering an
+     * unauthenticated endpoint, not to ration ordinary use. A shared address — a household,
+     * an office, a carrier NAT — must still be able to build several carts at once. Raise
+     * them per merchant through the filter if a busy store ever needs it.
+     *
+     * @return true|WP_Error
+     */
+    private function cartPriceRateLimit() {
+        $ip = apply_filters('soo_checkout_rate_limit_ip', Moo_OnlineOrders_Helpers::clientIp());
+        if (empty($ip)) {
+            return true;
+        }
+
+        $windows = apply_filters('soo_cart_price_rate_limit_windows', array(
+            600   => 120,
+            3600  => 600,
+            86400 => 3000,
+        ));
+
+        return $this->throttle(
+            'cprice',
+            $ip,
+            $windows,
+            'Too many cart updates from this location. Please wait a moment and try again.'
         );
     }
 
@@ -629,18 +681,7 @@ class  CheckoutRoutes extends BaseRoute {
      * @return string|null
      */
     private function cartSignature($body) {
-        if ( ! isset($body['cart']['items']) || ! is_array($body['cart']['items']) ) {
-            return null;
-        }
-
-        $counts = array();
-        foreach ($body['cart']['items'] as $line) {
-            if ( ! is_array($line) || ! isset($line['item']['id']) ) {
-                continue;
-            }
-            $id = (string) $line['item']['id'];
-            $counts[$id] = isset($counts[$id]) ? $counts[$id] + 1 : 1;
-        }
+        $counts = $this->cartItemCounts($body);
 
         if (empty($counts)) {
             return null;
@@ -669,6 +710,67 @@ class  CheckoutRoutes extends BaseRoute {
      * @param string|null $customerToken set when the customer is signed in
      * @return true|WP_Error
      */
+    /**
+     * Quantity ordered per item id, from whichever cart this request actually carries.
+     *
+     * The guard runs before any branch has populated $body['cart'], so reading only that
+     * key fingerprinted the branded app and nothing else — the website sends no cart in its
+     * body at all, and a browser cart sends a document. That left the guard inert for the
+     * one channel the fraud arrived on.
+     *
+     * All three sources are counted the same way — item id against total quantity — so the
+     * same basket produces the same signature however it was submitted. A caller cannot get
+     * a fresh bucket by changing which representation it sends.
+     *
+     * Precedence matters: a document wins over a cart.items in the same request, because
+     * otherwise a caller could attach a decoy cart.items to randomise the key while the
+     * document did the ordering.
+     *
+     * @param array $body decoded request body
+     * @return array item id => quantity
+     */
+    private function cartItemCounts($body) {
+        $counts = array();
+
+        if ( isset($body['cart_document']) ) {
+            $document = SooCartDocument::parse($body['cart_document']);
+            foreach ($document['lines'] as $line) {
+                $id = (string) $line['item_uuid'];
+                $counts[$id] = (isset($counts[$id]) ? $counts[$id] : 0) + (int) $line['quantity'];
+            }
+            return $counts;
+        }
+
+        if ( isset($body['cart']['items']) && is_array($body['cart']['items']) ) {
+            // Already expanded: a quantity of three arrives as three entries.
+            foreach ($body['cart']['items'] as $line) {
+                if ( ! is_array($line) || ! isset($line['item']['id']) ) {
+                    continue;
+                }
+                $id = (string) $line['item']['id'];
+                $counts[$id] = isset($counts[$id]) ? $counts[$id] + 1 : 1;
+            }
+            return $counts;
+        }
+
+        // The website posts no cart at all — its basket is in the session.
+        $sessionItems = $this->session->get("items");
+        if ( is_array($sessionItems) ) {
+            foreach ($sessionItems as $line) {
+                if ( ! is_array($line) || ! isset($line['item']->uuid) ) {
+                    continue;
+                }
+                $id = (string) $line['item']->uuid;
+                $qty = isset($line['quantity']) ? (int) $line['quantity'] : 0;
+                if ($qty > 0) {
+                    $counts[$id] = (isset($counts[$id]) ? $counts[$id] : 0) + $qty;
+                }
+            }
+        }
+
+        return $counts;
+    }
+
     private function duplicateCartGuard($body, $customerToken) {
         if ( ! empty($customerToken) ) {
             return true;
@@ -737,6 +839,15 @@ class  CheckoutRoutes extends BaseRoute {
         } else {
             $body["idempotency_key"] = wp_generate_uuid4();
         }
+        // The upstream API does not honour idempotency_key (verified: a replay
+        // with the same key attempts a second order), so the plugin keeps its
+        // own record per key. A client that lost the response to a proxy
+        // timeout re-sends the same request and gets the stored answer back
+        // instead of a second order.
+        $idempotencyState = $this->idempotencyState($body["idempotency_key"]);
+        if ($idempotencyState !== null) {
+            return $idempotencyState;
+        }
         $customer_token =  (!empty($body["customer_token"])) ?  $body["customer_token"] : null;
 
         // guestModeEnabled used to be honoured only by the checkout page, which hid the
@@ -777,7 +888,7 @@ class  CheckoutRoutes extends BaseRoute {
             // The upstream response is not echoed back to the caller.
             return array(
                 'status'	=> 'failed',
-                'message'	=> "Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused."
+                'message'	=> __("Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused.", 'moo_OnlineOrders')
             );
         }
 
@@ -816,14 +927,14 @@ class  CheckoutRoutes extends BaseRoute {
         if (!isset($body["payment_method"])) {
             return array(
                 'status'	=> 'failed',
-                'message'	=> "Payment method is required"
+                'message'	=> __("Payment method is required", 'moo_OnlineOrders')
             );
         } else {
             if($body["payment_method"]  === "clover") {
                 if(!isset($body["token"])){
                     return array(
                         'status'	=> 'failed',
-                        'message'	=> "Payment Token is required"
+                        'message'	=> __("Payment Token is required", 'moo_OnlineOrders')
                     );
                 }
             }
@@ -831,7 +942,7 @@ class  CheckoutRoutes extends BaseRoute {
         if (! isset($body["customer"]) ) {
             return array(
                 'status'	=> 'failed',
-                'message'	=> "Customer is required"
+                'message'	=> __("Customer is required", 'moo_OnlineOrders')
             );
         }
         if (! empty($body["special_instructions"]) ) {
@@ -908,8 +1019,20 @@ class  CheckoutRoutes extends BaseRoute {
             $note .=' | '.$body['special_instructions'];
         }
 
+        //flag the utensils request on the ticket
+        if(!empty($body['utensils_requested']) && $body['utensils_requested'] !== 'false'){
+            $note .=' | '.__("Utensils requested", "moo_OnlineOrders");
+        }
+
         if(isset($body['scheduled_time'])){
             $note .=' | '.$body['scheduled_time'];
+        }
+
+        // A cart_document request is priced entirely server-side, so tax removal must come from
+        // the order type below and never from the request. The order-type block only ever sets
+        // this to true, so a client value would otherwise survive on a taxable order.
+        if ( isset( $body["cart_document"] ) ) {
+            unset( $body["tax_removed"] );
         }
 
         //check the order type
@@ -939,8 +1062,145 @@ class  CheckoutRoutes extends BaseRoute {
             }
         }
 
+        // Remembered for the order's metainfo: cart_document is consumed and
+        // removed below, so this is the last place the cart mode is visible.
+        $cartVersion = isset( $body["cart_document"] ) ? 'modern' : 'legacy';
+
+        // A browser-held cart. The document carries ids and quantities only, so every
+        // figure below is computed here from the local tables — anything the client said
+        // about amounts is ignored. See the spec, §7.
+        if ( isset( $body["cart_document"] ) ) {
+            $document = SooCartDocument::parse( $body["cart_document"] );
+            if ( ! empty( $document['errors'] ) ) {
+                return array(
+                    'status'  => 'failed',
+                    'code'    => $document['errors'][0],
+                    'message' => __( 'Your cart could not be read. Please refresh the page and try again.', 'moo_OnlineOrders' ),
+                );
+            }
+
+            // Item notes only reach the kitchen when the merchant accepts them
+            // (the same per-theme + checkout-level switches the UI gates on).
+            // A note stored before the switch was turned off would otherwise
+            // still ride along on the order.
+            if ( ! $this->itemNotesEnabled() ) {
+                foreach ( $document['lines'] as $i => $line ) {
+                    $document['lines'][ $i ]['note'] = '';
+                }
+            }
+
+            $resolver = new SooCartResolver( $this->model, $this->api );
+            $resolved = $resolver->resolve( $document );
+
+            // An unorderable line stops the order here. The cart route reports problems so
+            // the UI can mark them; this route refuses, because a bad line must never
+            // become an order. Checked before the empty-items case below, because a document
+            // whose only line is an unknown item resolves to both: an empty $resolved['items']
+            // AND $resolved['valid'] === false, and the more specific, more informative
+            // cart_invalid response must win.
+            if ( ! $resolved['valid'] ) {
+                $firstProblem = null;
+                foreach ( $resolved['lines'] as $line ) {
+                    if ( ! $line['ok'] ) { $firstProblem = $line; break; }
+                }
+                return array(
+                    'status'  => 'failed',
+                    'code'    => 'cart_invalid',
+                    'lines'   => $resolved['lines'],
+                    'message' => $firstProblem['problems'][0]['message'],
+                );
+            }
+
+            if ( empty( $resolved['items'] ) ) {
+                return array(
+                    'status'  => 'failed',
+                    'message' => __("It looks like your cart is empty", 'moo_OnlineOrders')
+                );
+            }
+
+            // The whole point of a cart_document request is that the server decides every
+            // figure; a client-supplied totals block, a client-supplied coupon, and the raw
+            // document itself (up to 100 lines of dead weight) must never reach the upstream
+            // API. The coupon this route sends, if any, is derived below from the document's
+            // own code, never from what the client put in $body["coupon"].
+            unset( $body["totals"] );
+            unset( $body["cart_document"] );
+            unset( $body["coupon"] );
+
+            $serviceFee      = isset( $body["service_fee"] ) ? intval( $body["service_fee"] ) : 0;
+            $deliveryAmount  = isset( $body["delivery_amount"] ) ? intval( $body["delivery_amount"] ) : 0;
+            if ( $serviceFee < 0 )     { $serviceFee = 0; }
+            if ( $deliveryAmount < 0 ) { $deliveryAmount = 0; }
+
+            // A merchant with coupons switched off never has a code resolved against
+            // the backend here either -- the cart is priced (and charged) at full
+            // value, and a stored code is ignored, never honoured. See
+            // couponsEnabled()'s doc comment; applyDashboardCheckoutOverrides() has
+            // already run for this request in Global mode, at :859 above.
+            $coupon      = $this->couponsEnabled() ? $this->resolveDocumentCoupon( $document['coupon'] ) : null;
+            $cartTotals  = SooCartPricer::totals( $resolved['items'], $coupon, $deliveryAmount, $serviceFee );
+
+            if ( ! $cartTotals ) {
+                return array(
+                    'status'  => 'failed',
+                    'message' => __("It looks like your cart is empty", 'moo_OnlineOrders')
+                );
+            }
+
+            $body["cart"]            = SooCartPricer::lineItems( $resolved['items'] );
+            $body["service_fee"]     = $serviceFee;
+            $body["delivery_amount"] = $deliveryAmount;
+
+            // Loyalty points: the client sends only a raw point count (use_points), never a
+            // dollar amount. The remote validates that count against the customer's real
+            // balance for its own order/receipt record, but charges the payment split using
+            // the amount this route computes — so a discount left out here is a real
+            // overcharge, not just a display mismatch. Verify the count against the real
+            // balance and price it from the merchant's own rate settings before it ever
+            // touches $body["amount"]; never trust a client-sent dollar figure for it.
+            $rawUsePoints   = $this->normalizeUsePoints( isset( $body["use_points"] ) ? $body["use_points"] : 0 );
+            $pointsDiscount = 0;
+
+            if ( $rawUsePoints > 0 ) {
+                if ( empty( $customer_token ) ) {
+                    // canAcceptPoints() in sooCheckout.js keeps guests from ever setting
+                    // use_points, so a raw count with no customer_token is not a real
+                    // redemption this route can verify. No discount, and the bogus count
+                    // is not forwarded upstream.
+                    $rawUsePoints = 0;
+                } else {
+                    $loyaltySetting = $this->resolveLoyaltySetting();
+                    $pointsResult   = $this->resolveDocumentPointsDiscount( $rawUsePoints, $customer_token, $loyaltySetting, $cartTotals );
+
+                    if ( ! $pointsResult['ok'] ) {
+                        // Refuse the order rather than complete it without the discount
+                        // (undercounts the redemption) or trust the raw count (reopens the
+                        // fraud hole this verification exists to close).
+                        return array(
+                            'status'  => 'failed',
+                            'code'    => 'points_verification_failed',
+                            'message' => $pointsResult['message'],
+                        );
+                    }
+
+                    $rawUsePoints   = $pointsResult['points'];
+                    $pointsDiscount = $pointsResult['discount'];
+                }
+            }
+            $body["use_points"] = $rawUsePoints;
+
+            $taxRemoved = isset( $body["tax_removed"] ) && is_bool( $body["tax_removed"] ) && $body["tax_removed"];
+            $documentAmount = $this->computeDocumentAmount( $cartTotals, $serviceFee, $deliveryAmount, $taxRemoved, $pointsDiscount );
+            $body["tax_amount"] = $documentAmount["tax_amount"];
+            $body["amount"]     = $documentAmount["amount"];
+
+            if ( ! empty( $cartTotals["coupon_name"] ) ) {
+                $body["coupon"] = array( "code" => $document['coupon'] );
+            }
+        }
+
         //Get the cart from the session if isn't sent from the frontend
-        if(!isset($body["cart"]["items"])){
+        if(!isset($body["cart"]["items"]) && !isset($body["cart_document"])){
 
             //Add service fees and delivery fees to the body
             if(!isset($body["service_fee"])){
@@ -971,7 +1231,7 @@ class  CheckoutRoutes extends BaseRoute {
                 if(  ! $cartTotals ){
                     return array(
                         'status'	=> 'failed',
-                        'message'=> "It looks like your cart is empty"
+                        'message'=> __("It looks like your cart is empty", 'moo_OnlineOrders')
                     );
                 }
                 //Get The Order Total Amount and Tax Amount
@@ -990,7 +1250,7 @@ class  CheckoutRoutes extends BaseRoute {
                 if( ! $cartTotals ){
                     return array(
                         'status'	=> 'failed',
-                        'message'=> "It looks like your cart is empty"
+                        'message'=> __("It looks like your cart is empty", 'moo_OnlineOrders')
                     );
                 } else {
                     if (isset($body["tax_removed"]) && is_bool($body["tax_removed"]) && $body["tax_removed"]){
@@ -1048,7 +1308,7 @@ class  CheckoutRoutes extends BaseRoute {
                                 'status'	=> 'failed',
                                 'code'	=> 'low_stock',
                                 'item'	=> $cartLine['item']["id"],
-                                'message'	=> 'The item '. $this->getItemName($cartLine).' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
+                                'message'	=> sprintf(__('The item %1$s is low on stock. Please go back and change the quantity in your cart %2$s', 'moo_OnlineOrders'), $this->getItemName($cartLine), (($itemStock["stockCount"]>0) ? sprintf(__('as we have only %s left', 'moo_OnlineOrders'), $itemStock["stockCount"]) : ""))
                             );
                         } else {
                             if($itemStock["stockCount"] < 1) {
@@ -1056,7 +1316,7 @@ class  CheckoutRoutes extends BaseRoute {
                                     'status'	=> 'failed',
                                     'code'	=> 'low_stock',
                                     'item'	=> $cartLine['item']["id"],
-                                    'message'	=> 'The item '.$this->getItemName($cartLine).' is out off stock'
+                                    'message'	=> sprintf(__('The item %s is out of stock', 'moo_OnlineOrders'), $this->getItemName($cartLine))
                                 );
                             }
                         }
@@ -1108,6 +1368,7 @@ class  CheckoutRoutes extends BaseRoute {
         if( ! isset( $body["special_instructions"]) ) {
             $body["special_instructions"] = '';
         }
+        $body["utensils_requested"] = ! empty( $body["utensils_requested"] ) && $body["utensils_requested"] !== 'false';
         if( ! isset( $body["title"]) ) {
             $body["title"] = '';
         }
@@ -1142,7 +1403,9 @@ class  CheckoutRoutes extends BaseRoute {
           ["name"=>"clientUserAgent","value"=>$_SERVER["HTTP_USER_AGENT"]],
           ["name"=>"phpVersion","value"=>phpversion()],
           ["name"=>"pluginVersion","value"=>$this->version],
-          ["name"=>"settingsSource","value"=>SooSettingsSource::current()]
+          ["name"=>"settingsSource","value"=>SooSettingsSource::current()],
+          // 'modern' = the browser-held cart (Modern Cart beta), 'legacy' = the PHP session cart
+          ["name"=>"cartVersion","value"=>$cartVersion]
         );
 
         // Carry the reCAPTCHA verdict through to the backend. Until now the raw token was
@@ -1167,7 +1430,27 @@ class  CheckoutRoutes extends BaseRoute {
             $body["threeds"]["browser_info"]["browser_ip"] = $this->getClientIp();
         }
 
+        // Loyalty points: send use_points only when points are actually being
+        // spent. A zero count is not "no points" to the remote -- it runs the
+        // merchant's minimum-points rule on it and refuses the whole order with
+        // "Minimum points to order are: N", for a customer who never touched
+        // the points box. Both paths reach here: the cart_document branch sets
+        // $body["use_points"] from the verified count (0 when none), the legacy
+        // branch forwards the client's own field.
+        if (isset($body["use_points"]) && intval($body["use_points"]) <= 0) {
+            unset($body["use_points"]);
+        }
+
         //send request to the Api
+        // The upstream call can outlive what sits in front of PHP (a proxy or
+        // FPM limit answers 502/504 to the browser while the order is still
+        // being created). Keep running so the order finishes and its result
+        // is recorded under the idempotency key for the client's retry.
+        ignore_user_abort(true);
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(180);
+        }
+        $this->idempotencyStart($body["idempotency_key"]);
         try {
             do_action("moo_action_new_order_received", $body);
 
@@ -1191,20 +1474,130 @@ class  CheckoutRoutes extends BaseRoute {
                 }
                 // confirmation_message comes from the API response as-is; there
                 // is no local setting for it.
-                return apply_filters("moo_filter_order_creation_response",$orderCreated);
+                $response = apply_filters("moo_filter_order_creation_response",$orderCreated);
+                $this->idempotencyFinish($body["idempotency_key"], $response);
+                return $response;
             } else {
-                return array(
-                    "status"=>"failed",
-                    "message"=>__("An error has occurred please try again","moo_OnlineOrders")
-                );
+                $this->idempotencyFinish($body["idempotency_key"], null);
+                return $this->orderRefusedResponse($body["idempotency_key"]);
             }
         } catch (Exception  $e){
+            $this->idempotencyFinish($body["idempotency_key"], null);
             return array(
                 "status"=>"failed",
                 "message"=>__("An error has occurred please try again","moo_OnlineOrders")
             );
         }
     }
+
+    /**
+     * Idempotency record for a checkout key. Three states: none (proceed),
+     * in progress (the first request is still creating the order -- tell the
+     * client to wait and ask again), done (an order exists -- hand back the
+     * same response). Kept ten minutes; long enough to cover a proxy timeout
+     * and the customer's retries, short enough that the same cart ordered
+     * again later is a new order. Only responses carrying an order id are
+     * kept: a refusal leaves no record, so an honest retry goes through.
+     */
+    private function idempotencyKeyName($key) {
+        return 'soo_idem_' . md5((string) $key);
+    }
+
+    private function idempotencyState($key) {
+        if (empty($key)) {
+            return null;
+        }
+        $state = get_transient($this->idempotencyKeyName($key));
+        if (!is_array($state) || empty($state['status'])) {
+            return null;
+        }
+        if ($state['status'] === 'done' && is_array($state['response'])) {
+            $response = $state['response'];
+            $response['replayed'] = true;
+            return $response;
+        }
+        if ($state['status'] === 'in_progress') {
+            return array(
+                'status'  => 'pending',
+                'code'    => 'order_in_progress',
+                'message' => __("Your order is still being sent to the store, please wait a moment.", 'moo_OnlineOrders'),
+            );
+        }
+        return null;
+    }
+
+    private function idempotencyStart($key) {
+        if (!empty($key)) {
+            set_transient($this->idempotencyKeyName($key), array('status' => 'in_progress', 'started' => time()), 10 * MINUTE_IN_SECONDS);
+        }
+    }
+
+    private function idempotencyFinish($key, $response) {
+        if (empty($key)) {
+            return;
+        }
+        if (is_array($response) && !empty($response['id'])) {
+            set_transient($this->idempotencyKeyName($key), array('status' => 'done', 'response' => $response), 10 * MINUTE_IN_SECONDS);
+        } elseif ($this->lastRequestTimedOut()) {
+            // The API never answered but may still be creating the order:
+            // keep the record so a retry waits it out instead of ordering
+            // twice. Nothing will mark it done, so the client ends on the
+            // 'check your email before ordering again' message.
+            set_transient($this->idempotencyKeyName($key), array('status' => 'in_progress', 'started' => time(), 'timed_out' => true), 10 * MINUTE_IN_SECONDS);
+        } else {
+            delete_transient($this->idempotencyKeyName($key));
+        }
+    }
+
+    /**
+     * Did the last API call end in a transport timeout (cURL 28), as opposed
+     * to a refusal or a connection that never opened?
+     */
+    private function lastRequestTimedOut() {
+        $lastError = is_array($this->api->last_error) ? $this->api->last_error : array();
+        if (!isset($lastError['error_code']) || $lastError['error_code'] !== 'http_request_failed') {
+            return false;
+        }
+        $message = isset($lastError['message']) ? strtolower((string) $lastError['message']) : '';
+        return strpos($message, 'timed out') !== false || strpos($message, 'timeout') !== false || strpos($message, 'error 28') !== false;
+    }
+    /**
+     * createOrderV2() returned false. When the backend refused the order
+     * itself (a 4xx with its own JSON, e.g. 409 pickup_slot_full), show the
+     * customer that reason; anything else -- transport error, 5xx, an empty
+     * body -- keeps the generic message.
+     *
+     * @return array
+     */
+    private function orderRefusedResponse($idempotencyKey = '') {
+        $lastError = is_array($this->api->last_error) ? $this->api->last_error : array();
+        // One line in the PHP error log per refusal, with the key, so a
+        // refusal can be matched against what the backend did with it.
+        error_log(sprintf('[moo_OnlineOrders] order refused: http=%s key=%s body=%s',
+            isset($lastError['httpCode']) ? $lastError['httpCode'] : (isset($lastError['error_code']) ? $lastError['error_code'] : '-'),
+            $idempotencyKey,
+            isset($lastError['responseContent']) ? substr((string) $lastError['responseContent'], 0, 300) : (isset($lastError['message']) ? $lastError['message'] : '')
+        ));
+        if (isset($lastError['httpCode']) && $lastError['httpCode'] >= 400 && $lastError['httpCode'] <= 499
+            && !empty($lastError['responseContent'])) {
+            $refusal = json_decode($lastError['responseContent'], true);
+            if (is_array($refusal) && !empty($refusal['message']) && is_string($refusal['message'])) {
+                $response = array(
+                    "status"  => "failed",
+                    "message" => sanitize_text_field($refusal['message'])
+                );
+                if (!empty($refusal['error']) && is_string($refusal['error'])) {
+                    $response["code"] = sanitize_key($refusal['error']);
+                }
+                return $response;
+            }
+        }
+        return array(
+            "status"=>"failed",
+            "message"=>__("An error has occurred please try again","moo_OnlineOrders")
+        );
+    }
+
     /**
      * @param $request
      * @body json
@@ -1216,7 +1609,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(empty($phone_number)){
             return array(
                 'status'	=> 'error',
-                'message'   => 'Please send the phone number'
+                'message'   => __('Please send the phone number', 'moo_OnlineOrders')
             );
         }
         if ( ! Moo_OnlineOrders_Helpers::smsSendAllowed($phone_number) ) {
@@ -1247,7 +1640,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(empty($verification_code)){
             return array(
                 'status'	=> 'error',
-                'message'   => 'Please send the code'
+                'message'   => __('Please send the code', 'moo_OnlineOrders')
             );
         }
 
@@ -1281,7 +1674,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(empty($coupon_code)){
             return array(
                 'status'	=> 'error',
-                'message'   => 'Please send the coupon code'
+                'message'   => __('Please send the coupon code', 'moo_OnlineOrders')
             );
         }
 
@@ -1297,13 +1690,13 @@ class  CheckoutRoutes extends BaseRoute {
             }  else {
                 $response = array(
                     'status'	=> 'failed',
-                    "message" =>"Coupon not found"
+                    "message" =>__("Coupon not found", 'moo_OnlineOrders')
                 );
             }
         } else {
             $response = array(
                 'status'	=> 'failed',
-                "message" =>"Please enter the coupon code"
+                "message" =>__("Please enter the coupon code", 'moo_OnlineOrders')
             );
         }
 
@@ -1320,7 +1713,7 @@ class  CheckoutRoutes extends BaseRoute {
         if(empty($charge_id) || empty($flow_status)){
             return array(
                 'status'	=> 'error',
-                'message'   => 'Please send all required fields'
+                'message'   => __('Please send all required fields', 'moo_OnlineOrders')
             );
         }
         $payload = array(
@@ -1352,6 +1745,528 @@ class  CheckoutRoutes extends BaseRoute {
 
         return $this->session->getTotalsV2($charges, $discounts);
 
+    }
+
+    /**
+     * Price a browser-held cart document.
+     *
+     * Stateless and read-only: no session is written and no row is stored. Every price
+     * comes from the local tables via SooCartResolver and every total from
+     * SooCartPricer — the same arithmetic the session cart uses, so the two can never
+     * disagree. The document carries no money and none is read from it.
+     *
+     * @param WP_REST_Request $request
+     * @return array
+     */
+    public function priceCartDocument( $request ) {
+        // Registered with permission_callback => '__return_true', and resolving a document
+        // is not free (one or more DB queries per line and per modifier), so it is
+        // throttled. Its own bucket, not checkout()'s: a customer re-prices repeatedly
+        // while building an order, and sharing one budget would refuse them the checkout
+        // their own cart edits had already spent.
+        $rateLimited = $this->cartPriceRateLimit();
+        if ( is_wp_error( $rateLimited ) ) {
+            return $rateLimited;
+        }
+
+        // Global mode maps use_coupons (and everything else
+        // applyDashboardCheckoutOverrides() maps) from the dashboard's
+        // checkout_settings, same as checkout() does at ~line 859 before reading any
+        // plugin setting. Without this, this route would keep reading the *local*
+        // use_coupons value even in Global mode -- the same partial-coverage gap
+        // that previously hit the wallet flags and the cart flag.
+        //
+        // Cached across requests, unlike checkout(). dashboardClient()->fetch() is
+        // memoized only for the current PHP request, and this route fires on every
+        // debounced quantity change -- so a live fetch here would put one dashboard
+        // round trip on the critical path of every re-price. This route reads only
+        // *settings* from the payload (never store status or hours, which the checkout
+        // page and checkout() still fetch live), and a setting being up to a minute
+        // stale on a cart re-price costs nothing: the authoritative read happens again,
+        // live, in checkout() before anything is charged. Keyed per blog, since the
+        // payload is per merchant.
+        if ( SooSettingsSource::current() === 'global' ) {
+            $_dashForOverride = $this->cachedDashboardSettingsForPricing();
+            if ( is_array( $_dashForOverride ) ) {
+                $this->applyDashboardCheckoutOverrides( $_dashForOverride );
+            }
+        }
+
+        $document = SooCartDocument::parse( json_decode( $request->get_body(), true ) );
+
+        if ( ! empty( $document['errors'] ) ) {
+            return array(
+                'status'  => 'failed',
+                'code'    => $document['errors'][0],
+                'message' => __( 'Your cart could not be read. Please refresh the page and try again.', 'moo_OnlineOrders' ),
+            );
+        }
+
+        $resolver = new SooCartResolver( $this->model, $this->api );
+        $resolved = $resolver->resolve( $document );
+
+        if ( empty( $resolved['items'] ) ) {
+            return array(
+                'status'  => 'failed',
+                'code'    => 'empty_cart',
+                'message' => __( 'It looks like your cart is empty', 'moo_OnlineOrders' ),
+            );
+        }
+
+        // A merchant with coupons switched off never has a code resolved against the
+        // backend, and the cart is priced at full value -- a stored code is ignored,
+        // never honoured. See couponsEnabled()'s doc comment.
+        $couponsEnabled = $this->couponsEnabled();
+        $coupon = $couponsEnabled ? $this->resolveDocumentCoupon( $document['coupon'] ) : null;
+        $totals = SooCartPricer::totals( $resolved['items'], $coupon );
+
+        // Derived from the same $coupon/$totals the pricer already produced, before
+        // '_coupon_writeback' is stripped below -- see deriveCouponOutcome()'s own doc
+        // comment for why this is safe without touching SooCartPricer itself.
+        $couponOutcome = null;
+        if ( is_array( $totals ) ) {
+            $couponOutcome = $this->deriveCouponOutcome( $document['coupon'], $coupon, $totals, $couponsEnabled );
+        }
+
+        // The pricer hands back a coupon to persist; this route stores nothing, so it is
+        // dropped rather than leaked to the client. See SooCartPricer::totals().
+        if ( is_array( $totals ) ) {
+            unset( $totals['_coupon_writeback'] );
+        }
+
+        return array(
+            'status' => 'success',
+            'valid'  => $resolved['valid'],
+            'lines'  => $resolved['lines'],
+            'totals' => $totals,
+            'coupon' => $couponOutcome,
+        );
+    }
+
+    /**
+     * Builds the client-facing `coupon` block for /v3/cart/price: why the code the
+     * cart is carrying did or did not discount this order. Pure computation over the
+     * coupon SooCartPricer::totals() was given and the totals it returned -- it does
+     * not re-run or duplicate any of the pricer's arithmetic, only reads the outcome
+     * the pricer already reached, so it cannot drift from what actually happened
+     * there. This is deliberate: SooCartPricer.php is golden-master verified by
+     * check-equivalence.php and shared with the session cart, so the reason is
+     * derived here instead of adding any new branch to it.
+     *
+     * $coupon is safe to read after totals() runs: PHP arrays are value types, so
+     * SooCartPricer::totals() setting its own local $coupon to null (on the
+     * minimum-spend rule, SooCartPricer.php:210-213) never touches this caller's
+     * copy -- it is still resolveDocumentCoupon()'s original result, minAmount and
+     * all.
+     *
+     * @param string|null $code    The coupon code as sent in the document
+     *                             (SooCartDocument-parsed, so already trimmed/
+     *                             truncated). Empty/null means no coupon on the cart.
+     * @param array|null  $coupon  resolveDocumentCoupon()'s result: the API's coupon
+     *                             record when the code validated, or null when it
+     *                             didn't (not found, expired, or any other non-
+     *                             "success" status -- resolveDocumentCoupon() does
+     *                             not distinguish these, so neither does this).
+     * @param array       $totals  SooCartPricer::totals()'s return array (still
+     *                             carrying '_coupon_writeback' at this point).
+     * @param bool        $couponsEnabled Whether the merchant currently accepts
+     *                             coupons at all (couponsEnabled()). Defaults to
+     *                             true so every pre-existing call site (and this
+     *                             harness's pre-existing assertions) keeps its
+     *                             exact prior behaviour unchanged. When false,
+     *                             this short-circuits to the 'disabled' reason
+     *                             before ever looking at $coupon/$totals -- a
+     *                             cart carrying a stale code (applied before the
+     *                             merchant turned coupons off) must read as
+     *                             "coupons aren't available", never as "this code
+     *                             is invalid", even though the caller also skips
+     *                             resolveDocumentCoupon() entirely in that case
+     *                             (so $coupon is always null here too).
+     * @return array|null null when the cart carries no coupon code at all.
+     */
+    private function deriveCouponOutcome( $code, $coupon, $totals, $couponsEnabled = true ) {
+        if ( empty( $code ) ) {
+            return null;
+        }
+
+        if ( ! $couponsEnabled ) {
+            return array(
+                'code'      => $code,
+                'applied'   => false,
+                'reason'    => 'disabled',
+                'message'   => __("Coupons aren't available for this store", 'moo_OnlineOrders'),
+                'shortfall' => 0,
+                'capped'    => false,
+            );
+        }
+
+        $subTotal    = isset( $totals['sub_total'] ) ? intval( $totals['sub_total'] ) : 0;
+        $couponValue = isset( $totals['coupon_value'] ) ? intval( $totals['coupon_value'] ) : 0;
+
+        // Not found, expired, or any other non-"success" API status -- the code
+        // itself never resolved to a real coupon.
+        if ( empty( $coupon ) ) {
+            return array(
+                'code'      => $code,
+                'applied'   => false,
+                'reason'    => 'invalid',
+                'message'   => __('This coupon code is not valid.', 'moo_OnlineOrders'),
+                'shortfall' => 0,
+                'capped'    => false,
+            );
+        }
+
+        $minAmountCents = isset( $coupon['minAmount'] ) ? intval( round( floatval( $coupon['minAmount'] ) * 100 ) ) : 0;
+
+        // A valid coupon that SooCartPricer::totals() zeroed out because this order
+        // doesn't reach its minimum spend (SooCartPricer.php:210-213). $couponValue
+        // is only ever 0 here for that reason once $minAmountCents > $subTotal is
+        // also true -- checked explicitly rather than inferred from $couponValue
+        // alone, since a $0-value coupon or a $0 subtotal can also produce
+        // $couponValue <= 0 without being a minimum-spend failure (see the fallback
+        // below).
+        if ( $couponValue <= 0 && $minAmountCents > $subTotal ) {
+            $shortfall = $minAmountCents - $subTotal;
+            return array(
+                'code'      => $code,
+                'applied'   => false,
+                'reason'    => 'below_minimum',
+                'message'   => sprintf( 'Spend %s more to use %s.', self::formatCentsForMessage( $shortfall ), $code ),
+                'shortfall' => $shortfall,
+                'capped'    => false,
+            );
+        }
+
+        if ( $couponValue > 0 ) {
+            // '_coupon_writeback' is non-null only when SooCartPricer::totals()
+            // capped a percentage coupon to its configured maxValue
+            // (SooCartPricer.php:214-221) -- read here, not recomputed, so this can
+            // never disagree with what the pricer actually capped.
+            $capped  = ! empty( $totals['_coupon_writeback'] );
+            $message = $capped
+                ? sprintf( '%s applied — %s maximum discount applied.', $code, self::formatCentsForMessage( $couponValue ) )
+                : sprintf( '%s applied.', $code );
+            return array(
+                'code'      => $code,
+                'applied'   => true,
+                'reason'    => 'applied',
+                'message'   => $message,
+                'shortfall' => 0,
+                'capped'    => $capped,
+            );
+        }
+
+        // Defensive fallback: a coupon that validated and isn't below its minimum
+        // spend but still discounts nothing at all (e.g. a $0 subtotal, or a coupon
+        // configured with a $0 value). Not one of the two failure reasons above, but
+        // a client must never see applied=false with no reason at all.
+        return array(
+            'code'      => $code,
+            'applied'   => false,
+            'reason'    => 'no_effect',
+            'message'   => sprintf( '%s could not be applied to this order.', $code ),
+            'shortfall' => 0,
+            'capped'    => false,
+        );
+    }
+
+    /**
+     * Formats an integer cents amount as a US-dollar string for a human-readable
+     * coupon message, e.g. 450 -> "$4.50". Matches how every other client-facing
+     * message in this file is plain, non-localized English (see
+     * SooCartResolver.php's problem messages) rather than routed through __().
+     *
+     * @param int $cents
+     * @return string
+     */
+    private static function formatCentsForMessage( $cents ) {
+        return '$' . number_format( intval( $cents ) / 100, 2 );
+    }
+
+    /**
+     * True when the merchant currently accepts coupons. Reads $this->pluginSettings,
+     * the same array every other setting in this file reads (BaseRoute's constructor
+     * filters it through moo_filter_plugin_settings; Global mode further overwrites it
+     * via applyDashboardCheckoutOverrides()) -- so a caller only sees the merchant's
+     * real, currently-active choice as long as applyDashboardCheckoutOverrides() has
+     * already run for this request when in Global mode (checkout() does this at
+     * ~line 859; priceCartDocument() mirrors it). 'enabled' is the only truthy value
+     * 'use_coupons' ever takes (SooSettingsRegistry: type bool_toggle), matching
+     * checkoutPage.php's own `== "enabled"` checks that hide the legacy page's coupon
+     * UI on the same setting.
+     *
+     * @return bool
+     */
+    /**
+     * checkout_settings from the dashboard payload, cached for the cart-price route.
+     *
+     * A short transient rather than the client's per-request memo: /v3/cart/price is
+     * called on every debounced quantity change, and each call is its own PHP request,
+     * so without this every re-price in Global mode paid for a live dashboard round
+     * trip. Only the settings block is cached -- store status and hours are not read
+     * here -- and checkout() still fetches live before charging, so a stale setting on
+     * a re-price can never reach a charge.
+     *
+     * A failed fetch is not cached: the next re-price retries rather than pinning a
+     * failure for the TTL. Returns null when nothing usable is available, in which case
+     * the caller leaves the local settings untouched -- the same fallback checkout()
+     * has always used when the dashboard is unreachable.
+     *
+     * @return array|null checkout_settings, or null
+     */
+    private function cachedDashboardSettingsForPricing() {
+        $key = 'soo_price_cs_' . get_current_blog_id();
+        $cached = get_transient( $key );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+        $dash = SooSettingsSource::instance( $this->api )->dashboardClient()->fetch();
+        if ( ! is_array( $dash ) || ! isset( $dash['checkout_settings'] ) || ! is_array( $dash['checkout_settings'] ) ) {
+            return null;
+        }
+        set_transient( $key, $dash['checkout_settings'], 60 );
+        return $dash['checkout_settings'];
+    }
+
+    private function couponsEnabled() {
+        return isset( $this->pluginSettings['use_coupons'] ) && $this->pluginSettings['use_coupons'] === 'enabled';
+    }
+
+    /**
+     * Per-item special instructions: the same decision the cart UI's
+     * "Add note" is gated on (sooShortCode::newCartParams()).
+     */
+    private function itemNotesEnabled() {
+        if ( ! class_exists( 'sooShortCode' ) ) {
+            require_once plugin_dir_path( dirname( __FILE__ ) ) . 'shortcodes/sooShortCode.php';
+        }
+        $params = sooShortCode::newCartParams( $this->pluginSettings );
+        return ! empty( $params['itemNotesEnabled'] );
+    }
+
+    /**
+     * Validate a coupon code against the backend and return it in the shape the pricer
+     * expects, or null. The client sends a code, never a discount — the amount is always
+     * decided here.
+     *
+     * @param string|null $code
+     * @return array|null
+     */
+    private function resolveDocumentCoupon( $code ) {
+        if ( empty( $code ) ) {
+            return null;
+        }
+        $response = json_decode( $this->api->moo_checkCoupon( $code ), true );
+        if ( ! is_array( $response ) || ! isset( $response['status'] ) || $response['status'] !== 'success' ) {
+            return null;
+        }
+        return $response;
+    }
+
+    /**
+     * Coerces a client-sent use_points value to a sane non-negative int. Garbage
+     * (non-numeric strings, floats, negative numbers) all become 0 — no redemption,
+     * rather than an error, since a malformed count is not something the customer can
+     * fix by retrying the same click.
+     *
+     * @param mixed $raw
+     * @return int
+     */
+    private function normalizeUsePoints( $raw ) {
+        $n = intval( $raw );
+        if ( $n < 0 ) { $n = 0; }
+        return $n;
+    }
+
+    /**
+     * The cart_document branch's amount/tax_amount formula, with the points discount
+     * (already verified and priced by resolveDocumentPointsDiscount()) folded in.
+     * $pointsDiscount of 0 reproduces the pre-fix formula exactly.
+     *
+     * @param array $cartTotals     SooCartPricer::totals() result.
+     * @param int   $serviceFee
+     * @param int   $deliveryAmount
+     * @param bool  $taxRemoved
+     * @param int   $pointsDiscount Non-negative, already capped to the order.
+     * @return array {amount:int, tax_amount:int}
+     */
+    private function computeDocumentAmount( $cartTotals, $serviceFee, $deliveryAmount, $taxRemoved, $pointsDiscount ) {
+        if ( $taxRemoved ) {
+            $taxAmount = 0;
+            $amount    = $cartTotals["sub_total"] + $serviceFee + $deliveryAmount - $cartTotals["coupon_value"] - $pointsDiscount;
+        } else {
+            $taxAmount = $cartTotals["total_of_taxes"];
+            $amount    = $cartTotals["total"] + $serviceFee + $deliveryAmount - $pointsDiscount;
+        }
+        if ( $amount < 0 ) {
+            $amount = 0;
+        }
+        return array( "amount" => $amount, "tax_amount" => $taxAmount );
+    }
+
+    /**
+     * The merchant's own loyalty rate/limit settings (per_x_usd, nb_points,
+     * percent_to_cover, ...) — resolved the same way checkoutPage.php resolves them for the
+     * widget the customer used to pick a point count: Global mode reads the dashboard's
+     * checkout_settings.loyaltySetting, Customized mode reads the public business-settings
+     * endpoint. Never anything the client sent on the request.
+     *
+     * @return array|null
+     */
+    private function resolveLoyaltySetting() {
+        if ( SooSettingsSource::current() === 'global' ) {
+            $dash = SooSettingsSource::instance( $this->api )->dashboardClient()->fetch();
+            if ( is_array( $dash ) && isset( $dash['checkout_settings']['loyaltySetting'] ) && is_array( $dash['checkout_settings']['loyaltySetting'] ) ) {
+                return $dash['checkout_settings']['loyaltySetting'];
+            }
+            return null;
+        }
+        $businessSettings = $this->api->getBusinessSettings();
+        if ( is_array( $businessSettings ) && isset( $businessSettings['loyaltySetting'] ) && is_array( $businessSettings['loyaltySetting'] ) ) {
+            return $businessSettings['loyaltySetting'];
+        }
+        return null;
+    }
+
+    /**
+     * Verifies a redeemed points count against the customer's real balance
+     * (merchants/customers/points) and prices the discount from the merchant's own
+     * server-fetched rate/limit settings — never from anything the client sent beyond the
+     * raw count. Called only when use_points > 0 and a customer_token is present
+     * (canAcceptPoints() in sooCheckout.js is what keeps guests from ever setting it).
+     *
+     * On any failure to verify — the balance call errors, times out, or returns something
+     * unusable, or the merchant's own rate settings cannot be resolved — this returns
+     * ok=false so the caller refuses the order outright. Completing the order trusting the
+     * raw count, or silently dropping the discount, both reproduce the money defect this
+     * exists to close.
+     *
+     * Pure aside from the one $this->api->customerRequestsWrapper() call, so it is testable
+     * by constructing CheckoutRoutes with a fake $api — no live request needed.
+     *
+     * The returned 'points' is always exactly consistent with 'discount' under the
+     * merchant's rate: when the subtotal/percent_to_cover cap binds, the point count is
+     * re-derived from the capped discount (floored, never rounded up — see the inline
+     * comment below) rather than forwarding the balance-clamped count as-is. Forwarding it
+     * unmodified there is the money defect this method exists to close: it would spend the
+     * customer's full count for less than its value. When the cap does not bind, 'points'
+     * is simply the balance-clamped raw count, unchanged.
+     *
+     * @param int        $rawPoints      Client-sent point count, already > 0.
+     * @param string     $customerToken  Always present when this is called.
+     * @param array|null $loyaltySetting Merchant's server-fetched rate/limit settings.
+     * @param array      $cartTotals     SooCartPricer::totals() result, for the subtotal cap.
+     * @return array {ok:true, points:int, discount:int} or {ok:false, message:string}
+     */
+    private function resolveDocumentPointsDiscount( $rawPoints, $customerToken, $loyaltySetting, $cartTotals ) {
+        $failure = array(
+            'ok'      => false,
+            'message' => __( "We couldn't verify your loyalty points balance right now. Please try again.", 'moo_OnlineOrders' ),
+        );
+
+        if ( ! is_array( $loyaltySetting )
+            || ! isset( $loyaltySetting['per_x_usd'] ) || ! is_numeric( $loyaltySetting['per_x_usd'] )
+            || ! isset( $loyaltySetting['nb_points'] ) || ! is_numeric( $loyaltySetting['nb_points'] )
+            || floatval( $loyaltySetting['per_x_usd'] ) <= 0
+            || floatval( $loyaltySetting['nb_points'] ) <= 0
+        ) {
+            return $failure;
+        }
+
+        $balanceResponse = $this->api->customerRequestsWrapper( 'merchants/customers/points', null, $customerToken, false );
+        if ( $balanceResponse === false
+            || ! is_array( $balanceResponse )
+            || ! isset( $balanceResponse['valid_points'] )
+            || ! is_numeric( $balanceResponse['valid_points'] )
+        ) {
+            return $failure;
+        }
+
+        $realBalance = intval( $balanceResponse['valid_points'] );
+        if ( $realBalance < 0 ) { $realBalance = 0; }
+
+        $clampedPoints = min( $rawPoints, $realBalance );
+        if ( $clampedPoints <= 0 ) {
+            return array( 'ok' => true, 'points' => 0, 'discount' => 0 );
+        }
+
+        $perXUsd  = floatval( $loyaltySetting['per_x_usd'] );
+        $nbPoints = floatval( $loyaltySetting['nb_points'] );
+        $discount = intval( round( $clampedPoints * $perXUsd / $nbPoints ) );
+        if ( $discount < 0 ) { $discount = 0; }
+
+        // Cap to the same base the redemption UI caps against — subtotal minus coupon —
+        // and to the merchant's own percent-of-order limit, if one is set.
+        $subTotalWithoutCoupon = $cartTotals['sub_total'] - $cartTotals['coupon_value'];
+        if ( $subTotalWithoutCoupon < 0 ) { $subTotalWithoutCoupon = 0; }
+
+        $percentToCover = 100;
+        if ( isset( $loyaltySetting['percent_to_cover'] ) && is_numeric( $loyaltySetting['percent_to_cover'] ) ) {
+            $percentToCover = floatval( $loyaltySetting['percent_to_cover'] );
+        }
+        if ( $percentToCover < 0 ) { $percentToCover = 0; }
+
+        $maxDiscount = intval( round( $subTotalWithoutCoupon * $percentToCover / 100 ) );
+
+        if ( $discount > $maxDiscount ) {
+            // The balance-clamped count is worth more than the order can absorb (subtotal
+            // and/or percent_to_cover). Re-derive the point count from the capped discount
+            // instead of forwarding $clampedPoints as-is — forwarding it here is exactly the
+            // bug this method exists to close: it would spend the customer's full count for
+            // only $maxDiscount of value and silently lose the rest.
+            //
+            // Round the point count DOWN, never up: rounding up would spend a whole extra
+            // point for a fraction of its value (the same class of loss, just smaller).
+            // Rounding down means the recomputed discount below can come out a hair under
+            // $maxDiscount (never over — see the inequality note below) — that residual is
+            // cents the customer keeps as order total instead of as discount, which is a
+            // fair trade against keeping the fractional point in their balance. It never
+            // costs the merchant anything they didn't already offer.
+            $discount = $maxDiscount;
+            if ( $discount <= 0 ) {
+                $clampedPoints = 0;
+                $discount      = 0;
+            } else {
+                $clampedPoints = (int) floor( $discount * $nbPoints / $perXUsd );
+                if ( $clampedPoints <= 0 ) {
+                    // Less than one point's worth of value survived the cap: spend no
+                    // points at all rather than floor to some point count that buys
+                    // nothing (or a point whose value would exceed the cap).
+                    $clampedPoints = 0;
+                    $discount      = 0;
+                } else {
+                    // Recompute the discount from the rounded-down count with the exact
+                    // same forward formula used above, so use_points and discount are
+                    // exactly consistent under the merchant's rate. Because $clampedPoints
+                    // = floor($discount * $nbPoints / $perXUsd), algebraically
+                    // $clampedPoints * $perXUsd / $nbPoints <= $discount always, so this
+                    // round() can equal $maxDiscount but never exceed it.
+                    $discount = intval( round( $clampedPoints * $perXUsd / $nbPoints ) );
+                }
+            }
+        }
+        if ( $discount < 0 ) { $discount = 0; }
+
+        // The merchant's per-order minimum applies to the count actually spent, and
+        // the cap above can push that count below it: a customer redeems 240 against a
+        // large cart (passing the client-side minimum check in usePoints()), then edits
+        // the cart down, and the capped count comes out at, say, 60. Forwarding 60 with
+        // a minimum of 100 makes the backend reject the whole order -- "Minimum points
+        // to order are: 100" -- at the moment of payment, for a rule the customer
+        // satisfied when they redeemed.
+        //
+        // Below the minimum, points are simply not used: count and discount both go
+        // to zero, the order proceeds at full price, and the customer keeps every
+        // point. The client mirrors this in getAppliedPoints() so the widget and the
+        // total agree with what is charged. A minimum of 0 (or absent) disables the
+        // rule, matching the client.
+        $minPoints = isset( $loyaltySetting['min_points_to_order'] ) ? intval( $loyaltySetting['min_points_to_order'] ) : 0;
+        if ( $minPoints > 0 && $clampedPoints > 0 && $clampedPoints < $minPoints ) {
+            $clampedPoints = 0;
+            $discount      = 0;
+        }
+
+        return array( 'ok' => true, 'points' => $clampedPoints, 'discount' => $discount );
     }
 
     /**
@@ -1475,6 +2390,23 @@ class  CheckoutRoutes extends BaseRoute {
         $this->pluginSettings['service_fees_name'] = $this->dashboardScalarToString(
             isset($checkoutSettings['serviceFeeName']) ? $checkoutSettings['serviceFeeName'] : null
         );
+        // Order scheduling — see the matching block in checkoutPage so the page and this
+        // route resolve the same values. Without it the route keeps the local scheduling
+        // settings while its slots come from the dashboard.
+        $this->pluginSettings['order_later'] = !empty($checkoutSettings['scheduleOrder']) ? 'on' : 'off';
+        $this->pluginSettings['order_later_mandatory'] = !empty($checkoutSettings['isScheduledTimeRequired']) ? 'on' : 'off';
+        if (isset($checkoutSettings['scheduleDayRange'])) {
+            $this->pluginSettings['order_later_days'] = (int) $checkoutSettings['scheduleDayRange'];
+            $this->pluginSettings['order_later_days_delivery'] = (int) $checkoutSettings['scheduleDayRange'];
+        }
+        if (isset($checkoutSettings['leadTime'])) {
+            $this->pluginSettings['order_later_minutes'] = (int) $checkoutSettings['leadTime'];
+            $this->pluginSettings['order_later_minutes_delivery'] = (int) $checkoutSettings['leadTime'];
+        }
+        $dashAsap = !empty($checkoutSettings['allowAsap']) ? 'on' : 'off';
+        $this->pluginSettings['order_later_asap_for_p'] = $dashAsap;
+        $this->pluginSettings['order_later_asap_for_d'] = $dashAsap;
+
         $this->pluginSettings['use_sms_verification'] = !empty($checkoutSettings['smsVerificationEnabled']) ? 'enabled' : 'disabled';
         $this->pluginSettings['use_special_instructions'] = !empty($checkoutSettings['specialInstructionsEnabled']) ? 'enabled' : 'disabled';
         $this->pluginSettings['special_instructions_required'] = !empty($checkoutSettings['specialInstructionsRequired']) ? 'yes' : 'no';
@@ -1485,6 +2417,14 @@ class  CheckoutRoutes extends BaseRoute {
         $this->pluginSettings['marketing_checkbox_text'] = $this->dashboardScalarToString(
             isset($checkoutSettings['marketingCheckboxText']) ? $checkoutSettings['marketingCheckboxText'] : null
         );
+        $this->pluginSettings['utensils_checkbox_enabled'] = !empty($checkoutSettings['utensilsCheckboxEnabled']) ? 'on' : 'off';
+        $this->pluginSettings['utensils_checkbox_text'] = $this->dashboardScalarToString(
+            isset($checkoutSettings['utensilsCheckboxText']) ? $checkoutSettings['utensilsCheckboxText'] : null
+        );
+        $this->pluginSettings['new_cart_enabled'] = !empty($checkoutSettings['newCartEnabled']) ? 'on' : 'off';
+        $this->pluginSettings['new_cart_expiry_hours'] = isset($checkoutSettings['newCartExpiryHours'])
+            ? (int) $checkoutSettings['newCartExpiryHours']
+            : 24;
         $this->pluginSettings['use_coupons'] = !empty($checkoutSettings['useCoupons']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock'] = !empty($checkoutSettings['enableStockTracking']) ? 'enabled' : 'disabled';
         $this->pluginSettings['track_stock_hide_items'] = !empty($checkoutSettings['hideUnavailableItems']) ? 'on' : 'off';
@@ -1660,7 +2600,9 @@ class  CheckoutRoutes extends BaseRoute {
             return '';
         }
 
-        return strtolower(preg_replace('/[^a-z0-9]+/', '', $raw));
+        // Lowercase first: the dashboard sends camelCase ("giftCard", "googlePay"), and
+        // stripping with a lowercase-only class dropped the capitals ("giftard").
+        return preg_replace('/[^a-z0-9]+/', '', strtolower($raw));
     }
 
     /**

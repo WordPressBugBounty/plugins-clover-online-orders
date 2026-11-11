@@ -4,8 +4,8 @@ Donate link: http://www.zaytech.com/
 Tags: clover,online orders for clover, Online orders for Clover, Wordpress and Clover, Online ordering for Clover POS
 Requires at least: 4.7.1
 Tested up to: 7.1
-Requires PHP: 5.2.0
-Stable tag: 1.6.6
+Requires PHP: 7.1
+Stable tag: 1.6.7
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,12 @@ My Orders page
 
 `[moo_my_account]`
 
+With the modern cart enabled, the sign-in heading and its line of text can be changed or hidden:
+
+`[moo_my_account title="Your orders" subtitle="Sign in to see them"]`
+
+`[moo_my_account hide_hero="yes"]`
+
 You can also display only some categories by adding the attribute categories to the shortcode, so you can create different pages each page with specific categories (pickup and catering for example)
 
 `[moo_all_items categories="6QW02M6CY9MHJ,9KS5GJYMJBD3T"]`
@@ -142,6 +148,19 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.7 =
+* New modern cart (beta, off by default): a slide-out cart drawer, a two-column cart page, and the ability to edit an item's modifiers from the cart or checkout without removing it. Enable it under Checkout settings > Modern Cart (Beta).
+* Modern cart improvements: "item added" toast, remove confirmation, special instructions per item, a restyled sign-in area on checkout and My Orders with password reset and phone verification inline, a compact order summary at checkout, and the cart shown next to the menu in store interface 3.
+* Added optional support for Clover flat-fee tax rates (a fixed amount per item). Off by default: enable it under Checkout Settings > Service Fees, then re-sync your tax rates once.
+* Signed-in customers can pay with a card saved in the mobile app: saved cards are listed as a payment option at checkout.
+* Checkout no longer reports a failure while a large order is still being sent to the store; it waits, tells the customer, and never sends the same order twice.
+* Added a "utensils" request checkbox at checkout.
+* Items / Images / Description: "Revert to Clover Name" removes an item's custom online name, and "Revert All to Clover Names" does it for every item at once. Images, descriptions and prices are untouched.
+* Global mode: order scheduling, "accept orders while closed" and the closing message now follow the dashboard.
+* The "Taxes & fees" combined line is now also honoured on the cart page.
+* Improved the modifiers popup's quantity control and typography.
+* Security improvements and hardening.
+
 = 1.6.6 =
 * Added a reminder to set up Google reCAPTCHA when it is not configured yet, with a quick way to enter your keys.
 

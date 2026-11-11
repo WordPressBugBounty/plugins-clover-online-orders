@@ -7,6 +7,15 @@ class cartPage extends sooShortCode
 
     public function cart($atts, $content)
     {
+        // Beta on: this whole method below renders straight from the
+        // PHP-session cart ($session->getTotals()/$session->get("items")),
+        // which the beta never writes to -- the browser cart
+        // (SooCartStore/localStorage) is the cart now. Host the drawer
+        // instead and return early; every line below this is untouched
+        // flag-off behaviour.
+        if ($this->isNewCartEnabled()) {
+            return $this->cartDrawerHost();
+        }
 
         $this->enqueueStyles();
         $this->enqueueScripts();
@@ -199,6 +208,91 @@ class cartPage extends sooShortCode
         $this->enqueueSweetAlerts();
         $this->enqueueCartJs();
     }
+
+    /**
+     * Renders the /cart page shortcode's beta surface: a host element
+     * SooCartUI.mount() renders the cart INTO (laid out in the page,
+     * no scrim, no close button -- a destination, not a popup over an
+     * empty page), plus a <noscript> fallback for JS-disabled visitors.
+     * This is the same SooCartUI the floating trigger opens elsewhere --
+     * "a customer can reach the cart either way and both must show the
+     * same cart" (spec #13a).
+     *
+     * @return string
+     */
+    private function cartDrawerHost() {
+        $this->enqueueCartUiAssets();
+        // One-time hand-off of a pre-existing session cart (from before
+        // the beta flag was switched on) into the browser store -- see
+        // sooShortCode::captureSessionCartForImport() for how "once" is
+        // guaranteed. Both calls run back-to-back here (unlike
+        // checkoutPage.php, which must split them across the method)
+        // because enqueueCartUiAssets() above already registered
+        // 'sooCartUI' before either of these runs -- see
+        // localizeSessionCartImport()'s own doc comment for why the
+        // handle must already be registered when it's called.
+        $this->prepareSessionCartImport();
+        $this->localizeSessionCartImport();
+
+        $store_page_id = isset($this->pluginSettings['store_page']) ? $this->pluginSettings['store_page'] : 0;
+        $store_page_url = $store_page_id ? get_page_link($store_page_id) : '#';
+
+        ob_start();
+        ?>
+        <div id="soo-cart-page-mount"></div>
+        <noscript>
+            <div style="padding: 40px 20px; text-align: center;">
+                <p><?php _e("Your cart", "moo_OnlineOrders"); ?></p>
+                <a class="moo-btn moo-btn-default" href="<?php echo esc_url($store_page_url); ?>">
+                    <?php _e("Back to Main Menu", "moo_OnlineOrders"); ?>
+                </a>
+            </div>
+        </noscript>
+        <?php
+        if (isset($this->pluginSettings["custom_js"])) {
+            echo '<script type="text/javascript">'.$this->pluginSettings["custom_js"].'</script>';
+        }
+        return ob_get_clean();
+    }
+
+    /**
+     * Registers/enqueues the drawer bundle (sooCartUI.js + its CSS).
+     * sooCartStore (SooCartStore/SooCartBridge/SooCartPricing) is already
+     * registered unconditionally by Moo_OnlineOrders_Public::enqueue_scripts()
+     * (hooked on every front-end page, flag or no flag), so it is only
+     * declared here as a dependency, not re-registered. The /cart page is
+     * a destination, not a popup over an empty page -- so this mounts
+     * SooCartUI's INLINE presentation into #soo-cart-page-mount (no
+     * scrim, no close button, laid out in the page like the old cart
+     * page was) rather than opening the overlay drawer. The inline
+     * script is attached after the bundle, so SooCartUI already exists
+     * when it runs.
+     */
+    private function enqueueCartUiAssets() {
+        // Self-hosted Archivo/Spline Sans Mono faces this drawer's CSS
+        // vars resolve to -- see sooShortCode::enqueueFontsCss() and
+        // public/less/sooFonts.less for why this lives in its own
+        // stylesheet rather than sooCartDrawer.less itself.
+        $this->enqueueFontsCss();
+
+        wp_register_style('sooCartDrawer-css', SOO_PLUGIN_URL . '/public/css/dist/sooCartDrawer.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooCartDrawer-css');
+
+        // Phase 4 (line editing): the chip picker sooCartUI.js's own Edit
+        // affordance opens. Registered as a dependency of 'sooCartUI' (not
+        // enqueued separately) so it is guaranteed to exist by the time
+        // SooCartUI.mount()'s inline script below runs, and load order
+        // between the two <script> tags never matters. Same isolation
+        // approach as the drawer's own CSS -- see sooModifierPicker.less.
+        wp_register_style('sooModifierPicker-css', SOO_PLUGIN_URL . '/public/css/dist/sooModifierPicker.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooModifierPicker-css');
+        wp_register_script('sooModifierPicker', SOO_PLUGIN_URL . '/public/js/dist/sooModifierPicker.min.js', array('jquery'), SOO_VERSION, false);
+
+        wp_register_script('sooCartUI', SOO_PLUGIN_URL . '/public/js/dist/sooCartUI.min.js', array('jquery', 'sooCartStore', 'sooModifierPicker'), SOO_VERSION, false);
+        wp_enqueue_script('sooCartUI');
+        wp_add_inline_script('sooCartUI', 'if (window.SooCartUI) { SooCartUI.mount("#soo-cart-page-mount"); }', 'after');
+    }
+
     private function getItemStock($items,$item_uuid) {
         foreach ($items as $i) {
             if(isset($i["item"]["id"]) && $i["item"]["id"] == $item_uuid) {

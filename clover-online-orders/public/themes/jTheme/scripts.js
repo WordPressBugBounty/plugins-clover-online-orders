@@ -7,11 +7,20 @@ jQuery(document).ready(function() {
     window.moo_mg_setings = {};
     window.nb_items_in_cart = 0;
 
+    // Beta on: the badge on this page (#moo-cartNbItems, built in
+    // MooLoadBaseStructure below) also needs to follow a second tab
+    // adding/removing items -- SooCartStore.onChange() already fires on
+    // the storage event, this just wires it to the badge. Flag off: a
+    // no-op, nothing subscribes.
+    SooCartBridge.onCartCountChange(function (n) {
+        jQuery('#moo-cartNbItems').text(n > 0 ? n : '');
+    });
+
     /* Load the theme settings then draw tha layout an get the categories with the first five items */
     jQuery.get(moo_RestUrl+"moo-clover/v1/theme_settings/jTheme", function (data) {
         if(data != null && data.settings != null) {
             window.moo_theme_setings = data.settings;
-            window.nb_items_in_cart  = data.nb_items;
+            window.nb_items_in_cart  = SooCartBridge.resolveNbItems(data.nb_items);
             window.moo_nbItemsPerLine = parseInt(window.moo_theme_setings.jTheme_nbItemsPerRow);
         }
     }).done(function () {
@@ -20,32 +29,24 @@ jQuery(document).ready(function() {
         var hash = window.location.hash;
         if (hash !== "") {
             var params = hash.split("-");
-            if(params.length === 2) {
-                switch (params[0]) {
-                    case '#cat' :
-                        MooLoadBaseStructure('#moo_OnlineStoreContainer',function () {
-                            jQuery.get(moo_RestUrl+"moo-clover/v1/categories/"+params[1]+"/items", function (data) {
-                                if(data.items !== null) {
-                                    moo_renderItems(data);
-                                } else {
-                                    MooHideLoading();
-                                    var t ='<button class="osh-btn" onclick="moo_backToCategories(\''+params[1]+'\')">' +
-                                        '<span class="label">Back to Categories</span>'+
-                                        '</button>';
-                                    jQuery("#moo-onlineStore-items").html('<h3>No item found</h3>'+t);
-                                }
+            // The hash is attacker-controlled: only a plain category id may go any further.
+            var hashCatId = params.length === 2 ? mooSafeCatId(params[1]) : '';
+            if(params[0] === '#cat' && hashCatId !== '') {
+                MooLoadBaseStructure('#moo_OnlineStoreContainer',function () {
+                    jQuery.get(moo_RestUrl+"moo-clover/v1/categories/"+hashCatId+"/items", function (data) {
+                        if(data.items !== null) {
+                            moo_renderItems(data);
+                        } else {
+                            MooHideLoading();
+                            mooRenderNoItemsFound(hashCatId);
+                        }
 
-                            }).fail(function () {
-                                MooHideLoading();
-                                var t ='<button class="osh-btn" onclick="moo_backToCategories(\''+params[1]+'\')">' +
-                                    '<span class="label">Back to Categories</span>'+
-                                    '</button>';
-                                jQuery("#moo-onlineStore-items").html('<h3>No item found</h3>'+t);
-                            });
-                        });
-                        MooSetLoading();
-                        break;
-                }
+                    }).fail(function () {
+                        MooHideLoading();
+                        mooRenderNoItemsFound(hashCatId);
+                    });
+                });
+                MooSetLoading();
             } else {
                 MooLoadBaseStructure('#moo_OnlineStoreContainer',mooGetCategories);
                 MooSetLoading();
@@ -148,7 +149,8 @@ function  moo_renderCategories($cats) {
             } else {
                 html +='<div class="moo-col-xs-12 moo-col-sm-6 moo-col-md-'+nbItemsPerRowCssCol+'">';
             }
-            html +='<a class="link" href="#cat-'+ category.uuid.toLowerCase() +'" id="cat-'+category.uuid.toLowerCase()+'" data-cat-id="'+category.uuid.toLowerCase()+'" onclick="MooClickOnCategory(event,this)">';
+            var catId = mooSafeCatId(category.uuid).toLowerCase();
+            html +='<a class="link" href="#cat-'+ catId +'" id="cat-'+catId+'" data-cat-id="'+catId+'" onclick="MooClickOnCategory(event,this)">';
             html += '<div class="image-wrapper" style="background: url('+imageCatUrl+') no-repeat center;background-size:100%;"></div>';
 
 
@@ -177,10 +179,7 @@ function  moo_renderCategories($cats) {
                 moo_renderItems(data);
             } else {
                 MooHideLoading();
-                var t ='<button class="osh-btn" onclick="moo_backToCategories(\''+cat_id+'\')">' +
-                    '<span class="label">Back to Categories</span>'+
-                    '</button>';
-                jQuery("#moo-onlineStore-items").html('<h3>No item found</h3>'+t);
+                mooRenderNoItemsFound(cat_id);
             }
 
         });
@@ -204,10 +203,7 @@ function MooClickOnCategory(event,elm)
             moo_renderItems(data);
         } else {
             MooHideLoading();
-            var t ='<button class="osh-btn" onclick="moo_backToCategories(\''+cat_id+'\')">' +
-                '<span class="label">Back to Categories</span>'+
-                '</button>';
-            jQuery("#moo-onlineStore-items").html('<h3>No item found</h3>'+t);
+            mooRenderNoItemsFound(cat_id);
         }
 
     });
@@ -227,7 +223,7 @@ function moo_renderItems(data) {
     // Here your code that will convert the data to html
     var html = '<div class="moo-row">';
    html  += `<div class="moo-category-title">` +
-        `<span class="moo-back-to-categories-icon" onclick="moo_backToCategories('${data.uuid.toLowerCase()}')">`+
+        `<span class="moo-back-to-categories-icon" onclick="moo_backToCategories('${mooSafeCatId(data.uuid).toLowerCase()}')">`+
         `<img width="20px" src="${ moo_params['plugin_img']}/back-arrow.svg" alt="back to categories"/>`+
        `<h3>${data.name}</h3></span></div>`;
 
@@ -313,7 +309,7 @@ function moo_renderItems(data) {
     }
     html += "</div>";
     if(data.uuid) {
-        html    += '<div class="moo-back-to-categories"><button class="osh-btn" onclick="moo_backToCategories(\''+data.uuid.toLowerCase()+'\')">' +
+        html    += '<div class="moo-back-to-categories"><button class="osh-btn" onclick="moo_backToCategories(\''+mooSafeCatId(data.uuid).toLowerCase()+'\')">' +
                 '<span class="label">Back to Categories</span>'+
                 '</button></div>';
     }
@@ -332,6 +328,7 @@ function MooClickOnItem(event,elm) {
     var item_id = jQuery(elm).attr('data-item-id');
 }
 function moo_backToCategories(cat_id) {
+    cat_id = mooSafeCatId(cat_id);
     window.location.hash = '';
     jQuery("#moo-onlineStore-items").hide();
     MooSetLoading();
@@ -341,10 +338,30 @@ function moo_backToCategories(cat_id) {
         jQuery("#moo-onlineStore-categories").show();
         MooHideLoading();
     }
-    var top = (jQuery("#cat-"+cat_id).offset() != null)?jQuery("#cat-"+cat_id).offset().top:""; //Getting Y of target element
+    var top = (cat_id !== '' && jQuery("#cat-"+cat_id).offset() != null)?jQuery("#cat-"+cat_id).offset().top:""; //Getting Y of target element
     window.scrollTo(0, top);
 }
+/* Category ids are Clover UUIDs; anything else (e.g. a crafted #cat- hash) is dropped */
+function mooSafeCatId(cat_id) {
+    cat_id = (cat_id === undefined || cat_id === null) ? '' : String(cat_id);
+    return /^[A-Za-z0-9]+$/.test(cat_id) ? cat_id : '';
+}
+/* Built with DOM APIs, not an HTML string, so the id never lands inside inline JavaScript */
+function mooRenderNoItemsFound(cat_id) {
+    cat_id = mooSafeCatId(cat_id);
+    var button = jQuery('<button class="osh-btn"><span class="label">Back to Categories</span></button>')
+        .on('click', function () {
+            moo_backToCategories(cat_id);
+        });
+    jQuery("#moo-onlineStore-items").empty().append('<h3>No item found</h3>', button);
+}
 function mooOpenQtyWindow(event,item_id,stockCount,callback) {
+    // Beta on: no quantity prompt -- one unit is added and the drawer's
+    // stepper takes it from there (SooCartBridge.addOneDirect).
+    if (window.SooCartBridge && typeof SooCartBridge.addOneDirect === 'function' &&
+        SooCartBridge.addOneDirect(event, item_id, stockCount, callback)) {
+        return;
+    }
     event.preventDefault();
     var inputOptions = new Promise(function (resolve) {
         if(stockCount == "not_tracking_stock" ||  stockCount == "tracking_stock" )
@@ -370,7 +387,7 @@ function mooOpenQtyWindow(event,item_id,stockCount,callback) {
         }
     });
     swal({
-        title: 'Select the quantity',
+        title: mooObjectL10n.selectTheQuantity,
         showLoaderOnConfirm: true,
         confirmButtonText: "Add",
         input: 'select',
@@ -390,7 +407,7 @@ function mooOpenQtyWindow(event,item_id,stockCount,callback) {
 }
 function mooOpenCustomQtyWindow(event,item_id,callback) {
     swal({
-        title: 'Enter the quantity',
+        title: mooObjectL10n.enterTheQuantity,
         input: 'text',
         showCancelButton: true,
         showLoaderOnConfirm: true,
@@ -399,7 +416,7 @@ function mooOpenCustomQtyWindow(event,item_id,callback) {
                 if (value != "" && parseInt(value)>0) {
                     callback(event,item_id,parseInt(value));
                 } else {
-                    reject('You need to write a number')
+                    reject(mooObjectL10n.writeNumber)
                 }
             })
         }
@@ -413,7 +430,7 @@ function moo_clickOnOrderBtn(event,item_id,qty) {
         item_modifiers:{}
     };
     /* Add to cart the item */
-    jQuery.post(moo_RestUrl+"moo-clover/v1/cart", body,function (data) {
+    SooCartBridge.add(body, function (data) {
         if(data != null)
         {
             if(data.status == "error")
@@ -431,20 +448,19 @@ function moo_clickOnOrderBtn(event,item_id,qty) {
         else
         {
             swal({
-                title:"Item not added, try again",
+                title:mooObjectL10n.notAddedToCart,
                 type:"error"
             });
         }
-    }).fail(function ( data ) {
+        if(typeof data.nb_items != "undefined")
+            jQuery("#moo-cartNbItems").text(data.nb_items)
+    }, function ( data ) {
         swal({
-            title:"Item not added, try again",
-            text:"Check your internet connection or contact us",
+            title:mooObjectL10n.notAddedToCart,
+            text:mooObjectL10n.checkInternetConnection,
             type:"error"
         });
         console.log(data);
-    }).done(function ( data ) {
-        if(typeof data.nb_items != "undefined")
-            jQuery("#moo-cartNbItems").text(data.nb_items)
     });
 
 }
@@ -454,7 +470,7 @@ function moo_clickOnOrderBtnFIWM(event,item_id,qty) {
     //Change button content to loading
     var target = event.target;
     var old_text = jQuery(target).text();
-    jQuery(target).text("Loading options");
+    jQuery(target).text(mooObjectL10n.loadingOptions);
 
     jQuery.get(moo_RestUrl+"moo-clover/v1/items/"+item_id, function (data) {
         //Change butn text
@@ -485,7 +501,7 @@ function moo_clickOnOrderBtnFIWM(event,item_id,qty) {
                 }
                 else
                 {
-                    swal('Try again','Please refresh the page, An error has occurred','error');
+                    swal(mooObjectL10n.tryAgain,mooObjectL10n.refreshPageError,'error');
                 }
 
             }
@@ -496,12 +512,12 @@ function moo_clickOnOrderBtnFIWM(event,item_id,qty) {
         {
             //Change button text
             jQuery(target).text(old_text);
-            swal({ title: "Error", text: 'We cannot Load the options for this item, please refresh the page or contact us',   type: "error",   confirmButtonText: "ok" });
+            swal({ title: mooObjectL10n.error, text: mooObjectL10n.cannotLoadItemOptions,   type: "error",   confirmButtonText: "ok" });
         }
     }).fail(function (data) {
         //Change button text
         jQuery(target).text(old_text);
-        swal({ title: "Error", text: 'We cannot Load the options for this item, please refresh the page or contact us',   type: "error",   confirmButtonText: "ok" });
+        swal({ title: mooObjectL10n.error, text: mooObjectL10n.cannotLoadItemOptions,   type: "error",   confirmButtonText: "ok" });
     });
 
 }
@@ -512,6 +528,17 @@ function formatPrice (p) {
 function mooShowCart(event) {
     if(typeof event != "undefined")
         event.preventDefault();
+
+    // Beta on: the browser cart (SooCartStore/localStorage) is the cart --
+    // this theme's own GET v1/cart popup below reads the PHP-session cart,
+    // which the beta never writes to, so it must not run. SooCartUI.open()
+    // renders the same browser cart the badge is already counting.
+    if(window.moo_params && moo_params.newCartEnabled) {
+        if(window.SooCartUI) {
+            SooCartUI.open();
+        }
+        return;
+    }
 
     var element = jQuery("#moo-panel-cart>.moo-panel-cart-container>.moo-panel-cart-content");
     var cart_element =jQuery("#moo-panel-cart>.moo-panel-cart-container>.moo-panel-cart-content") ;
@@ -654,13 +681,13 @@ function mooShowCart(event) {
 }
 function mooRemoveLineFromCart(line_id) {
     swal({
-        title: 'Are you sure you want to delete this item',
+        title: mooObjectL10n.confirmItemDeletion,
         type: 'warning',
         showCancelButton: true,
         showLoaderOnConfirm: true,
         confirmButtonColor: '#3085d6',
         cancelButtonColor: '#d33',
-        confirmButtonText: 'Yes, delete it!',
+        confirmButtonText: mooObjectL10n.yesDelete,
         preConfirm: function () {
             return new Promise(function (resolve) {
 
@@ -699,10 +726,10 @@ function mooRemoveLineFromCart(line_id) {
 }
 function mooUpdateSpecialInsinCart(line_id,current_special_ins) {
     swal({
-        title: 'Add special Instructions',
+        title: mooObjectL10n.addSpecialInstructions,
         input: 'textarea',
         inputValue: current_special_ins,
-        inputPlaceholder: 'Type your instructions here, additional charges may apply and not all changes are possible',
+        inputPlaceholder: mooObjectL10n.specialInstructionsHint,
         showCancelButton: true,
         confirmButtonText: 'Add',
         showLoaderOnConfirm: true,
@@ -710,7 +737,7 @@ function mooUpdateSpecialInsinCart(line_id,current_special_ins) {
             return new Promise(function (resolve, reject) {
                 if(special_ins.length>255)
                 {
-                    reject('Text too long, You cannot add more than 250 char')
+                    reject(mooObjectL10n.textTooLongMax250)
                 }
                 else
                 {
@@ -740,14 +767,14 @@ function mooUpdateSpecialInsinCart(line_id,current_special_ins) {
         /* swal({
              type: 'success',
              title: 'Done',
-             html: 'Special instructions submitted'
+             html: mooObjectL10n.specialInstructionsSubmitted
          })*/
             mooShowCart();
         else
             swal({
                 type: 'error',
-                title: 'Not added',
-                html: 'Special instructions not submitted try again'
+                title: mooObjectL10n.notAdded,
+                html: mooObjectL10n.specialInstructionsNotAdded
             })
     }, function (dismiss) {
         // dismiss can be 'cancel', 'overlay',
@@ -761,7 +788,7 @@ function mooUpdateSpecialInsinCart(line_id,current_special_ins) {
 function mooUpdateSpecialInstructions(line_id)
 {
     swal({
-        title: 'Add special Instructions',
+        title: mooObjectL10n.addSpecialInstructions,
         input: 'textarea',
         inputPlaceholder: (window.moo_theme_setings.jTheme_messageforspecialinstruction!==undefined)?window.moo_theme_setings.jTheme_messageforspecialinstruction:"",
         showCancelButton: true,
@@ -770,7 +797,7 @@ function mooUpdateSpecialInstructions(line_id)
         preConfirm: function (special_ins) {
             return new Promise(function (resolve, reject) {
                 if(special_ins.length>255) {
-                    reject('Text too long, You cannot add more than 250 char')
+                    reject(mooObjectL10n.textTooLongMax250)
                 } else {
                     var body = {
                         line_id:line_id,
@@ -798,22 +825,37 @@ function mooUpdateSpecialInstructions(line_id)
         {
             swal({
                 type: 'error',
-                title: 'Not added',
-                html: 'Special instructions not submitted try again'
+                title: mooObjectL10n.notAdded,
+                html: mooObjectL10n.specialInstructionsNotAdded
             })
         }
     });
 
 }
 function mooShowAddingItemResult(data) {
-    if(window.moo_theme_setings.jTheme_askforspecialinstruction === "on"){
+    // Beta on: the drawer's own toast replaces the blocking SweetAlert.
+    if (window.moo_params && moo_params.newCartEnabled && window.SooCartUI && typeof SooCartUI.notifyAdded === 'function') {
+        if (typeof swal === 'function' && typeof swal.close === 'function') {
+            swal.close();
+        }
+        SooCartUI.notifyAdded(data);
+        return;
+    }
+    var title = (data.name != null) ? data.name : mooObjectL10n.item;
+    // Beta on: this offer normally opens mooUpdateSpecialInstructions(data.line_id),
+    // which POSTs moo-clover/v1/cart/update against the PHP-session cart's
+    // line_id. SooCartBridge.add()'s synthetic response carries no
+    // line_id (the browser cart mints its own, and there is no note-edit
+    // affordance in the drawer yet), so the affordance is disabled here
+    // rather than wired to an id that would silently update nothing.
+    if(window.moo_theme_setings.jTheme_askforspecialinstruction === "on" && !(window.moo_params && moo_params.newCartEnabled)){
         swal({
-            title:data.name,
-            text:"Added to cart",
+            title:title,
+            text:mooObjectL10n.addedToCart,
             type:"success",
             showCancelButton: true,
-            confirmButtonText: 'Add Special Instructions',
-            cancelButtonText: 'No Thanks',
+            confirmButtonText: mooObjectL10n.addSpecialInstructions,
+            cancelButtonText: mooObjectL10n.noThanks,
             cancelButtonClass:'moo-green-background'
             //footer: '<a onclick="mooUpdateSpecialInsinCart(\''+data.line_id+'\',\'\')">Add special instruction</a>'
         }).then(function (result) {
@@ -823,8 +865,8 @@ function mooShowAddingItemResult(data) {
         });
     } else {
         swal({
-            title:data.name,
-            text:"Added to cart",
+            title:title,
+            text:mooObjectL10n.addedToCart,
             timer:3000,
             type:"success"
         });

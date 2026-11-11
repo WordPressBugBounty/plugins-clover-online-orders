@@ -271,7 +271,7 @@ class CustomersRoutes extends BaseRoute {
         } else {
             return array(
                 "status"=>"failed",
-                "message"=>"Customer not updated"
+                "message"=>__("Customer not updated", 'moo_OnlineOrders')
             );
         }
 
@@ -318,7 +318,7 @@ class CustomersRoutes extends BaseRoute {
         } else {
             return array(
                 "status"=>"failed",
-                "message"=>"Customer not updated"
+                "message"=>__("Customer not updated", 'moo_OnlineOrders')
             );
         }
 
@@ -350,7 +350,7 @@ class CustomersRoutes extends BaseRoute {
         } else {
             return array(
                 "status"=>"failed",
-                "message"=>"Customer not updated"
+                "message"=>__("Customer not updated", 'moo_OnlineOrders')
             );
         }
 
@@ -362,7 +362,7 @@ class CustomersRoutes extends BaseRoute {
         #Send the first accessToken returned by Facebook SDK to backend
         $userToken = $request_body['userToken'];
         if (isset($this->pluginSettings['fb_appid']) && isset($this->pluginSettings['fb_appsecret'])){
-            $clientId = $this->pluginSettings['fb_appid'];
+            $clientId = (isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : '');
             $clientSecret =  $this->pluginSettings['fb_appsecret'] ;
             try {
                 $appLink = 'https://graph.facebook.com/oauth/access_token?client_id=' . $clientId . '&client_secret=' . $clientSecret . '&grant_type=client_credentials';
@@ -595,7 +595,7 @@ class CustomersRoutes extends BaseRoute {
         if ($currentPhone === $phone){
             if ($this->session->get('otpCode') === intval($code)){
                 $this->session->set(true,"guestPhoneVerified");
-                return array( 'message' => 'Phone verified' );
+                return array( 'message' => __('Phone verified', 'moo_OnlineOrders') );
             }
         }
 

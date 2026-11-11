@@ -108,10 +108,13 @@ class SyncRoutes extends BaseRoute
             return new WP_Error( 'category_id_required', 'Category id not found', array( 'status' => 404 ) );
         } else {
             $category_id = sanitize_text_field($request["cat_id"]);
+            if (!$this->api->addsNewInventoryOnSync() && !$this->api->categoryExists($category_id)) {
+                return "New categories aren't added automatically, category skipped";
+            }
             $category = $this->api->getCategoryWithoutSaving($category_id);
             if (isset($category['id'])) {
                 //Save the category
-                if ($this->api->insertOrUpdateCategory($category)) {
+                if ($this->api->insertOrUpdateCategory($category, $this->api->addsNewInventoryOnSync())) {
                     $this->api->sendEvent([
                         "event"=>"updated-category",
                         "uuid"=>$category_id
@@ -142,6 +145,9 @@ class SyncRoutes extends BaseRoute
             return new WP_Error( 'item_id_required', 'Item id not found', array( 'status' => 404 ) );
         }
         $item_id = sanitize_text_field($request["item_id"]);
+        if (!$this->api->addsNewInventoryOnSync() && !$this->api->itemExists($item_id)) {
+            return "New items aren't added automatically, item skipped";
+        }
         $cloverItem = $this->api->getItemWithoutSaving($item_id);
         if(!empty($cloverItem['id'])) {
             if($this->api->syncCloverItem($cloverItem)){

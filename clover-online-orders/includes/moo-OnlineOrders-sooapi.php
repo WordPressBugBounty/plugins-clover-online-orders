@@ -13,6 +13,8 @@ class Moo_OnlineOrders_SooApi
     public  $settings;
     private $jwt_token;
     public $last_error = array();
+    /** Seconds to wait for order creation; every other request keeps 60. */
+    const ORDER_REQUEST_TIMEOUT = 90;
 
     function __construct() {
 
@@ -130,12 +132,12 @@ class Moo_OnlineOrders_SooApi
      * Updated to use the new API based on jwt tokens
      * Jan 2021
      */
-    public function getCategories() {
+    public function getCategories($addNew = true) {
         $res = $this->getRequest($this->urlInventoryApi."inventory/categories?expand=menuSection%2Citems%2Citems.menuItem", true);
         if (is_array($res)) {
             $count = 0;
             foreach ($res as $cat) {
-                if ($this->insertOrUpdateCategory($cat)) {
+                if ($this->insertOrUpdateCategory($cat, $addNew)) {
                     $count++;
                 }
             }
@@ -742,7 +744,10 @@ class Moo_OnlineOrders_SooApi
             $endPoint = $this->url_api_v2 . "orders";
             $extraHeaders = null;
         }
-        return $this->postRequest($endPoint, wp_json_encode($payload),true, $extraHeaders);
+        // A large order takes the API longer than the 60 s every other call
+        // gets; wait up to 90 s (under Cloudflare's 100 s origin cap) rather
+        // than give up on an order that is still being created.
+        return $this->postRequest($endPoint, wp_json_encode($payload),true, $extraHeaders, self::ORDER_REQUEST_TIMEOUT);
     }
 
     public function finalize3DsPayment($payload) {
@@ -1327,8 +1332,16 @@ class Moo_OnlineOrders_SooApi
 
                 if (isset($item['itemGroup'])) {
                     $itemProps['item_group_uuid'] = $item['itemGroup']['id'];
+                    // moo_item.item_group_uuid is a foreign key: a variant of a group created
+                    // after the last import needs its group saved first. The API has no
+                    // single-group lookup, so refresh the group list (it skips existing ones).
+                    if (!$this->itemGroupExists($item['itemGroup']['id'])) {
+                        $this->getItemGroups();
+                    }
                 }
-                $wpdb->insert("{$wpdb->prefix}moo_item", $itemProps);
+                if ($wpdb->insert("{$wpdb->prefix}moo_item", $itemProps) === false) {
+                    throw new Exception("Item {$item['id']} not saved: " . $wpdb->last_error);
+                }
 
                 if (!empty($item["menuItem"]["imageFilename"])) {
                     //$item_uuid, $image_link, $deleteOldImage = true, $force = false)
@@ -1384,7 +1397,7 @@ class Moo_OnlineOrders_SooApi
                 foreach ($item['categories']['elements'] as $category) {
                     if ( ! $this->categoryExists($category['id']) ) {
                         $cloverCategory = $this->getCategoryWithoutSaving($category['id']);
-                        $this->insertOrUpdateCategory($cloverCategory);
+                        $this->insertOrUpdateCategory($cloverCategory, $this->addsNewInventoryOnSync());
                     } else {
                         // Get the preserved sort_order if it exists
                         $sortOrder = isset($existingSortOrders[$category['id']])
@@ -1810,8 +1823,11 @@ class Moo_OnlineOrders_SooApi
         return $count;
     }
 
-    public function insertOrUpdateCategory($cat) {
+    public function insertOrUpdateCategory($cat, $addNew = true) {
         global $wpdb;
+        if (!$addNew && !$this->categoryExists($cat["id"])) {
+            return false;
+        }
         if(isset($cat["items"]) && isset($cat["items"]["elements"]) && count($cat["items"]["elements"])>=100) {
             $items = $this->getItemsPerCategoryWithoutSaving($cat["id"]);
             $cat["items"] = array("elements"=>$items);
@@ -1840,7 +1856,7 @@ class Moo_OnlineOrders_SooApi
                 try {
                    if ($this->itemExists($item["id"])) {
                        $this->insertCategoryItemRelation($cat["id"], $item["id"]);
-                   } else {
+                   } elseif ($addNew) {
                        $cloverItem = $this->getItemWithoutSaving($item["id"]);
                        $this->syncCloverItem($cloverItem);
                    }
@@ -1964,7 +1980,7 @@ class Moo_OnlineOrders_SooApi
         }
         return $this->apiGet($url,$withJwt, $headers);
     }
-    public function postRequest($url, $body, $withJwt = false, $extraHeaders=null) {
+    public function postRequest($url, $body, $withJwt = false, $extraHeaders=null, $timeout = null) {
         if($withJwt) {
             if(!$this->jwt_token) {
                 $this->getJwtToken();
@@ -1984,7 +2000,7 @@ class Moo_OnlineOrders_SooApi
         if($extraHeaders && is_array($extraHeaders)) {
             $headers = array_merge($headers,$extraHeaders);
         }
-        return $this->apiPost($url,$withJwt, $headers, $body);
+        return $this->apiPost($url,$withJwt, $headers, $body, $timeout);
     }
 
     private function callApi($url, $accesstoken) {
@@ -2066,11 +2082,15 @@ class Moo_OnlineOrders_SooApi
             if($response["httpCode"] === 200 || $response["httpCode"] === 404 ){
                 return json_decode($response["responseContent"],true);
             } else {
-                //Reset JWT Code for 400 errors
-                if($withJwt && $response["httpCode"] > 400 && $response["httpCode"] < 500 ){
+                // Expired JWT (401/403 only -- see apiPost): mint a new one and
+                // resend the same GET with it. This used to resend as a POST
+                // carrying the stale token, so an expired JWT turned a profile
+                // read into an empty profile update and a 500.
+                if($withJwt && ($response["httpCode"] === 401 || $response["httpCode"] === 403)){
                     $this->resetJwtToken();
                     $this->getJwtToken();
-                    $response = $this->sendHttpRequest($url,"POST",$args);
+                    $args["headers"]['Authorization'] = "Bearer ".$this->jwt_token;
+                    $response = $this->sendHttpRequest($url,"GET",$args);
                     if($response && is_array($response)) {
                         if($response["httpCode"] === 200 || $response["httpCode"] === 404 ) {
                             return json_decode($response["responseContent"],true);
@@ -2102,11 +2122,15 @@ class Moo_OnlineOrders_SooApi
             if($response["httpCode"] === 200 || $response["httpCode"] === 404 ){
                 return json_decode($response["responseContent"],true);
             } else {
-                //Reset JWT Code for 400 errors
-                if($withJwt && $response["httpCode"] > 400 && $response["httpCode"] < 500 ){
+                // Expired JWT (401/403 only -- see apiPost): mint a new one and
+                // resend the same DELETE with it. This used to resend as a POST
+                // carrying the stale token, so an expired JWT turned a profile
+                // read into an empty profile update and a 500.
+                if($withJwt && ($response["httpCode"] === 401 || $response["httpCode"] === 403)){
                     $this->resetJwtToken();
                     $this->getJwtToken();
-                    $response = $this->sendHttpRequest($url,"POST",$args);
+                    $args["headers"]['Authorization'] = "Bearer ".$this->jwt_token;
+                    $response = $this->sendHttpRequest($url,"DELETE",$args);
                     if($response && is_array($response)) {
                         if($response["httpCode"] === 200 || $response["httpCode"] === 404 ) {
                             return json_decode($response["responseContent"],true);
@@ -2126,7 +2150,7 @@ class Moo_OnlineOrders_SooApi
      * @param $body
      * @return bool|mixed
      */
-    private function apiPost($url, $withJwt, $headers, $body) {
+    private function apiPost($url, $withJwt, $headers, $body, $timeout = null) {
 
         $headers = array_merge($headers,array(
             'X_CLIENT_IP' => $this->getClientIp()
@@ -2136,13 +2160,22 @@ class Moo_OnlineOrders_SooApi
             "headers"=> $headers,
             "body" => $body
         );
+        if ($timeout !== null && intval($timeout) > 0) {
+            $args["timeout"] = intval($timeout);
+        }
 
         $response = $this->sendHttpRequest($url,"POST",$args);
         if($response && is_array($response)){
             if($response["httpCode"] === 200 || $response["httpCode"] === 404) {
                 return json_decode($response["responseContent"],true);
             } else {
-                if($withJwt && $response["httpCode"] > 400 && $response["httpCode"] < 500  ){
+                // Only an authentication failure means the JWT expired. Any
+                // other 4xx is the backend refusing this request (409
+                // pickup_slot_full, 422 ...): resending it would repeat a
+                // non-idempotent call -- an order with a single-use card
+                // token comes back token_already_used and the real reason
+                // is lost. The refusal stays in last_error for the caller.
+                if($withJwt && ($response["httpCode"] === 401 || $response["httpCode"] === 403)){
                     $this->resetJwtToken();
                     $this->getJwtToken();
                     $args["headers"]['Authorization'] = "Bearer ".$this->jwt_token;
@@ -2212,6 +2245,16 @@ class Moo_OnlineOrders_SooApi
         return $_SERVER['REMOTE_ADDR'];
     }
 
+    private function itemGroupExists($itemGroupId)
+    {
+        global $wpdb;
+        $query = $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}moo_item_group WHERE uuid = %s",
+            $itemGroupId
+        );
+        return $wpdb->get_var($query) > 0;
+    }
+
     private function taxRateExists($taxRateId)
     {
         global $wpdb;
@@ -2222,7 +2265,19 @@ class Moo_OnlineOrders_SooApi
         return $wpdb->get_var($query) > 0;
     }
 
-    private function itemExists($itemId)
+    /**
+     * Whether a sync may add items and categories created in Clover that the store doesn't have yet.
+     * A site that never saved the setting keeps adding them, as it did before the setting existed.
+     */
+    public function addsNewInventoryOnSync() {
+        if (!isset($this->settings['soo_sync_new_items']) || $this->settings['soo_sync_new_items'] === '') {
+            return true;
+        }
+        // The toggle saves '1'/'0', but a boolean or 'off' must not read as on
+        return filter_var($this->settings['soo_sync_new_items'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) !== false;
+    }
+
+    public function itemExists($itemId)
     {
         global $wpdb;
         $query = $wpdb->prepare(
@@ -2242,7 +2297,7 @@ class Moo_OnlineOrders_SooApi
         return $wpdb->get_row($query, ARRAY_A); // Returns the category as an associative array, or null if not found.
     }
 
-    private function categoryExists($categoryId) {
+    public function categoryExists($categoryId) {
         global $wpdb;
 
         $query = $wpdb->prepare(

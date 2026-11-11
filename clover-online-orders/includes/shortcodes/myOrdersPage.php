@@ -25,14 +25,41 @@ class myOrdersPage extends sooShortCode
         } else {
             $columnCssClass = 'moo-col-md-6 moo-col-md-offset-3';
         }
+        // Modern cart (beta): the sign-in area is presented as a centred
+        // card under a page hero (see public/less/sooAuthModern.less).
+        // Every addition below is behind this flag; flag off, the markup
+        // is exactly what it was.
+        $modernAuth = $this->isNewCartEnabled();
+        // Hero copy is customisable from the shortcode:
+        //   [moo_my_account title="Your orders" subtitle="Sign in to see them"]
+        //   [moo_my_account hide_hero="yes"]        hides the whole hero
+        //   [moo_my_account title="" subtitle=""]   hides just the empty ones
+        $heroAtts = shortcode_atts(array(
+            'title'     => __("My Orders", "moo_OnlineOrders"),
+            'subtitle'  => __("Sign in to view your order history and track your orders.", "moo_OnlineOrders"),
+            'hide_hero' => 'no',
+        ), is_array($atts) ? $atts : array(), 'moo_my_account');
+        $heroTitle    = trim((string) $heroAtts['title']);
+        $heroSubtitle = trim((string) $heroAtts['subtitle']);
+        $showHero     = $modernAuth
+            && !in_array(strtolower($heroAtts['hide_hero']), array('yes', 'true', '1', 'on'), true)
+            && ($heroTitle !== '' || $heroSubtitle !== '');
 
         ?>
 
         <div id="sooMyOrdersContainer">
             <div class="moo-row sooMyOrders">
                 <div class="errors-section"></div>
-                <div id="sooAuthSection" data-soo-auth-page="myOrders">
+                <div id="sooAuthSection" data-soo-auth-page="myOrders"<?php if ($modernAuth) { echo ' class="soo-auth-modern"'; } ?>>
+                    <?php if ($showHero) { ?>
+                    <div class="soo-auth-hero">
+                        <span class="soo-auth-hero__icon" aria-hidden="true"></span>
+                        <?php if ($heroTitle !== '') { ?><h2 class="soo-auth-hero__title"><?php echo esc_html($heroTitle); ?></h2><?php } ?>
+                        <?php if ($heroSubtitle !== '') { ?><p class="soo-auth-hero__subtitle"><?php echo esc_html($heroSubtitle); ?></p><?php } ?>
+                    </div>
+                    <?php } ?>
                     <div class="sooAuthContainer">
+                        <?php if ($modernAuth) { echo $this->renderModernLogin(!empty($this->pluginSettings['fb_appid']) && !empty($this->pluginSettings['fb_appsecret'])); } else { ?>
                         <!--   login   -->
                         <div id="moo-login-section" class="moo-col-md-12 moo-section" style="min-height: 300px;">
                             <!--   Loading Section   -->
@@ -54,7 +81,7 @@ class myOrdersPage extends sooShortCode
                                             <span class="fbIconSvg">
                                                 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0,0,256,256" width="20px" height="20px" fill-rule="nonzero"><g fill="#ffffff" fill-rule="nonzero" stroke="none" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><g transform="scale(5.12,5.12)"><path d="M25,3c-12.15,0 -22,9.85 -22,22c0,11.03 8.125,20.137 18.712,21.728v-15.897h-5.443v-5.783h5.443v-3.848c0,-6.371 3.104,-9.168 8.399,-9.168c2.536,0 3.877,0.188 4.512,0.274v5.048h-3.612c-2.248,0 -3.033,2.131 -3.033,4.533v3.161h6.588l-0.894,5.783h-5.694v15.944c10.738,-1.457 19.022,-10.638 19.022,-21.775c0,-12.15 -9.85,-22 -22,-22z"></path></g></g></svg>
                                             </span>
-                                                    <span>Continue with Facebook</span>
+                                                    <span><?php esc_html_e("Continue with Facebook", "moo_OnlineOrders"); ?></span>
                                                 </button>
                                             </div>
                                             <div class="moo-col-xs-12" tabindex="0">
@@ -77,7 +104,7 @@ class myOrdersPage extends sooShortCode
                             <?php }  ?>
                             <div class="<?php echo $columnCssClass; ?>" tabindex="0" >
                                 <div class="sooLoginTitle moo-hidden-md moo-hidden-lg">
-                                    <div>Log in</div>
+                                    <div><?php esc_html_e("Log in", "moo_OnlineOrders"); ?></div>
                                 </div>
                                 <form id="moo-login-form" action="#" method="post" autocomplete="on" aria-label="Sign in with your account">
                                     <div class="moo-form-group">
@@ -114,6 +141,7 @@ class myOrdersPage extends sooShortCode
                                 <?php } ?>
                             </div>
                         </div>
+                        <?php } ?>
                         <!--   Register   -->
                         <div id="moo-signing-section" class="moo-col-md-12  moo-section" style="display: none">
                             <div class="moo-col-md-8 moo-col-md-offset-2 sooBorderedArea">
@@ -200,6 +228,7 @@ if ($_mktEnabled) : ?>
 
                         </div>
                         <!--   Reset Password   -->
+                        <?php if (!$modernAuth) { // modern: the reset form is inline in the sign-in card ?>
                         <div  id="moo-forgotpassword-section" class="moo-col-md-12  moo-section" style="display: none">
                             <div class="moo-col-md-8 moo-col-md-offset-2 sooBorderedArea">
                                 <form  id="moo-resetPassword-form" action="#" method="post" aria-label="reset your password">
@@ -221,6 +250,7 @@ if ($_mktEnabled) : ?>
                                 </form>
                             </div>
                         </div>
+                        <?php } ?>
                     </div>
                 </div>
                 <!--            customerPanel      -->
@@ -232,45 +262,45 @@ if ($_mktEnabled) : ?>
                                     <li id="sooTrendingNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnFeatured(event)">
                                         <a href="#">
                                             <i class="fas fa-fire"></i>
-                                            <span>Featured Items</span>
+                                            <span><?php esc_html_e("Featured Items", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                     <li style="display: none" id="sooMostPurchasedNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnMostPurchased(event)">
                                         <a href="#">
                                             <i class="far fa-heart"></i>
-                                            <span>Most Purchased</span>
+                                            <span><?php esc_html_e("Most Purchased", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                     <li id="sooPreviousOrdersNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnPreviousOrders(event)">
                                         <a href="#">
                                             <i class="fab fa-buromobelexperte"></i>
-                                            <span>Previous Orders</span>
+                                            <span><?php esc_html_e("Previous Orders", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                     <li  id="sooProfileNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnProfile(event)">
                                         <a href="#">
                                             <i class="far fa-user"></i>
-                                            <span>My profile</span>
+                                            <span><?php esc_html_e("My profile", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                     <li id="sooAddressesNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnAddresses(event)">
                                         <a href="#">
                                             <i class="far fa-address-card"></i>
-                                            <span>My address</span>
+                                            <span><?php esc_html_e("My address", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                     <?php if (isset($this->businessSettings['loyaltySetting'])) { ?>
                                         <li id="sooPointsNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnPointsHistory(event)">
                                             <a href="#">
                                                 <i class="far fa-star"></i>
-                                                <span> <?php echo $this->businessSettings['loyaltySetting']['label']; ?> History</span>
+                                                <span> <?php echo $this->businessSettings['loyaltySetting']['label']; ?> <?php esc_html_e("History", "moo_OnlineOrders"); ?></span>
                                             </a>
                                         </li>
                                     <?php } ?>
                                     <li id="sooLogoutNavElm" class="moo-col-xs-12 moo_nav_cpanel" onclick="sooMyOrders.clickOnLogout(event)">
                                         <a href="#">
                                             <i class="far fa-window-close"></i>
-                                            <span>Logout</span>
+                                            <span><?php esc_html_e("Logout", "moo_OnlineOrders"); ?></span>
                                         </a>
                                     </li>
                                 </ul>
@@ -370,6 +400,69 @@ if ($_mktEnabled) : ?>
     {
         return $this->basedOnLocalStorage($atts, $content);
     }
+    /**
+     * Modern cart (beta): the My Orders sign-in as one centred card --
+     * Welcome back, Facebook inside the card when configured (above an
+     * "or" rule), the email/password form with icons and a show/hide
+     * toggle, Log In, then "or" + Create an account and the secure note.
+     * Same ids/handlers as the legacy block, so sooAuth.js is unchanged.
+     */
+    private function renderModernLogin($fbEnabled)
+    {
+        ob_start();
+        ?>
+        <div id="moo-login-section" class="moo-col-md-12 moo-section soo-auth-login" style="min-height: 300px;">
+            <div class="sooOverlayLoader" style="background-color: #fff;position: absolute;min-height: 286px;width: 100%;z-index: 10000000;">
+                <div class="dot-flashing-2"></div>
+            </div>
+            <div class="soo-auth-card__head">
+                <h3 class="soo-auth-card__title"><?php esc_html_e("Welcome back", "moo_OnlineOrders"); ?></h3>
+                <p class="soo-auth-card__subtitle"><?php esc_html_e("Sign in to your account.", "moo_OnlineOrders"); ?></p>
+            </div>
+
+            <?php if ($fbEnabled) { ?>
+            <button type="button" class="sooFbLoginButton soo-auth-btn soo-auth-btn--facebook soo-auth-login-only" onclick="sooAuth.loginViaFacebook()" aria-label="<?php esc_attr_e('Sign in with your Facebook account', 'moo_OnlineOrders'); ?>">
+                <span class="fbIconSvg"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0,0,256,256" width="20px" height="20px" fill-rule="nonzero"><g fill="#ffffff"><g transform="scale(5.12,5.12)"><path d="M25,3c-12.15,0 -22,9.85 -22,22c0,11.03 8.125,20.137 18.712,21.728v-15.897h-5.443v-5.783h5.443v-3.848c0,-6.371 3.104,-9.168 8.399,-9.168c2.536,0 3.877,0.188 4.512,0.274v5.048h-3.612c-2.248,0 -3.033,2.131 -3.033,4.533v3.161h6.588l-0.894,5.783h-5.694v15.944c10.738,-1.457 19.022,-10.638 19.022,-21.775c0,-12.15 -9.85,-22 -22,-22z"></path></g></g></svg></span>
+                <span><?php esc_html_e('Continue with Facebook', 'moo_OnlineOrders'); ?></span>
+            </button>
+            <div class="soo-auth-rule soo-auth-login-only" aria-hidden="true"><span><?php _e('or', 'moo_OnlineOrders'); ?></span></div>
+            <?php } ?>
+
+            <form id="moo-login-form" action="#" method="post" autocomplete="on" aria-label="<?php esc_attr_e('Sign in with your account', 'moo_OnlineOrders'); ?>">
+                <div class="moo-form-group">
+                    <label for="sooInputEmail"><?php _e("Email", "moo_OnlineOrders"); ?></label>
+                    <div class="soo-auth-field soo-auth-field--email">
+                        <input type="email" id="sooInputEmail" class="moo-form-control sooCheckoutTextInput" autocomplete="email" placeholder="<?php esc_attr_e('you@example.com', 'moo_OnlineOrders'); ?>" onkeyup="sooAuth.onInputChange(this)">
+                    </div>
+                    <span class="moo-error-section"><?php _e("Please enter your email", "moo_OnlineOrders"); ?></span>
+                </div>
+                <div class="moo-form-group">
+                    <label for="sooInputPassword"><?php _e("Password", "moo_OnlineOrders"); ?></label>
+                    <div class="soo-auth-field soo-auth-field--password">
+                        <input type="password" id="sooInputPassword" class="moo-form-control sooCheckoutTextInput" autocomplete="current-password" placeholder="<?php esc_attr_e('Enter your password', 'moo_OnlineOrders'); ?>" onkeyup="sooAuth.onInputChange(this)">
+                        <button type="button" class="soo-auth-field__eye" aria-label="<?php esc_attr_e("Show password", "moo_OnlineOrders"); ?>" aria-pressed="false" onclick="var i=document.getElementById('sooInputPassword');var show=i.type==='password';i.type=show?'text':'password';this.setAttribute('aria-pressed',show?'true':'false');this.classList.toggle('soo-auth-field__eye--on',show);"></button>
+                    </div>
+                    <span class="moo-error-section"><?php _e("Please enter your password", "moo_OnlineOrders"); ?></span>
+                    <a class="sooForgetPasswordButton" href="#" onclick="sooAuth.showInlineReset(true); return false;"><?php _e("Forgot password?", "moo_OnlineOrders"); ?></a>
+                </div>
+                <div class="moo-form-group">
+                    <button class="sooLoginButton" type="submit"><?php _e("Log In", "moo_OnlineOrders"); ?></button>
+                </div>
+            </form>
+            <?php echo $this->renderModernResetForm(); ?>
+
+            <div class="login-or soo-auth-login-only">
+                <hr class="hr-or">
+                <span class="span-or"><?php _e("or", "moo_OnlineOrders"); ?></span>
+            </div>
+            <button class="sooCreateAnAccountButton soo-auth-login-only" onclick="sooAuth.showOrHideASection('signing-section',true)"><?php _e("Create An Account", "moo_OnlineOrders"); ?></button>
+
+            <p class="soo-auth-card__secure"><span class="soo-auth-card__shield" aria-hidden="true"></span><?php esc_html_e("Your information is secure with us.", "moo_OnlineOrders"); ?></p>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
     private function enqueueStylesAndScripts()
     {
         $this->enqueueFontAwesome();
@@ -390,8 +483,22 @@ if ($_mktEnabled) : ?>
         wp_register_style('sooMyOrders', SOO_PLUGIN_URL . '/public/css/dist/sooMyOrders-light.min.css', array(), SOO_VERSION);
         wp_enqueue_style( 'sooMyOrders' );
 
+        // Modern cart (beta): the card presentation of the sign-in area,
+        // layered over sooAuth-light. Same self-hosted faces as the drawer.
+        if ($this->isNewCartEnabled()) {
+            wp_register_style('sooFonts', SOO_PLUGIN_URL . '/public/css/dist/sooFonts.min.css', array(), SOO_VERSION);
+            wp_enqueue_style('sooFonts');
+            wp_register_style('sooAuthModern', SOO_PLUGIN_URL . '/public/css/dist/sooAuthModern.min.css', array('sooAuthStyles'), SOO_VERSION);
+            wp_enqueue_style('sooAuthModern');
+        }
 
-        wp_register_script('sooMyOrdersScript', SOO_PLUGIN_URL . '/public/js/dist/sooMyOrders.min.js', array('jquery'), SOO_VERSION, false);
+
+        // The cart store bundle defines SooCartBridge, which
+        // sooMyOrders.js's clickOnOrderBtn() add-to-cart call now goes
+        // through regardless of the beta flag -- enqueueModifiersPopUp()
+        // above already registered/enqueued it unconditionally; declaring
+        // it as a dependency here just guarantees load order.
+        wp_register_script('sooMyOrdersScript', SOO_PLUGIN_URL . '/public/js/dist/sooMyOrders.min.js', array('jquery','sooCartStore'), SOO_VERSION, false);
         wp_enqueue_script('sooMyOrdersScript');
 
 
@@ -413,7 +520,7 @@ if ($_mktEnabled) : ?>
     private function localizeScripts(){
         $authOptionsJsOptions  = [
             'restApiUrl' =>  get_rest_url(),
-            "fbAppId"=>$this->pluginSettings['fb_appid'],
+            "fbAppId"=>(isset($this->pluginSettings['fb_appid']) ? $this->pluginSettings['fb_appid'] : ''),
             // Only sent when the merchant has both keys; sooAuth.js skips the token when it
             // is absent, and the verifier treats a keyless site as nothing to check. A
             // merchant without keys keeps working exactly as before.

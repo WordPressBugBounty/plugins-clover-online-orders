@@ -77,7 +77,7 @@ class storePage extends sooShortCode
             if(isset($mooOptions["closing_msg"]) && $mooOptions["closing_msg"] !== '') {
                 $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">'.$mooOptions["closing_msg"].'</div>';
             } else  {
-                $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">We are currently closed and will open again soon</div>';
+                $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' . esc_html__('We are currently closed and will open again soon', 'moo_OnlineOrders') . '</div>';
 
             }
             if(isset($mooOptions["hide_menu_w_closed"]) && $mooOptions["hide_menu_w_closed"] === "on") {
@@ -90,7 +90,7 @@ class storePage extends sooShortCode
                 if(!empty($blackoutStatusResponse["custom_message"])){
                     $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">'.$blackoutStatusResponse["custom_message"].'</div>';
                 } else {
-                    $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">We are currently closed and will open again soon</div>';
+                    $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' . esc_html__('We are currently closed and will open again soon', 'moo_OnlineOrders') . '</div>';
                 }
 
                 if(isset($blackoutStatusResponse["hide_menu"]) && $blackoutStatusResponse["hide_menu"]){
@@ -111,7 +111,7 @@ class storePage extends sooShortCode
                             }
                             $oppening_msg .= __("Online Ordering Currently Closed","moo_OnlineOrders");
                             if(isset($mooOptions['accept_orders_w_closed']) && $mooOptions['accept_orders_w_closed'] == 'on' && $mooOptions['hide_menu'] != 'on'){
-                                $oppening_msg .= "<br/><p style='color: #006b00'>";
+                                $oppening_msg .= "<br/><p class='soo-schedule-hint' style='color: #006b00'>";
                                 $oppening_msg .= __("You may schedule your order in advance","moo_OnlineOrders");
                                 $oppening_msg .= "</p>";
                             }
@@ -119,7 +119,7 @@ class storePage extends sooShortCode
                         }
                     }
                     if (isset($oppening_status->status) && $oppening_status->status == 'not_found'){
-                        $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">Please contact the Store to update their Online Ordering Hours</div>';
+                        $oppening_msg .= '<div class="moo-alert moo-alert-danger" role="alert" id="moo_checkout_msg">' . esc_html__('Please contact the Store to update their Online Ordering Hours', 'moo_OnlineOrders') . '</div>';
                     }
                 }
 
@@ -243,6 +243,18 @@ class storePage extends sooShortCode
     }
     public function enqueueStoreCssAndJs($atts, $custom_css, $theme_id) {
 
+        // Beta on: the theme script below (onePage.js/jTheme scripts.js/
+        // oTheme script.js) overrides its own mooShowCart()/osnShowHideCart()
+        // to call SooCartUI.open() instead of rendering its old
+        // GET-v1/cart popup -- so the drawer bundle must exist on the page
+        // before that click can happen. Flag off: not enqueued at all, no
+        // behaviour change.
+        $newCartJsDeps = array('jquery', 'sooCartStore');
+        if ($this->isNewCartEnabled()) {
+            $this->enqueueCartUiAssets();
+            $newCartJsDeps[] = 'sooCartUI';
+        }
+
         $path = SOO_PLUGIN_PATH . "/public/themes/";
 
         $categories = array();
@@ -270,7 +282,15 @@ class storePage extends sooShortCode
                     if(strtoupper($file_extension) === "JS")
                     {
                         $jsFileName = 'moo-'.$file.'-js';
-                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, array('jquery'), SOO_VERSION, false);
+                        // The cart store bundle defines SooCartBridge, which
+                        // this theme's own moo_clickOnOrderBtn()/osnAddItemToCart()
+                        // add-to-cart call now goes through regardless of the beta
+                        // flag -- so it has to be a dependency here unconditionally.
+                        // enqueueStylesAndScripts() already registered/enqueued it
+                        // (via enqueueModifiersPopUp()) earlier in render(), before
+                        // this method runs -- declaring it here just guarantees
+                        // load order.
+                        wp_register_script( $jsFileName , SOO_PLUGIN_URL . '/public/themes/'.$theme_id.'/'.$file, $newCartJsDeps, SOO_VERSION, false);
                         wp_enqueue_script( $jsFileName );
                     }
                 }
@@ -309,7 +329,24 @@ class storePage extends sooShortCode
         wp_register_style( 'mooStyle-style3',  SOO_PLUGIN_URL .'/public/css/dist/sooStoreInterface3.min.css',array(), SOO_VERSION );
         wp_enqueue_style ( 'mooStyle-style3' );
 
-        wp_register_script('mooScript-style3', SOO_PLUGIN_URL . '/public/js/dist/sooStoreInterface3.min.js',array(),SOO_VERSION, false);
+        // The cart store bundle defines SooCartBridge, which
+        // sooStoreInterface3.js's add-to-cart call now goes through
+        // regardless of the beta flag (the bridge itself decides whether
+        // to POST or write to the store). enqueueStylesAndScripts()
+        // already registered/enqueued it (via enqueueModifiersPopUp())
+        // earlier in render(), before this method runs -- declaring it
+        // as a dependency here just guarantees load order.
+        // Beta on: mooUpdateCart() in this bundle renders a minimal
+        // "View cart" affordance wired to SooCartUI.open() instead of its
+        // old GET-v1/cart panel -- style2 has no floating trigger of its
+        // own, so the drawer bundle must be enqueued here for that to
+        // resolve. Flag off: not enqueued at all, no behaviour change.
+        $style3JsDeps = array('sooCartStore');
+        if ($this->isNewCartEnabled()) {
+            $this->enqueueCartUiAssets();
+            $style3JsDeps[] = 'sooCartUI';
+        }
+        wp_register_script('mooScript-style3', SOO_PLUGIN_URL . '/public/js/dist/sooStoreInterface3.min.js',$style3JsDeps,SOO_VERSION, false);
         wp_enqueue_script( 'mooScript-style3' );
 
         wp_add_inline_style( "mooStyle-style3", $custom_css );
@@ -335,8 +372,11 @@ class storePage extends sooShortCode
             'moo_RestUrl' =>  get_rest_url(),
             'custom_sa_title' => $announcementParams['custom_sa_title'],
             'custom_sa_content' => $announcementParams['custom_sa_content'],
-            'custom_sa_onCheckoutPage' => $announcementParams['custom_sa_onCheckoutPage']
+            'custom_sa_onCheckoutPage' => $announcementParams['custom_sa_onCheckoutPage'],
         );
+        // Same modern-cart flags as the site-wide moo_params this replaces
+        // on style2 pages (coupons, item notes, combined taxes & fees).
+        $params = array_merge($params, self::newCartParams($this->pluginSettings));
         wp_localize_script("mooScript-style3", "moo_params",$params);
 
         if(is_array($categories) && count($categories) > 0) {
@@ -421,7 +461,7 @@ class storePage extends sooShortCode
             if(isset($settings["closing_msg"]) && $settings["closing_msg"] !== '') {
                 $response["closing_msg"] = $settings["closing_msg"];
             } else  {
-                $response["closing_msg"] = "We are currently closed and will open again soon";
+                $response["closing_msg"] = __("We are currently closed and will open again soon", "moo_OnlineOrders");
             }
             if(isset($settings["hide_menu_w_closed"]) && $settings["hide_menu_w_closed"] === "on") {
                 $response["hide_menu"] = true;
@@ -434,6 +474,36 @@ class storePage extends sooShortCode
 
         $response["settings"]   =  $res;
         return $res;
+    }
+
+    /**
+     * Registers/enqueues the drawer bundle (sooCartUI.js + its CSS) so
+     * the trigger every theme already renders can open it. sooCartStore
+     * (SooCartStore/SooCartBridge/SooCartPricing) is already registered
+     * unconditionally by Moo_OnlineOrders_Public::enqueue_scripts()
+     * (hooked on every front-end page, flag or no flag), so it is only
+     * declared as a dependency here, not re-registered. Only called from
+     * an isNewCartEnabled() branch -- never enqueued flag-off.
+     */
+    private function enqueueCartUiAssets() {
+        // Self-hosted Archivo/Spline Sans Mono faces this drawer's CSS
+        // vars resolve to -- see sooShortCode::enqueueFontsCss() and
+        // public/less/sooFonts.less for why this lives in its own
+        // stylesheet rather than sooCartDrawer.less itself.
+        $this->enqueueFontsCss();
+
+        wp_register_style('sooCartDrawer-css', SOO_PLUGIN_URL . '/public/css/dist/sooCartDrawer.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooCartDrawer-css');
+
+        // Phase 4 (line editing): the chip picker sooCartUI.js's own Edit
+        // affordance opens -- see cartPage.php's own copy of this same
+        // registration for the full reasoning.
+        wp_register_style('sooModifierPicker-css', SOO_PLUGIN_URL . '/public/css/dist/sooModifierPicker.min.css', array(), SOO_VERSION);
+        wp_enqueue_style('sooModifierPicker-css');
+        wp_register_script('sooModifierPicker', SOO_PLUGIN_URL . '/public/js/dist/sooModifierPicker.min.js', array('jquery'), SOO_VERSION, false);
+
+        wp_register_script('sooCartUI', SOO_PLUGIN_URL . '/public/js/dist/sooCartUI.min.js', array('jquery', 'sooCartStore', 'sooModifierPicker'), SOO_VERSION, false);
+        wp_enqueue_script('sooCartUI');
     }
 
 }

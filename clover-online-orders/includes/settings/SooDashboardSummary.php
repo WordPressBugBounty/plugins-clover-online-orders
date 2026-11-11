@@ -228,6 +228,7 @@ class SooDashboardSummary {
                     </td></tr>
                     <tr><th><?php _e('Special instructions', 'moo_OnlineOrders'); ?></th><td><?php echo self::yesno(!empty($cs['specialInstructionsEnabled'])); ?></td></tr>
                     <tr><th><?php _e('Marketing checkbox', 'moo_OnlineOrders'); ?></th><td><?php echo self::yesno(!empty($cs['marketingCheckboxEnabled'])); ?></td></tr>
+                    <tr><th><?php _e('Utensils request checkbox', 'moo_OnlineOrders'); ?></th><td><?php echo self::yesno(!empty($cs['utensilsCheckboxEnabled'])); ?></td></tr>
                     <tr><th><?php _e('SMS verification', 'moo_OnlineOrders'); ?></th><td><?php echo self::yesno(!empty($cs['smsVerificationEnabled'])); ?></td></tr>
                 </table>
             </div>
@@ -304,6 +305,10 @@ class SooDashboardSummary {
             'service_fees', 'service_fees_type', 'service_fees_name',
             'use_special_instructions', 'special_instructions_required', 'text_under_special_instructions',
             'use_sms_verification',
+            // The modern cart lives in WordPress (browser-stored cart, this
+            // site's checkout) and is never dashboard-managed -- always
+            // editable here, whatever the settings source.
+            'new_cart_enabled', 'new_cart_expiry_hours',
         );
 
         $tips            = isset($mooOptions['tips']) ? $mooOptions['tips'] : 'disabled';
@@ -316,6 +321,8 @@ class SooDashboardSummary {
         $si_required     = isset($mooOptions['special_instructions_required']) ? $mooOptions['special_instructions_required'] : '';
         $si_text         = isset($mooOptions['text_under_special_instructions']) ? $mooOptions['text_under_special_instructions'] : '';
         $use_sms         = isset($mooOptions['use_sms_verification']) ? $mooOptions['use_sms_verification'] : 'disabled';
+        $new_cart        = isset($mooOptions['new_cart_enabled']) && $mooOptions['new_cart_enabled'] === 'on';
+        $new_cart_hours  = isset($mooOptions['new_cart_expiry_hours']) ? $mooOptions['new_cart_expiry_hours'] : '24';
         ?>
         <div class="soo-dash-local-only">
             <h2><?php _e('Local Only Settings', 'moo_OnlineOrders'); ?></h2>
@@ -432,6 +439,28 @@ class SooDashboardSummary {
                                     <option value="disabled" <?php selected($use_sms, 'disabled'); ?>><?php _e('Disabled', 'moo_OnlineOrders'); ?></option>
                                     <option value="enabled" <?php selected($use_sms, 'enabled'); ?>><?php _e('Enabled', 'moo_OnlineOrders'); ?></option>
                                 </select>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <div class="soo-dash-local-section">
+                    <h3><?php _e('Modern Cart (Beta)', 'moo_OnlineOrders'); ?></h3>
+                    <p class="description"><?php _e("Beta: a modern cart that stores the in-progress order in the customer's browser. Off by default. Switching this off mid-service will lose any carts customers currently have in progress.", 'moo_OnlineOrders'); ?></p>
+                    <table class="form-table soo-dash-form-table">
+                        <tr>
+                            <th scope="row"><label for="new_cart_enabled"><?php _e('Enable Modern Cart', 'moo_OnlineOrders'); ?></label></th>
+                            <td>
+                                <select id="new_cart_enabled" name="moo_settings[new_cart_enabled]">
+                                    <option value="off" <?php selected($new_cart, false); ?>><?php _e('Disabled', 'moo_OnlineOrders'); ?></option>
+                                    <option value="on" <?php selected($new_cart, true); ?>><?php _e('Enabled', 'moo_OnlineOrders'); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="new_cart_expiry_hours"><?php _e('Cart Expiry (hours)', 'moo_OnlineOrders'); ?></label></th>
+                            <td>
+                                <input type="number" min="1" step="1" id="new_cart_expiry_hours" name="moo_settings[new_cart_expiry_hours]" class="small-text" value="<?php echo esc_attr($new_cart_hours); ?>">
                             </td>
                         </tr>
                     </table>

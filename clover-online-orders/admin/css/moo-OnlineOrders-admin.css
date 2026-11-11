@@ -3293,3 +3293,8 @@ table.main_table td {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
 }
+
+/* wp-admin's heading line-height made wrapped SweetAlert titles overlap */
+.swal2-popup .swal2-title {
+    line-height: 1.25;
+}

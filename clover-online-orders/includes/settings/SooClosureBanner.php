@@ -41,7 +41,7 @@ class SooClosureBanner {
         // pauses where scheduling shouldn't be offered.
         $isHoursClose = isset($storeStatus['reason']) && $storeStatus['reason'] === 'outside_hours';
         if ($isHoursClose && !empty($storeStatus['acceptOrdersWhileClosed'])) {
-            $html .= '<br/><p style="color: #006b00">'
+            $html .= '<br/><p class="soo-schedule-hint" style="color: #006b00">'
                    . __('You may schedule your order in advance', 'moo_OnlineOrders')
                    . '</p>';
         }

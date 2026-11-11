@@ -53,7 +53,7 @@ class giftCardBalance extends sooShortCode
     {
         $htmBegin   = '<div id="moo-cloverGiftCardPanel"><input type="hidden" name="cloverToken" id="moo-CloverToken">';
         $htmEnd     = ' <div class="clover-errors"></div></div>';
-        $giftCard   = '<div class="moo-row giftCardsSection"><div class="moo-col-md-12"><div class="moo-form-group"><div id="moo_CloverGiftCard"></div><div class="giftCard-error"><div class="clover-error"></div></div><div class="bottom-section"><div class="result"></div><div class="sendButton"><div class="primaryButtonInput" onclick="sooGiftCards.clickOnCheckBalance()" aria-label="Check Balance">Check Balance</div></div></div></div></div></div>';
+        $giftCard   = '<div class="moo-row giftCardsSection"><div class="moo-col-md-12"><div class="moo-form-group"><div id="moo_CloverGiftCard"></div><div class="giftCard-error"><div class="clover-error"></div></div><div class="bottom-section"><div class="result"></div><div class="sendButton"><div class="primaryButtonInput" onclick="sooGiftCards.clickOnCheckBalance()" aria-label="' . esc_attr__('Check Balance', 'moo_OnlineOrders') . '">' . esc_html__('Check Balance', 'moo_OnlineOrders') . '</div></div></div></div></div></div>';
         $html = $htmBegin . $giftCard . $htmEnd;
         $html = apply_filters('moo_filter_giftCardSection', $html);
         return $html;

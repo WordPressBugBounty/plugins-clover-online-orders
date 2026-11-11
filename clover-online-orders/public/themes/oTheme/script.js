@@ -8,6 +8,15 @@ window.showSearch = false;
 window.showTopPicks = false;
 jQuery(document).ready(function () {
     window.moo_theme_setings = [];
+
+    // Beta on: #osnCartCountItems also needs to follow a second tab
+    // adding/removing items -- SooCartStore.onChange() already fires on
+    // the storage event, this just wires it to the badge. Flag off: a
+    // no-op, nothing subscribes.
+    SooCartBridge.onCartCountChange(function (n) {
+        jQuery("#osnCartCountItems").find('span').text(n);
+    });
+
     jQuery.get(moo_RestUrl + "moo-clover/v1/theme_settings/oTheme", function (data) {
 
         window.showMore = data.settings.oTheme_show_more_button === 'on';
@@ -512,7 +521,7 @@ function osnAddItemToCart(uuid) {
     if (testModifiers) {
         osnCloseModalModifier();
         /* Add to cart the item */
-        jQuery.post(moo_RestUrl + "moo-clover/v1/cart", body, function (data) {
+        SooCartBridge.add(body, function (data) {
             if (data != null) {
                 if (data.status == "error") {
                     swal({
@@ -522,23 +531,33 @@ function osnAddItemToCart(uuid) {
                 } else {
                     jQuery(".btn-cart").addClass('bounce');
                     osnItemQty = 1;
+                    // Beta on: this theme raises no modal on add (the cart
+                    // icon bounces instead); the drawer's toast joins it.
+                    if (window.moo_params && moo_params.newCartEnabled && window.SooCartUI && typeof SooCartUI.notifyAdded === 'function') {
+                        SooCartUI.notifyAdded(data);
+                    }
                 }
             } else {
                 swal({
-                    title: "Item not added, try again",
+                    title: mooObjectL10n.notAddedToCart,
                     type: "error"
                 });
             }
-        }).fail(function (data) {
-            swal({
-                title: "Item not added, try again",
-                text: "Check your internet connection or contact us",
-                type: "error"
-            });
-        }).done(function (data) {
             if (typeof data.nb_items != "undefined")
                 jQuery("#osnCartCountItems").find('span').text(data.nb_items);
-            GetItemsInCart();
+            // Beta on: GetItemsInCart() reads the PHP-session cart (GET
+            // v1/cart), which the beta never writes to -- the badge above
+            // is already correct from SooCartBridge's own response, and
+            // SooCartUI re-prices from SooCartStore itself when opened.
+            if (!(window.moo_params && moo_params.newCartEnabled)) {
+                GetItemsInCart();
+            }
+        }, function (data) {
+            swal({
+                title: mooObjectL10n.notAddedToCart,
+                text: mooObjectL10n.checkInternetConnection,
+                type: "error"
+            });
         });
     } else {
         console.log("Modifiers not valid (maybe some required modifiers not selected)")
@@ -548,6 +567,18 @@ function osnAddItemToCart(uuid) {
 
 // cart
 function osnShowHideCart() {
+
+    // Beta on: the browser cart (SooCartStore/localStorage) is the cart --
+    // the GetItemsInCart()-driven modal built below reads the PHP-session
+    // cart, which the beta never writes to, so it must not run.
+    // SooCartUI.open() renders the same browser cart the badge is already
+    // counting, and owns its own close affordance (X, scrim, Escape).
+    if (window.moo_params && moo_params.newCartEnabled) {
+        if (window.SooCartUI) {
+            SooCartUI.open();
+        }
+        return;
+    }
 
     if (jQuery('#osnCartModal').length) {
         jQuery('#osnCartModal').remove();
@@ -667,7 +698,7 @@ function osnUpdatePriceCart() {
             jQuery('#osnCartSubTotal').html("$0.00");
             jQuery('#osnCartTax').html("$0.00");
         }
-        jQuery("#osnCartCountItems").find('span').text(((data.totals) ? (data.totals.nb_items) : 0));
+        jQuery("#osnCartCountItems").find('span').text(SooCartBridge.resolveNbItems((data.totals) ? (data.totals.nb_items) : 0));
         if (!data.totals) jQuery('#osnCartItems').html('<p class="osnEmptyCart">Your cart is empty!</p>');
     });
 }
@@ -741,7 +772,7 @@ function osnUpdateSpecialInsinCart(line_id, current_special_ins) {
     html = '<div id="osnModal_special_ins">'
         + '<div id="osnModal_special_ins_container">'
         + '<p>Add special Instructions</p>'
-        + '<textarea class="special_ins-textarea" placeholder="Type your instructions here, additional charges may apply and not all changes are possible" style="display: flex;">' + current_special_ins + '</textarea>'
+        + '<textarea class="special_ins-textarea" placeholder="'+mooObjectL10n.specialInstructionsHint+'" style="display: flex;">' + current_special_ins + '</textarea>'
         + '<div class="btnGroupAddCancel">'
         + '<button class="osnBtnSave_special_ins" onclick="osnUpdateSpecialInsinCartSave(\'' + line_id + '\')">Save</button><button onclick="osnUpdateSpecialInsinCartCancel()">Cancel</button>'
         + '</div>'
@@ -780,7 +811,7 @@ function osnUpdateSpecialInsinCartSave(line_id) {
             jQuery('.btn-cart').removeClass('blurBackgroundWhenModalIsopen');
         });
     else {
-        alert('Text too long, You cannot add more than 250 char');
+        alert(mooObjectL10n.textTooLongMax250);
         jQuery('.btn-cart').removeClass('blurBackgroundWhenModalIsopen');
     }
 }

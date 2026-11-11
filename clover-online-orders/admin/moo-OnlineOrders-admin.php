@@ -79,6 +79,47 @@ class moo_OnlineOrders_Admin {
         add_submenu_page('moo_index', 'Coupons', 'Coupons', 'manage_options', 'moo_coupons', array($this, 'page_coupons'));
         add_submenu_page('moo_index', 'Loyalty Dashboard', 'Loyalty Dashboard', 'manage_options', 'moo_dashboard', array($this, 'page_soo_dashboard'));
         add_submenu_page('moo_index', 'Reports', 'Reports', 'manage_options', 'moo_reports', array($this, 'page_reports'));
+        // Not in the menu: opened from the "Tax rates" count on the inventory tab.
+        add_submenu_page('', 'Tax rates', 'Tax rates', 'manage_options', 'moo_tax_rates', array($this, 'page_tax_rates'));
+    }
+    public function page_tax_rates() {
+        $taxRates = $this->model->getAllTaxRates();
+        $backLink = admin_url('admin.php?page=moo_index#inventory');
+        ?>
+        <div class="wrap">
+            <h1 class="wp-heading-inline">Tax rates</h1>
+            <a href="<?php echo esc_url($backLink); ?>" class="page-title-action">Back to settings</a>
+            <hr class="wp-header-end">
+            <p>These are the tax rates imported from your Clover account. To change them, edit them in Clover, then sync your inventory.</p>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th scope="col">Name</th>
+                        <th scope="col">Rate</th>
+                        <th scope="col">Default</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($taxRates)): ?>
+                    <tr><td colspan="3">No tax rates imported yet.</td></tr>
+                <?php else: foreach ($taxRates as $taxRate):
+                    $flatAmount = (isset($taxRate->taxAmount) && intval($taxRate->rate) === 0) ? intval($taxRate->taxAmount) : 0;
+                    if ($flatAmount > 0) {
+                        $rateLabel = '$' . number_format($flatAmount / 100, 2) . ' per item';
+                    } else {
+                        $rateLabel = rtrim(rtrim(number_format(floatval($taxRate->rate) / 100000, 4), '0'), '.') . '%';
+                    }
+                    ?>
+                    <tr>
+                        <td><?php echo esc_html($taxRate->name); ?></td>
+                        <td><?php echo esc_html($rateLabel); ?></td>
+                        <td><?php echo !empty($taxRate->is_default) ? 'Yes' : 'No'; ?></td>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
     }
     public function page_products() {
         require_once plugin_dir_path( dirname(__FILE__))."admin/includes/class-moo-products-list.php";
@@ -1148,8 +1189,10 @@ class moo_OnlineOrders_Admin {
                                         <div class="type">Modifier Groups</div>
                                     </div>
                                     <div class="stat">
-                                        <div class="value" id="MooPanelStats_Taxes">0</div>
-                                        <div class="type">Tax rates</div>
+                                        <a href="<?php echo esc_url(admin_url('admin.php?page=moo_tax_rates')); ?>" title="View tax rates" style="color: inherit; text-decoration: none; display: block;">
+                                            <div class="value" id="MooPanelStats_Taxes">0</div>
+                                            <div class="type">Tax rates</div>
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -1241,6 +1284,28 @@ class moo_OnlineOrders_Admin {
                                     <div class="moo-col-md-4 mooAutoSyncSectionButtons">
                                         <button onclick="mooChangeAutoSyncStatus('enabled')" class="button button-primary">Enable Auto Sync</button>
                                         <button onclick="mooSeeDetailOfAutoSync(event)" class="button button-primary">See details</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="soo-customize-sync-settings" style="clear: both; padding: 0 10px;">
+                                <div class="soo-customize-sync-toggle-group">
+                                    <div class="soo-customize-sync-toggle-item">
+                                        <span class="soo-customize-sync-tooltip">➕ Add New Items & Categories Created On Clover
+                                            <span class="soo-customize-sync-tooltiptext">When disabled, syncing only updates items and categories already in your store. Use Import inventory to add new ones.</span>
+                                        </span>
+                                        <div class="soo-onoffswitch" title="Enable or disable adding new Clover items and categories during sync" style="float: right">
+                                            <input
+                                                    data-setting="soo_sync_new_items"
+                                                    type="checkbox"
+                                                    name="sooCustomizeSyncNewItems"
+                                                    id="sooCustomizeSyncNewItems"
+                                                    class="soo-onoffswitch-checkbox soo-feature-toggle"
+                                                <?php echo (!isset($mooOptions['soo_sync_new_items']) || $mooOptions['soo_sync_new_items'] === '' || filter_var($mooOptions['soo_sync_new_items'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) !== false) ? 'checked' : ''; ?> >
+                                            <label class="soo-onoffswitch-label" for="sooCustomizeSyncNewItems">
+                                                <span class="soo-onoffswitch-inner"></span>
+                                                <span class="soo-onoffswitch-switch"></span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2010,6 +2075,24 @@ class moo_OnlineOrders_Admin {
                                     </label>
                                 </div>
                             </div>
+                            <?php $sooFlatFeeTaxes = SooCartPricer::flatTaxesEnabled(); ?>
+                            <div class="Moo_option-item" >
+                                <div class="normal_text">
+                                    Charge Clover flat-fee tax rates (a fixed amount per item, such as a bag or bottle fee). Re-sync your tax rates once after enabling
+                                </div>
+                            </div>
+                            <div class="Moo_option-item">
+                                <div style="float:left; width: 100%;padding-left: 60px;">
+                                    <label style="display:block; margin-bottom:8px;">
+                                        <input name="moo_settings[flat_fee_taxes]" id="MooFlatFeeTaxesDisabled" type="radio" value="disabled" <?php echo !$sooFlatFeeTaxes ? "checked" : ""; ?> >
+                                        Disabled
+                                    </label>
+                                    <label style="display:block; margin-bottom:8px;">
+                                        <input name="moo_settings[flat_fee_taxes]" id="MooFlatFeeTaxesEnabled" type="radio" value="enabled" <?php echo $sooFlatFeeTaxes ? "checked" : ""; ?> >
+                                        Enabled
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                         <!-- Tips section -->
                         <div class="MooPanelItem MooPanelItemExpanded">
@@ -2206,29 +2289,71 @@ class moo_OnlineOrders_Admin {
                                 </div>
                             </div>
                         </div>
-                        <!-- Enable old Checkout back in case if issues -->
-                        <div class="MooPanelItem MooPanelItemExpanded">
-                            <?php
-                            $oldCheckoutEnabled = get_option('moo_old_checkout_enabled') === 'yes';
-                            ?>
-                            <h3 onclick="expandSection(this)">Return to Previous Checkout</h3>
-                            <div class="Moo_option-item" >
+                        <!-- Utensils Request Checkbox -->
+                        <div class="MooPanelItem">
+                            <h3 onclick="expandSection(this)">Utensils Request Checkbox</h3>
+                            <div class="Moo_option-item">
                                 <div class="normal_text">
-                                    Reverting back to the previous version of checkout page, if you have experienced any issues please provide an image and description of the issue to support@zaytech.com. The previous version is available for a limited time.
+                                    Show a checkbox on the checkout form so customers can ask for utensils, napkins, etc. It starts unchecked, and when the customer ticks it the request is added to the order note.
                                 </div>
                             </div>
-                            <div class="Moo_option-item" >
-                                <div class="normal_text">
-                                    <div class="soo-onoffswitch" title="Enable or disable the new checkout" style="float: right;margin-top: 38px;margin-right: 20px;">
-                                        <input type="checkbox" name="sooOldCheckoutPage" id="sooOldCheckoutPage" class="soo-onoffswitch-checkbox" onchange="enableOrDisableOldCheckout()" <?php  echo $oldCheckoutEnabled?'checked':''; ?> >
-                                        <label class="soo-onoffswitch-label" for="sooOldCheckoutPage">
-                                            <span class="soo-onoffswitch-inner"></span>
-                                            <span class="soo-onoffswitch-switch"></span>
-                                        </label>
-                                    </div>
+                            <div class="Moo_option-item">
+                                <div style="margin-bottom: 14px;" class="label">Enable Utensils Checkbox</div>
+                                <div class="moo-onoffswitch" title="Show utensils request checkbox">
+                                    <input type="hidden" name="moo_settings[utensils_checkbox_enabled]" value="off">
+                                    <input type="checkbox" name="moo_settings[utensils_checkbox_enabled]" class="moo-onoffswitch-checkbox" id="myonoffswitch_utensils_checkbox_enabled" <?php echo (isset($mooOptions['utensils_checkbox_enabled']) && $mooOptions['utensils_checkbox_enabled'] == 'on')?'checked':''?>>
+                                    <label class="moo-onoffswitch-label" for="myonoffswitch_utensils_checkbox_enabled"><span class="moo-onoffswitch-inner"></span>
+                                        <span class="moo-onoffswitch-switch"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="Moo_option-item">
+                                <div class="iwl_holder"><div class="iwl_label_holder"><label for="moo_utensils_checkbox_text">Checkbox Label Text</label></div>
+                                    <div class="iwl_input_holder"><input name="moo_settings[utensils_checkbox_text]" id="moo_utensils_checkbox_text" type="text" value="<?php echo isset($mooOptions['utensils_checkbox_text']) ? esc_attr($mooOptions['utensils_checkbox_text']) : ''; ?>" placeholder="Request utensils, napkins, etc." /></div>
                                 </div>
                             </div>
                         </div>
+                        <!-- Modern Cart (Beta) -->
+                        <div class="MooPanelItem">
+                            <h3 onclick="expandSection(this)">Modern Cart (Beta)</h3>
+                            <div class="Moo_option-item">
+                                <div class="normal_text">
+                                    Beta: a modern cart that stores the in-progress order in the customer's browser. Off by default. Switching this off mid-service will lose any carts customers currently have in progress.
+                                </div>
+                            </div>
+                            <div class="Moo_option-item">
+                                <div style="margin-bottom: 14px;" class="label">Enable Modern Cart</div>
+                                <div class="moo-onoffswitch" title="Enable the modern cart beta">
+                                    <input type="hidden" name="moo_settings[new_cart_enabled]" value="off">
+                                    <input type="checkbox" name="moo_settings[new_cart_enabled]" class="moo-onoffswitch-checkbox" id="myonoffswitch_new_cart_enabled" <?php echo (isset($mooOptions['new_cart_enabled']) && $mooOptions['new_cart_enabled'] == 'on')?'checked':''?>>
+                                    <label class="moo-onoffswitch-label" for="myonoffswitch_new_cart_enabled"><span class="moo-onoffswitch-inner"></span>
+                                        <span class="moo-onoffswitch-switch"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="Moo_option-item">
+                                <div class="iwl_holder"><div class="iwl_label_holder"><label for="moo_new_cart_expiry_hours">Cart Expiry (hours)</label></div>
+                                    <div class="iwl_input_holder"><input name="moo_settings[new_cart_expiry_hours]" id="moo_new_cart_expiry_hours" type="text" value="<?php echo isset($mooOptions['new_cart_expiry_hours']) ? esc_attr($mooOptions['new_cart_expiry_hours']) : ''; ?>" placeholder="24" /></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Enable old Checkout back in case if issues -->
+                        <?php /* "Return to Previous Checkout" is hidden.
+                        
+                           The legacy checkout it re-enables (checkoutPage::standardCheckout(),
+                           public/js/moo_checkout.js) has no awareness of the modern cart beta,
+                           so a merchant running both got a checkout page with no cart at all.
+                           b3d47c8 already reroutes beta merchants to advancedCheckout()
+                           regardless of this toggle, which made the control misleading: it
+                           appeared to do something it no longer did.
+                        
+                           Only the UI is removed. get_option("moo_old_checkout_enabled") is
+                           untouched and render() still honours it, so a merchant already on
+                           the legacy checkout keeps it and nothing changes for them on
+                           upgrade -- but they can no longer switch it on or off themselves.
+                           Delete the option to move such a merchant back to the advanced
+                           checkout.
+                        */ ?>
                         <!-- Save Changes button -->
                         <div style="text-align: center; margin: 20px;">
                             <input type="submit" name="submit" id="submit" class="button button-primary" value="Save Changes">
@@ -3534,32 +3659,75 @@ class moo_OnlineOrders_Admin {
             }
         }
 
+        $this->checkRecaptchaKeys($input, $existing);
+
         return $input;
+    }
+
+    /**
+     * Warn — never block — when a saved reCAPTCHA pair cannot work.
+     *
+     * A bad pair is invisible until orders start failing, so it is worth catching here.
+     * Only runs when the pair actually changed: the check costs an HTTP round trip, and
+     * every other setting on the page shares this save.
+     *
+     * @param array $input    Settings being saved.
+     * @param array $existing Settings currently stored.
+     * @return void
+     */
+    private function checkRecaptchaKeys($input, $existing) {
+        if (!isset($input['reCAPTCHA_site_key']) && !isset($input['reCAPTCHA_secret_key'])) {
+            return;
+        }
+
+        $siteKey = isset($input['reCAPTCHA_site_key']) ? $input['reCAPTCHA_site_key'] : '';
+        $secret  = isset($input['reCAPTCHA_secret_key']) ? $input['reCAPTCHA_secret_key'] : '';
+
+        $oldSiteKey = isset($existing['reCAPTCHA_site_key']) ? $existing['reCAPTCHA_site_key'] : '';
+        $oldSecret  = isset($existing['reCAPTCHA_secret_key']) ? $existing['reCAPTCHA_secret_key'] : '';
+
+        if ($siteKey === $oldSiteKey && $secret === $oldSecret) {
+            return;
+        }
+
+        SooRecaptchaKeyCheck::storeNotice(SooRecaptchaKeyCheck::inspect($siteKey, $secret));
     }
     /**
      * Register the stylesheets for the admin area.
      *
      * @since    1.0.0
      */
+    /**
+     * Cache-busting version for a plugin asset: the file's modification time,
+     * so browsers refetch it whenever it changes. Falls back to the plugin version.
+     *
+     * @param string $relativePath path relative to the plugin root
+     * @return string
+     */
+    private function assetVersion($relativePath) {
+        $mtime = @filemtime(plugin_dir_path(dirname(__FILE__)) . $relativePath);
+        return $mtime ? $this->version . '.' . $mtime : $this->version;
+    }
+
     public function enqueue_styles() {
 
-        wp_register_style( 'moo-grid-css', plugin_dir_url(dirname(__FILE__)) . "public/css/dist/grid12.min.css", array(), $this->version);
+        wp_register_style( 'moo-grid-css', plugin_dir_url(dirname(__FILE__)) . "public/css/dist/grid12.min.css", array(), $this->assetVersion('public/css/dist/grid12.min.css'));
         wp_enqueue_style( 'moo-grid-css' );
 
-        wp_enqueue_style( 'moo-OnlineOrders-admin-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin.css', array(), filemtime(plugin_dir_path(__FILE__).'css/moo-OnlineOrders-admin.css'), 'all');
-        wp_enqueue_style( 'moo-OnlineOrders-admin-small-devices-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin-small-devices.css', array(), $this->version, 'only screen and (max-device-width: 1200px)');
+        wp_enqueue_style( 'moo-OnlineOrders-admin-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin.css', array(), $this->assetVersion('admin/css/moo-OnlineOrders-admin.css'), 'all');
+        wp_enqueue_style( 'moo-OnlineOrders-admin-small-devices-css', plugin_dir_url( __FILE__ ).'css/moo-OnlineOrders-admin-small-devices.css', array(), $this->assetVersion('admin/css/moo-OnlineOrders-admin-small-devices.css'), 'only screen and (max-device-width: 1200px)');
 
-        wp_enqueue_style( 'moo-OnlineOrders-dashboard-css', plugin_dir_url( __FILE__ ).'css/moo-dashboard.css', array(), $this->version,'all');
+        wp_enqueue_style( 'moo-OnlineOrders-dashboard-css', plugin_dir_url( __FILE__ ).'css/moo-dashboard.css', array(), $this->assetVersion('admin/css/moo-dashboard.css'),'all');
 
-        wp_enqueue_style('moo-tooltip-css',   plugin_dir_url( __FILE__ )."css/tooltip.css", array(), $this->version, 'all');
+        wp_enqueue_style('moo-tooltip-css',   plugin_dir_url( __FILE__ )."css/tooltip.css", array(), $this->assetVersion('admin/css/tooltip.css'), 'all');
 
-        wp_register_style( 'moo-magnific-popup', plugin_dir_url(dirname(__FILE__))."public/css/dist/magnific-popup.min.css", array(), $this->version );
+        wp_register_style( 'moo-magnific-popup', plugin_dir_url(dirname(__FILE__))."public/css/dist/magnific-popup.min.css", array(), $this->assetVersion('public/css/dist/magnific-popup.min.css') );
         wp_enqueue_style( 'moo-magnific-popup');
 
         wp_register_style( 'moo-font-awesome-dash', '//cdnjs.cloudflare.com/ajax/libs/font-awesome/5.5.0/css/all.min.css', array(), '5.5.0' );
         wp_enqueue_style( 'moo-font-awesome-dash' );
 
-        wp_register_style( 'moo-introjs-css',plugin_dir_url(__FILE__)."css/introjs.min.css",array(), $this->version);
+        wp_register_style( 'moo-introjs-css',plugin_dir_url(__FILE__)."css/introjs.min.css",array(), $this->assetVersion('admin/css/introjs.min.css'));
         wp_enqueue_style( 'moo-introjs-css' );
 
         wp_register_style('moo-jquery-ui', '//ajax.googleapis.com/ajax/libs/jqueryui/1.8/themes/base/jquery-ui.css', array(), '1.8');
@@ -3568,11 +3736,11 @@ class moo_OnlineOrders_Admin {
         wp_enqueue_style( 'wp-color-picker' );
         wp_enqueue_style( 'jquery-ui-datepicker' );
 
-        wp_register_style( 'moo-sweetalert-css', plugin_dir_url(dirname(__FILE__)) . "public/css/dist/sweetalert2.min.css",array(), $this->version);
+        wp_register_style( 'moo-sweetalert-css', plugin_dir_url(dirname(__FILE__)) . "public/css/dist/sweetalert2.min.css",array(), $this->assetVersion('public/css/dist/sweetalert2.min.css'));
         wp_enqueue_style( 'moo-sweetalert-css' );
 
         //Modifiers Styles
-        wp_register_style( 'sooModifiersPopUp',SOO_PLUGIN_URL . '/public/css/dist/sooModifiersSelector.min.css', array(), SOO_VERSION);
+        wp_register_style( 'sooModifiersPopUp',SOO_PLUGIN_URL . '/public/css/dist/sooModifiersSelector.min.css', array(), $this->assetVersion('public/css/dist/sooModifiersSelector.min.css'));
         wp_enqueue_style( 'sooModifiersPopUp' );
 
     }
@@ -3631,7 +3799,7 @@ class moo_OnlineOrders_Admin {
         //wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/moo-OnlineOrders-admin.js', array( 'jquery' ), $this->version, false );
         wp_register_script('moo-google-map', 'https://maps.googleapis.com/maps/api/js?key=AIzaSyBv1TkdxvWkbFaDz2r0Yx7xvlNKe-2uyRc&libraries=drawing&geometry');
 
-        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), filemtime(plugin_dir_path(__FILE__).'js/moo-OnlineOrders-admin.js'), false);
+        wp_register_script('moo-publicAdmin-js', plugins_url( 'js/moo-OnlineOrders-admin.js', __FILE__ ),array('moo-google-map'), $this->assetVersion('admin/js/moo-OnlineOrders-admin.js'), false);
         wp_add_inline_script(
             'moo-publicAdmin-js',
             'var sooGlobalModeActive = ' . (SooSettingsSource::current() === 'global' ? 'true' : 'false') . ';',
@@ -3644,33 +3812,46 @@ class moo_OnlineOrders_Admin {
             'var sooRecaptchaAutomatic = ' . (!empty(SOO_DEFAULT_CDN) ? 'true' : 'false') . ';',
             'before'
         );
-        wp_register_script('moo-AdminDashboard-js', plugins_url( 'js/moo-dashboard.js', __FILE__ ),array('jquery','wp-color-picker'), $this->version, false);
-        wp_register_script('moo-import-wizard-js', plugins_url( 'js/moo-importing-wizard.js', __FILE__ ),array('jquery'), $this->version, false);
+        // The reminder used to read the key fields, which render from the raw option. Keys
+        // supplied through moo_filter_plugin_settings (an mu-plugin, say) never reach those
+        // fields, so a site with working reCAPTCHA was told to set it up. Report what the
+        // checkout actually resolves instead. Only whether a pair exists is exposed — the
+        // keys themselves stay out of the admin page.
+        $sooResolvedSettings = apply_filters('moo_filter_plugin_settings', (array) get_option('moo_settings'));
+        $sooRecaptchaResolved = !empty($sooResolvedSettings['reCAPTCHA_site_key'])
+            && !empty($sooResolvedSettings['reCAPTCHA_secret_key']);
+        wp_add_inline_script(
+            'moo-publicAdmin-js',
+            'var sooRecaptchaConfigured = ' . ($sooRecaptchaResolved ? 'true' : 'false') . ';',
+            'before'
+        );
+        wp_register_script('moo-AdminDashboard-js', plugins_url( 'js/moo-dashboard.js', __FILE__ ),array('jquery','wp-color-picker'), $this->assetVersion('admin/js/moo-dashboard.js'), false);
+        wp_register_script('moo-import-wizard-js', plugins_url( 'js/moo-importing-wizard.js', __FILE__ ),array('jquery'), $this->assetVersion('admin/js/moo-importing-wizard.js'), false);
 
-        wp_register_script('moo-tooltip-js', plugins_url( 'js/tooltip.min.js', __FILE__ ),array(), $this->version, false);
-        wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ), array(), $this->version, false);
+        wp_register_script('moo-tooltip-js', plugins_url( 'js/tooltip.min.js', __FILE__ ),array(), $this->assetVersion('admin/js/tooltip.min.js'), false);
+        wp_register_script('moo-progressbar-js', plugins_url( 'js/progressbar.min.js', __FILE__ ), array(), $this->assetVersion('admin/js/progressbar.min.js'), false);
 
-        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->version, false);
-        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), filemtime(plugin_dir_path(__FILE__).'js/moo_map_da.js'), false);
+        wp_register_script('moo-map-js', plugins_url( 'js/moo_map.js', __FILE__ ),array('jquery'), $this->assetVersion('admin/js/moo_map.js'), false);
+        wp_register_script('moo-map-da', plugins_url( 'js/moo_map_da.js', __FILE__ ),array('jquery'), $this->assetVersion('admin/js/moo_map_da.js'), false);
 
-        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'), $this->version, false);
+        wp_register_script('moo-magnific-modal', plugin_dir_url(dirname(__FILE__))."public/js/dist/magnific.min.js",array('jquery'), $this->assetVersion('public/js/dist/magnific.min.js'), false);
         wp_enqueue_script('moo-magnific-modal');
 
         //Promise for IE
         wp_register_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js',array(), $this->version, false);
         wp_enqueue_script('moo-bluebird');
 
-        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js",array('jquery'), $this->version, false);
+        wp_register_script('moo-sweetalert-js', plugin_dir_url(dirname(__FILE__))."public/js/dist/sweetalert2.min.js",array('jquery'), $this->assetVersion('public/js/dist/sweetalert2.min.js'), false);
         wp_enqueue_script('moo-sweetalert-js');
 
-        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js",array('jquery'), $this->version, false);
+        wp_register_script('moo-introjs-js', plugin_dir_url(__FILE__)."js/introjs.min.js",array('jquery'), $this->assetVersion('admin/js/introjs.min.js'), false);
         wp_enqueue_script('moo-introjs-js');
 
         wp_enqueue_script('moo-progressbar-js');
         wp_enqueue_script("moo-tooltip-js");
 
         //Modifiers Scripts
-        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), SOO_VERSION, false);
+        wp_register_script('sooModifiersPopUp', SOO_PLUGIN_URL .  '/public/js/dist/sooModifiersSelector.min.js', array('jquery'), $this->assetVersion('public/js/dist/sooModifiersSelector.min.js'), false);
         wp_enqueue_script('sooModifiersPopUp');
 
         wp_enqueue_script('moo-publicAdmin-js');
@@ -3779,6 +3960,13 @@ class moo_OnlineOrders_Admin {
         }
     }
     public function displayUpdateNotice(){}
+
+    /**
+     * Surface the verdict from the last reCAPTCHA key save. See SooRecaptchaKeyCheck.
+     */
+    public function displayRecaptchaKeyNotice(){
+        SooRecaptchaKeyCheck::renderNotice();
+    }
     private function listOfOrderSection($orders){
     ?>
         <div class="wrap">

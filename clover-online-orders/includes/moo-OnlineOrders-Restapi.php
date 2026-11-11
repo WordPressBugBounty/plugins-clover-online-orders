@@ -1360,8 +1360,8 @@ class Moo_OnlineOrders_Restapi
     public function updateQtyforItem( $request ) {
         $request_body   = $request->get_body_params();
         $line_id        = sanitize_text_field($request_body['line_id']);
-        $qty            = inval($request_body['qty']);
-        $old_qty        = inval($request_body['old_qty']);
+        $qty            = intval($request_body['qty']);
+        $old_qty        = intval($request_body['old_qty']);
 
         if($line_id != "")
         {

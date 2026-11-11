@@ -12,7 +12,7 @@ class searchBar extends sooShortCode
         <div class="" id="moo-search-bar-container">
             <div class="moo-search-bar moo-row">
                 <form onsubmit="mooClickonSearchButton(event)">
-                    <input class="moo-col-md-10 moo-search-field" type="text" placeholder="Search" />
+                    <input class="moo-col-md-10 moo-search-field" type="text" placeholder="<?php esc_attr_e("Search", "moo_OnlineOrders"); ?>" />
                     <button class="moo-col-md-2 osh-btn action" onclick="mooClickonSearchButton(event)"><?php _e("Search","moo_OnlineOrders"); ?></button>
                 </form>
 
@@ -46,7 +46,7 @@ class searchBar extends sooShortCode
         wp_register_style( 'mooSearchBar-css',SOO_PLUGIN_URL . '/public/css/dist/sooSearchbar.min.css',array(), SOO_VERSION);
         wp_enqueue_style ( 'mooSearchBar-css' );
 
-        wp_register_script('mooSearchBar-js', SOO_PLUGIN_URL .  '/public/js/dist/sooSearchbar.min.js',array('jquery'), SOO_VERSION, false);
+        wp_register_script('mooSearchBar-js', SOO_PLUGIN_URL .  '/public/js/dist/sooSearchbar.min.js',array('jquery','sooCartStore'), SOO_VERSION, false);
         wp_enqueue_script( 'mooSearchBar-js' );
 
         $this->enqueuePublicCss();

@@ -179,6 +179,24 @@ class DashboardRoutes extends BaseRoute {
             )
         ));
 
+        // drop the custom name for an item and show its Clover name again
+        register_rest_route($this->namespace, '/dash/revert_item_name', array(
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'dashRevertItemName'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+
+        // drop every custom item name
+        register_rest_route($this->namespace, '/dash/revert_all_item_names', array(
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'dashRevertAllItemNames'),
+                'permission_callback' => array( $this, 'permissionCheck' )
+            )
+        ));
+
         // update api key
         register_rest_route($this->namespace, '/dash/save_settings', array(
             // Here we register the readable endpoint for collections.
@@ -667,7 +685,8 @@ class DashboardRoutes extends BaseRoute {
             update_option('moo_merchant_uuid', "");
             update_option('moo_apple_pay_enabled', false);
 
-            do_action('smart_online_order_import_inventory');
+            // The local inventory was just wiped, so everything is new: import it all
+            do_action('smart_online_order_import_inventory', true);
 
             $this->api->sendEvent([
                 "event"=>'updated-api-key'
@@ -711,6 +730,17 @@ class DashboardRoutes extends BaseRoute {
             return new WP_Error( 'status_required', 'An error has occurred', array( 'status' => 400 ) );
         } else {
             $status = rest_sanitize_boolean($request["status"]);
+            // Apple won't show Apple Pay on a domain that doesn't serve the
+            // association file, so don't let it be turned on until it's uploaded.
+            if ( $status ) {
+                $fileUrl = $this->applePayDomainFileUrl();
+                if ( ! $this->isApplePayDomainFileServed( $fileUrl ) ) {
+                    return new WP_Error( 'apple_pay_domain_file_missing', 'Apple Pay domain association file not found', array(
+                        'status' => 400,
+                        'url'    => $fileUrl,
+                    ) );
+                }
+            }
             update_option('moo_apple_pay_enabled', $status);
             //Save on Cloud
             try {
@@ -722,6 +752,25 @@ class DashboardRoutes extends BaseRoute {
                 "status"=>true
             );
         }
+    }
+    private function applePayDomainFileUrl() {
+        $host = wp_parse_url( home_url(), PHP_URL_HOST );
+        return 'https://' . $host . '/.well-known/apple-developer-merchantid-domain-association';
+    }
+    /**
+     * Fetch the file the way Apple would: no redirects, and a 200 that
+     * returns an HTML page (a theme 404 or a redirect plugin) does not count.
+     */
+    private function isApplePayDomainFileServed( $url ) {
+        $response = wp_remote_get( $url, array(
+            'timeout'     => 10,
+            'redirection' => 0,
+        ) );
+        if ( is_wp_error( $response ) ) {
+            return false;
+        }
+        $body = trim( wp_remote_retrieve_body( $response ) );
+        return wp_remote_retrieve_response_code( $response ) === 200 && $body !== '' && strpos( $body, '<' ) !== 0;
     }
     function enableOrDisableGlobalSettings( $request ) {
         // Use isset — not empty — so an explicit `false` (switching Global → Customized)
@@ -915,6 +964,33 @@ class DashboardRoutes extends BaseRoute {
      * @param $request
      * @return array|WP_Error
      */
+    /**
+     * Problem with the reCAPTCHA pair being saved, or '' when there is none.
+     *
+     * @param array $body Items posted to dashSaveSettings().
+     * @return string
+     */
+    private function recaptchaKeyProblem($body) {
+        $touchesKeys = false;
+        foreach ((array) $body as $item) {
+            if (isset($item["name"]) && ($item["name"] === 'reCAPTCHA_site_key' || $item["name"] === 'reCAPTCHA_secret_key')) {
+                $touchesKeys = true;
+                break;
+            }
+        }
+
+        if (!$touchesKeys) {
+            return '';
+        }
+
+        $verdict = SooRecaptchaKeyCheck::inspect(
+            isset($this->pluginSettings['reCAPTCHA_site_key']) ? $this->pluginSettings['reCAPTCHA_site_key'] : '',
+            isset($this->pluginSettings['reCAPTCHA_secret_key']) ? $this->pluginSettings['reCAPTCHA_secret_key'] : ''
+        );
+
+        return !empty($verdict['message']) ? $verdict['message'] : '';
+    }
+
     function dashSaveSettings( $request ) {
 
         $body = json_decode($request->get_body(),true);
@@ -928,6 +1004,18 @@ class DashboardRoutes extends BaseRoute {
 
         foreach ($body as $item) {
             $this->pluginSettings[$item["name"]] = $item["value"];
+        }
+
+        // A pair that cannot work rejects every order at checkout, so refuse it before
+        // anything is stored or sent upstream. Checked here rather than after the save
+        // so a rejected pair never becomes the live configuration.
+        $recaptchaProblem = $this->recaptchaKeyProblem($body);
+        if ($recaptchaProblem !== '') {
+            return array(
+                "status"  => "failed",
+                "code"    => "recaptcha_invalid",
+                "message" => $recaptchaProblem
+            );
         }
 
         $homeUrl = get_option("home");
@@ -1949,6 +2037,85 @@ class DashboardRoutes extends BaseRoute {
             );
         }
 
+    }
+
+    /**
+     * Revert an item to its Clover name: drop the custom online name so the item shows
+     * the Clover name saved by the last sync. Images, description, price and the rest of
+     * the item are left alone.
+     * @param $request
+     * @return array|WP_Error
+     */
+    function dashRevertItemName( $request ){
+        $request_body = $request->get_body_params();
+
+        if (empty( $request_body['item_uuid'] )) {
+            return new WP_Error( 'item_uuid_required', 'item_uuid not found', array( 'status' => 400 ) );
+        }
+        $itemUuid = sanitize_text_field($request_body['item_uuid']);
+
+        $item = $this->model->getItem($itemUuid);
+        if (!$item) {
+            return array(
+                "status"=>"failed",
+                "message"=>"Item not found"
+            );
+        }
+        if (trim((string) $item->soo_name) === '' || trim((string) $item->soo_name) === trim((string) $item->name)) {
+            return array(
+                "status"=>"failed",
+                "message"=>"This item already uses its Clover name"
+            );
+        }
+        $cloverName = $item->name;
+
+        $updated = $this->model->revertItemName($itemUuid);
+        if ($updated === false) {
+            return array(
+                "status"=>"failed",
+                "message"=>"The name couldn't be saved, please try again"
+            );
+        }
+
+        $this->api->sendEvent([
+            "event"=>'updated-item',
+            "uuid"=>$itemUuid,
+        ]);
+
+        // Same label the Items list shows for an item without a custom name
+        $displayName = stripslashes((string) $cloverName);
+        if (!empty($item->alternate_name)) {
+            $displayName .= " (alternate name : " . stripslashes((string) $item->alternate_name) . ")";
+        }
+        return array(
+            "status"=>"success",
+            "name"=>$displayName
+        );
+    }
+
+    /**
+     * Revert every item to its Clover name: drop all custom online names. Only soo_name
+     * changes; nothing is read from Clover.
+     * @param $request
+     * @return array
+     */
+    function dashRevertAllItemNames( $request ){
+        $reverted = $this->model->revertAllItemNames();
+        if ($reverted === false) {
+            return array(
+                "status"=>"failed",
+                "message"=>"The names couldn't be saved, please try again"
+            );
+        }
+        if ($reverted > 0) {
+            $this->api->sendEvent([
+                "event"=>'updated-items'
+            ]);
+        }
+        return array(
+            "status"=>"success",
+            "reverted"=>intval($reverted)
+        );
     }
 
     /**

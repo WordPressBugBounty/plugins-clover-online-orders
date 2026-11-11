@@ -6,9 +6,19 @@ jQuery(document).ready(function(){
     window.header_height = (typeof window.header_height != 'undefined' && window.header_height != null)?window.header_height:0;
     window.categoriesTopMargin = window.header_height;
     window.phoneCategoriesTopMargin = window.header_height;
+
+    // Beta on: the badge on this page (#moo-cartNbItems, built in
+    // MooLoadBaseStructure below) also needs to follow a second tab
+    // adding/removing items -- SooCartStore.onChange() already fires on
+    // the storage event, this just wires it to the badge. Flag off: a
+    // no-op, nothing subscribes.
+    SooCartBridge.onCartCountChange(function (n) {
+        jQuery('#moo-cartNbItems').text(n > 0 ? n : '');
+    });
+
     if (sooStoreOptions && sooStoreOptions.themeSettings){
         window.moo_theme_setings = sooStoreOptions.themeSettings;
-        window.nb_items_in_cart  = sooStoreOptions.nbItemsInCart;
+        window.nb_items_in_cart  = SooCartBridge.resolveNbItems(sooStoreOptions.nbItemsInCart);
         //Change the categories topMargin and width
         if(window.moo_theme_setings.onePage_categoriesTopMargin != null) {
             window.categoriesTopMargin = parseInt(window.moo_theme_setings.onePage_categoriesTopMargin);
@@ -26,7 +36,7 @@ jQuery(document).ready(function(){
         jQuery.get(moo_RestUrl+"moo-clover/v1/theme_settings/onePage", function (data) {
             if(data != null && data.settings != null) {
                 window.moo_theme_setings = data.settings;
-                window.nb_items_in_cart  = data.nb_items;
+                window.nb_items_in_cart  = SooCartBridge.resolveNbItems(data.nb_items);
                 //Change the categories topMargin and width
                 if(window.moo_theme_setings.onePage_categoriesTopMargin != null) {
                     window.categoriesTopMargin = parseInt(window.moo_theme_setings.onePage_categoriesTopMargin);
@@ -236,8 +246,8 @@ function mooGetCategories(callback) {
 function moo_renderCategories($cats, withButton)
 {
     var element = document.getElementById("moo-onlineStore-categories");
-    var html     = '<nav id="moo-menu-navigation" class="moo-stick-to-content" tabindex="0" aria-label="List of categories" >';
-        html     += '<div class="moo-choose-category" aria-label="Here you can choose a category of items">'+mooObjectL10n.chooseACategory+'</div>';
+    var html     = '<nav id="moo-menu-navigation" class="moo-stick-to-content" tabindex="0" aria-label="'+mooObjectL10n.ariaListOfCategories+'" >';
+        html     += '<div class="moo-choose-category" aria-label="'+mooObjectL10n.ariaChooseCategory+'">'+mooObjectL10n.chooseACategory+'</div>';
         html     += '<ul class="moo-nav moo-nav-menu moo-bg-dark moo-dark" role="menu">';
 
     for(var i in $cats){
@@ -260,7 +270,7 @@ function moo_renderCategories($cats, withButton)
        window.width = jQuery('#moo_OnlineStoreContainer').width() - jQuery('.moo-menu-category').width();
        window.width = (jQuery('#moo_OnlineStoreContainer').width()+30) * 0.25;
        var cart_btn =  '<div class="moo-col-md-12" style="text-align: center;">'+
-                       '<a href="#" class="moo-btn moo-btn-lg moo-btn-primary" onclick="mooShowCart(event)" tabindex="0" aria-label="View your cart" aria-haspopup="true">'+mooObjectL10n.viewCart+'</a>'+
+                       '<a href="#" class="moo-btn moo-btn-lg moo-btn-primary" onclick="mooShowCart(event)" tabindex="0" aria-label="'+mooObjectL10n.ariaViewYourCart+'" aria-haspopup="true">'+mooObjectL10n.viewCart+'</a>'+
                        '</div>';
        jQuery("#moo-onlineStore-items").append(cart_btn);
        jQuery('#MooLoadingSection').hide();
@@ -305,7 +315,7 @@ function moo_renderItems(category, withButton)
         html += '<div class="moo-menu-item moo-menu-list-item">'+
                 ' <div class="moo-row">';
         if(item.image != null && item.image.url != null && item.image.url != "") {
-            html += '    <div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-2 moo-col-xs-12" role="img" tabindex="0" aria-label="The image of the item" >'+
+            html += '    <div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-2 moo-col-xs-12" role="img" tabindex="0" aria-label="'+mooObjectL10n.ariaItemImage+'" >'+
                     '<a href="'+item.image.url+'" data-effect="mfp-zoom-in" tabindex="-1"><img alt="image of '+item.name+'" src="'+item.image.url+'" class="moo-img-responsive moo-image-zoom"></a>'+
                     '    </div>'+
                     '    <div class="moo-col-lg-6 moo-col-md-6 moo-col-sm-9 moo-col-xs-12">';
@@ -427,7 +437,7 @@ function mooClickOnLoadMoreItems(event,cat_id,cat_name,cat_available)
                     ' <div class="moo-row">';
 
                 if(item.image != null && item.image.url != null && item.image.url != "") {
-                    html += '    <div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-2 moo-col-xs-12" role="img" tabindex="0" aria-label="The image of the item" >'+
+                    html += '    <div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-2 moo-col-xs-12" role="img" tabindex="0" aria-label="'+mooObjectL10n.ariaItemImage+'" >'+
                         '<a href="'+item.image.url+'" data-effect="mfp-zoom-in" tabindex="-1"><img alt="image of '+item.name+'" src="'+item.image.url+'" class="moo-img-responsive moo-image-zoom"></a>'+
                         '    </div>'+
                         '    <div class="moo-col-lg-6 moo-col-md-6 moo-col-sm-9 moo-col-xs-12">';
@@ -516,6 +526,12 @@ function mooClickOnLoadMoreItems(event,cat_id,cat_name,cat_available)
 }
 function mooOpenQtyWindow(event,item_id,stockCount,callback)
 {
+    // Beta on: no quantity prompt -- one unit is added and the drawer's
+    // stepper takes it from there (SooCartBridge.addOneDirect).
+    if (window.SooCartBridge && typeof SooCartBridge.addOneDirect === 'function' &&
+        SooCartBridge.addOneDirect(event, item_id, stockCount, callback)) {
+        return;
+    }
     event.preventDefault();
     var inputOptions = new Promise(function (resolve) {
         if(stockCount == "not_tracking_stock" ||  stockCount == "tracking_stock" ) {
@@ -582,7 +598,7 @@ function moo_clickOnOrderBtn(event,item_id,qty)
         item_modifiers:{}
     };
     /* Add to cart the item */
-    jQuery.post(moo_RestUrl+"moo-clover/v1/cart", body,function (data) {
+    SooCartBridge.add(body, function (data) {
         if(data != null)
         {
             if(data.status == "error") {
@@ -601,16 +617,15 @@ function moo_clickOnOrderBtn(event,item_id,qty)
                 type:"error"
             });
         }
-    }).fail(function ( data ) {
+        if(typeof data.nb_items != "undefined")
+            jQuery("#moo-cartNbItems").text(data.nb_items)
+    }, function ( data ) {
         swal({
             title:mooObjectL10n.notAddedToCart,
             text:mooObjectL10n.checkInternetConnection,
             type:"error"
         });
         console.log(data);
-    }).done(function ( data ) {
-        if(typeof data.nb_items != "undefined")
-            jQuery("#moo-cartNbItems").text(data.nb_items)
     });
 
 }
@@ -672,6 +687,17 @@ function mooShowCart(event) {
     if(typeof event != "undefined")
         event.preventDefault();
 
+    // Beta on: the browser cart (SooCartStore/localStorage) is the cart --
+    // this theme's own GET v1/cart popup below reads the PHP-session cart,
+    // which the beta never writes to, so it must not run. SooCartUI.open()
+    // renders the same browser cart the badge is already counting.
+    if(window.moo_params && moo_params.newCartEnabled) {
+        if(window.SooCartUI) {
+            SooCartUI.open();
+        }
+        return;
+    }
+
     var element = jQuery("#moo-panel-cart>.moo-panel-cart-container>.moo-panel-cart-content");
     var cart_element =jQuery("#moo-panel-cart>.moo-panel-cart-container>.moo-panel-cart-content") ;
 
@@ -682,7 +708,7 @@ function mooShowCart(event) {
         showConfirmButton: false
     });
 
-    var cart_html = '<div class="moo-row moo-cart-heading" tabindex="0" aria-label="Your cart details">'+
+    var cart_html = '<div class="moo-row moo-cart-heading" tabindex="0" aria-label="'+mooObjectL10n.ariaCartDetails+'">'+
         '<div class="moo-col-lg-6 moo-col-md-6 moo-col-sm-5 moo-col-xs-5 moo-cart-line-itemName" tabindex="-1">'+ mooObjectL10n.item+'</div>'+
         '<div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-2 moo-col-xs-2 moo-cart-line-itemQty" tabindex="-1">'+ mooObjectL10n.qty+'</div>'+
         '<div class="moo-col-lg-2 moo-col-md-2 moo-col-sm-3 moo-col-xs-3 moo-cart-line-itemPrice" tabindex="-1">'+ mooObjectL10n.subtotal+'</div>'+
@@ -737,7 +763,7 @@ function mooShowCart(event) {
                 cart_html += '</div>';
                 //Set teh cart total
                 if(data.totals !== null && data.totals !== false) {
-                    cart_html +=' <div class="moo-row moo-cart-totals" tabindex="0" aria-label="Your cart totals">'+
+                    cart_html +=' <div class="moo-row moo-cart-totals" tabindex="0" aria-label="'+mooObjectL10n.ariaCartTotals+'">'+
                         '<div class="moo-row moo-cart-total moo-cart-total-subtotal">'+
                         '<div class="moo-col-lg-9 moo-col-md-9 moo-col-sm-7 moo-col-xs-7 moo-cart-total-label"  tabindex="0" aria-label="subtotal">'+ mooObjectL10n.subtotal+'</div>'+
                         '<div class="moo-col-lg-3 moo-col-md-3 moo-col-sm-5 moo-col-xs-5  moo-cart-total-price" tabindex="0">$'+mooOpformatCentPrice(data.totals.sub_total)+'</div>'+
@@ -1022,9 +1048,24 @@ function mooOpformatCentPrice (p) {
 }
 
 function mooShowAddingItemResult(data) {
-    if(window.moo_theme_setings.onePage_askforspecialinstruction === "on"){
+    // Beta on: the drawer's own toast replaces the blocking SweetAlert.
+    if (window.moo_params && moo_params.newCartEnabled && window.SooCartUI && typeof SooCartUI.notifyAdded === 'function') {
+        if (typeof swal === 'function' && typeof swal.close === 'function') {
+            swal.close();
+        }
+        SooCartUI.notifyAdded(data);
+        return;
+    }
+    var title = (data.name != null) ? data.name : mooObjectL10n.item;
+    // Beta on: this offer normally opens mooUpdateSpecialInstructions(data.line_id),
+    // which POSTs moo-clover/v1/cart/update against the PHP-session cart's
+    // line_id. SooCartBridge.add()'s synthetic response carries no
+    // line_id (the browser cart mints its own, and there is no note-edit
+    // affordance in the drawer yet), so the affordance is disabled here
+    // rather than wired to an id that would silently update nothing.
+    if(window.moo_theme_setings.onePage_askforspecialinstruction === "on" && !(window.moo_params && moo_params.newCartEnabled)){
         swal({
-            title:data.name,
+            title:title,
             text:mooObjectL10n.addedToCart,
             type:"success",
             showCancelButton: true,
@@ -1039,7 +1080,7 @@ function mooShowAddingItemResult(data) {
         });
     } else {
         swal({
-            title:data.name,
+            title:title,
             text:mooObjectL10n.addedToCart,
             timer:3000,
             type:"success"

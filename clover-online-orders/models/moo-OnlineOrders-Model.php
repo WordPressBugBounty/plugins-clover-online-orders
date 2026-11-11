@@ -288,28 +288,48 @@ class Moo_OnlineOrders_Model {
         $item = $this->getItem($uuid);
 
         if($item->default_taxe_rate){
-            $taxes = $this->db->get_results("SELECT name,uuid,rate
-                                    FROM {$this->db->prefix}moo_tax_rate t
-                                    WHERE t.is_default = 1
-                                    ");
-            return $taxes;
+            return $this->getDefaultTaxRates();
         }
         else
         {
-            $taxes = $this->db->get_results("SELECT tr.name,tr.uuid,tr.rate FROM {$this->db->prefix}moo_item_tax_rate itr,{$this->db->prefix}moo_tax_rate tr
+            return $this->taxRateRows("SELECT tr.name,tr.uuid,tr.rate,tr.taxAmount FROM {$this->db->prefix}moo_item_tax_rate itr,{$this->db->prefix}moo_tax_rate tr
                                           WHERE itr.tax_rate_uuid=tr.uuid
                                           AND itr.item_uuid='{$uuid}'
 
                                     ");
-            return $taxes;
         }
     }
     function getDefaultTaxRates(){
-        $taxes = $this->db->get_results("SELECT name,uuid,rate
+        return $this->taxRateRows("SELECT name,uuid,rate,taxAmount
                                 FROM {$this->db->prefix}moo_tax_rate t
                                 WHERE t.is_default = 1
                                 ");
-        return $taxes;
+    }
+
+    function getAllTaxRates(){
+        return $this->taxRateRows("SELECT name,uuid,rate,is_default,taxAmount
+                                FROM {$this->db->prefix}moo_tax_rate t
+                                ORDER BY name
+                                ");
+    }
+
+    /**
+     * Tax rate rows for the pricer: name, uuid, rate and taxAmount (the per-unit
+     * cents of a Clover flat-fee rate, NULL for a percentage rate). taxAmount was
+     * added by the 1.5.8 upgrade; if a site somehow never got the column the
+     * query fails, and losing every tax rate would be far worse than losing flat
+     * ones, so fall back to the pre-1.5.8 column list.
+     *
+     * @param string $sql Query selecting taxAmount.
+     * @return array
+     */
+    private function taxRateRows($sql)
+    {
+        $rows = $this->db->get_results($sql);
+        if (empty($rows) && !empty($this->db->last_error)) {
+            $rows = $this->db->get_results(str_replace(array(',tr.taxAmount', ',taxAmount'), '', $sql));
+        }
+        return $rows;
     }
 
     function getModifiers($uuid_group)
@@ -787,6 +807,31 @@ class Moo_OnlineOrders_Model {
     function updateItemName($uuid, $newName) {
         return $this->db->update("{$this->db->prefix}moo_item", array('soo_name' => $newName), array( 'uuid' => $uuid ));
     }
+    /**
+     * Drop the custom online name so the item shows the Clover name saved by the last sync.
+     * Only soo_name changes.
+     */
+    function revertItemName($uuid) {
+        return $this->db->update("{$this->db->prefix}moo_item", array('soo_name' => null), array( 'uuid' => $uuid ));
+    }
+    /**
+     * SQL condition for an item with a real custom online name, as the Items list shows
+     * them: not blank, not just a copy of the Clover name (syncing online names copies it),
+     * and not a variant (the list hides items that belong to an item group).
+     */
+    static function customItemNameCondition() {
+        return "item_group_uuid IS NULL AND soo_name IS NOT NULL AND TRIM(soo_name) <> '' AND TRIM(soo_name) <> TRIM(name)";
+    }
+    function countCustomItemNames() {
+        return intval($this->db->get_var("SELECT COUNT(*) FROM `{$this->db->prefix}moo_item` WHERE " . self::customItemNameCondition()));
+    }
+    /**
+     * Same as revertItemName() for every item that has a custom online name.
+     * @return int|false Number of items reverted.
+     */
+    function revertAllItemNames() {
+        return $this->db->query("UPDATE `{$this->db->prefix}moo_item` SET soo_name = NULL WHERE " . self::customItemNameCondition());
+    }
     function updateItem($item, $byUuid) {
         if ($byUuid){
             $fields = [];
@@ -816,14 +861,28 @@ class Moo_OnlineOrders_Model {
                 return 0;
             }
         } else {
-            $sql = "UPDATE `{$this->db->prefix}moo_item`";
-            $sql .= " SET description = '".esc_sql($item["description"])."' ";
-
-            if (isset($item["soo_name"]) && !empty($item["soo_name"])){
-                $sql .= ", soo_name = '".esc_sql($item["soo_name"])."' ";
+            // Match the Clover name exactly: a LIKE '%name%' match let "Tea" overwrite every "Steak" item,
+            // and an empty name matched the whole table.
+            $name = isset($item["name"]) ? trim(stripslashes((string) $item["name"])) : '';
+            if ($name === ''){
+                return 0;
             }
-            $sql .= "WHERE name like '%".esc_sql($item["name"])."%' ";
-            $sql .= "AND uuid != '".esc_sql($item["uuid"])."' ;";
+            $fields = [];
+            if (!empty($item["description"])){
+                $fields["description"] = $item["description"];
+            }
+            if (!empty($item["soo_name"])){
+                $fields["soo_name"] = $item["soo_name"];
+            }
+            if (count($fields) === 0){
+                return 0;
+            }
+            $sets = [];
+            foreach ($fields as $column => $value) {
+                $sets[] = $this->db->prepare("`{$column}` = %s", $value);
+            }
+            $sql = "UPDATE `{$this->db->prefix}moo_item` SET " . implode(", ", $sets);
+            $sql .= $this->db->prepare(" WHERE TRIM(name) = %s AND uuid != %s", $name, isset($item["uuid"]) ? $item["uuid"] : '');
             return $this->db->query($sql);
         }
     }
@@ -1161,21 +1220,8 @@ class Moo_OnlineOrders_Model {
     public function updateOneCategory($category) {
         $this->db->query('START TRANSACTION');
         try {
-            //Get current items sort order
-            $currentSorts = $this->db->get_results("SELECT item_uuid,sort_order from {$this->db->prefix}moo_items_categories where category_uuid = '{$category["id"]}'",'OBJECT_K');
-
-            // remove old categories items associations
-            $this->db->delete("{$this->db->prefix}moo_items_categories",array('category_uuid'=>$category["id"]));
-
-            foreach ($category["items"]["elements"] as $item) {
-                if (!empty($currentSorts[$item["id"]]->sort_order)){
-                    $sortOrder = intval($currentSorts[$item["id"]]->sort_order);
-                } else {
-                    $sortOrder = null;
-                }
-                $this->insertCategoryItemRelation($category["id"],$item["id"],$sortOrder);
-            }
-
+            // Save the category before its items: moo_items_categories.category_uuid is a
+            // foreign key, so links to a category that isn't saved yet are silently dropped
             if ($this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_category where uuid='{$category["id"]}'") > 0) {
                 $this->db->update("{$this->db->prefix}moo_category", array(
                     'name' => $category["name"],
@@ -1191,6 +1237,21 @@ class Moo_OnlineOrders_Model {
                     'items' => null,
                     'items_imported' => 1,
                 ));
+            }
+
+            //Get current items sort order
+            $currentSorts = $this->db->get_results("SELECT item_uuid,sort_order from {$this->db->prefix}moo_items_categories where category_uuid = '{$category["id"]}'",'OBJECT_K');
+
+            // remove old categories items associations
+            $this->db->delete("{$this->db->prefix}moo_items_categories",array('category_uuid'=>$category["id"]));
+
+            foreach ($category["items"]["elements"] as $item) {
+                if (!empty($currentSorts[$item["id"]]->sort_order)){
+                    $sortOrder = intval($currentSorts[$item["id"]]->sort_order);
+                } else {
+                    $sortOrder = null;
+                }
+                $this->insertCategoryItemRelation($category["id"],$item["id"],$sortOrder);
             }
             $this->db->query('COMMIT');
             return true;
@@ -1221,23 +1282,34 @@ class Moo_OnlineOrders_Model {
             return true;
         return false;
     }
+    /**
+     * Write one tax rate from Clover, flat-fee fields included, as the full
+     * import does: without them a stale taxAmount survives every update and a
+     * new flat rate arrives with none. If a site never got the 1.5.8 columns
+     * the write fails, so retry with the pre-1.5.8 fields rather than skip it.
+     */
     public function updateOneTaxRate($tax) {
-        if ($this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_tax_rate where uuid='{$tax["id"]}'") > 0)
-            $res = $this->db->update("{$this->db->prefix}moo_tax_rate", array(
-                'name' => $tax["name"],
-                'rate' => $tax["rate"],
-                'is_default' => $tax["isDefault"]
-            ), array('uuid' => $tax["id"]));
-        else
-            $res = $this->db->insert("{$this->db->prefix}moo_tax_rate", array(
-                'uuid' => $tax["id"],
-                'name' => $tax["name"],
-                'rate' => $tax["rate"],
-                'is_default' => $tax["isDefault"]
-            ));
+        $fields = array(
+            'name' => $tax["name"],
+            'rate' => $tax["rate"],
+            'is_default' => $tax["isDefault"]
+        );
+        $flatFields = array(
+            'taxAmount' => isset($tax["taxAmount"]) ? $tax["taxAmount"] : null,
+            'taxType' => isset($tax["taxType"]) ? $tax["taxType"] : null,
+        );
+        $exists = $this->db->get_var("SELECT COUNT(*) FROM {$this->db->prefix}moo_tax_rate where uuid='{$tax["id"]}'") > 0;
+        $res = $this->writeTaxRate($exists, $tax["id"], array_merge($fields, $flatFields));
+        if ($res === false)
+            $res = $this->writeTaxRate($exists, $tax["id"], $fields);
         if ($res > 0)
             return true;
         return false;
+    }
+    private function writeTaxRate($exists, $uuid, $fields) {
+        if ($exists)
+            return $this->db->update("{$this->db->prefix}moo_tax_rate", $fields, array('uuid' => $uuid));
+        return $this->db->insert("{$this->db->prefix}moo_tax_rate", array_merge(array('uuid' => $uuid), $fields));
     }
     public function updateOneModifier($modifier) {
         $this->db->hide_errors();

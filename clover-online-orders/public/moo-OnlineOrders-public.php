@@ -164,7 +164,16 @@ class Moo_OnlineOrders_Public {
         // Promise polyfill for IE
         wp_enqueue_script('moo-bluebird', '//cdn.jsdelivr.net/bluebird/latest/bluebird.min.js', [], SOO_VERSION, true);
 
-        wp_register_script('moo_public_js',  plugins_url( 'js/dist/moo-OnlineOrders-public.min.js', __FILE__ ),array('jquery'), $this->version, false);
+        // The cart store bundle defines SooCartBridge, which
+        // moo_btn_addToCart() (used by the standalone Add to Cart Button
+        // shortcode) now goes through regardless of the beta flag -- the
+        // bridge itself decides whether to POST or write to the store --
+        // so it must be registered unconditionally, not only when the
+        // flag is on.
+        wp_register_script('sooCartStore', SOO_PLUGIN_URL . '/public/js/dist/sooCartStore.min.js', array(), SOO_VERSION, false);
+        wp_enqueue_script('sooCartStore');
+
+        wp_register_script('moo_public_js',  plugins_url( 'js/dist/moo-OnlineOrders-public.min.js', __FILE__ ),array('jquery','sooCartStore'), $this->version, false);
         wp_enqueue_script('moo_public_js');
 
         // Page URLs
@@ -172,12 +181,29 @@ class Moo_OnlineOrders_Public {
         $checkout_page_url = !empty($MooOptions['checkout_page']) ? get_page_link($MooOptions['checkout_page']) : '#';
         $store_page_url   = !empty($MooOptions['store_page']) ? get_page_link($MooOptions['store_page']) : '#';
 
+        // Same flag/expiry sooShortCode::isNewCartEnabled()/newCartExpiryHours()
+        // resolve, via the same shared static helpers (sooShortCode isn't
+        // loaded by the time wp_enqueue_scripts fires -- its subclasses are
+        // require_once'd lazily, from inside each shortcode's own render
+        // callback -- so it's required here explicitly rather than assumed
+        // already loaded). Only "which filtered settings array" is
+        // duplicated (the same apply_filters('moo_filter_plugin_settings')
+        // call already appears at several other call sites in this
+        // codebase); the decision logic itself lives in one place.
+        // moo_public_js is enqueued on every front-end page (this is the
+        // "Add to Cart Button" shortcode's script), so SooCartBridge here
+        // must see the same flag/key/expiry the store page localises, or
+        // the beta would silently never activate for that entry point.
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/shortcodes/sooShortCode.php';
+        $newCartPluginSettings = apply_filters("moo_filter_plugin_settings", $MooOptions);
+        $newCartParams = sooShortCode::newCartParams($newCartPluginSettings);
+
         $params = array_merge($params, [
             'cartPage'     => $cart_page_url,
             'checkoutPage' => $checkout_page_url,
             'storePage'    => $store_page_url,
             'moo_RestUrl'  => get_rest_url(),
-        ]);
+        ], $newCartParams);
         wp_localize_script("moo_public_js", "moo_params",$params);
         wp_localize_script( 'moo_public_js', 'mooObjectL10n', Moo_OnlineOrders_Helpers::getDefaultI18N() );
 	}
@@ -207,7 +233,7 @@ class Moo_OnlineOrders_Public {
 
                 $response = array(
                     'status'	=> 'error',
-                    'message'   => "Unfortunately, we are low on stock. Please try changing the quantity or choose another item",
+                    'message'   => __("Unfortunately, we are low on stock. Please try changing the quantity or choose another item", 'moo_OnlineOrders'),
                     'quantity'   => $itemStock["stockCount"]
                 );
             } else {
@@ -239,7 +265,7 @@ class Moo_OnlineOrders_Public {
         {
             $response = array(
                 'status'	=> 'error',
-                'message'   => 'Item not found'
+                'message'   => __('Item not found', 'moo_OnlineOrders')
             );
             wp_send_json($response);
         }
@@ -310,6 +336,7 @@ class Moo_OnlineOrders_Public {
             $total_of_taxes_without_discounts = 0;
             $taxe_rates_groupping = array();
             $allTaxesRates = array();
+            $allTaxesFlat = array();
             $service_charges = 0;
 
             //get the taxes rates and calculate number of items
@@ -325,6 +352,7 @@ class Moo_OnlineOrders_Public {
                         $taxe_rates_groupping[$tr->uuid] = array();
                         array_push($taxe_rates_groupping[$tr->uuid],$item);
                         $allTaxesRates[$tr->uuid]=$tr->rate;
+                        $allTaxesFlat[$tr->uuid]=SooCartPricer::flatAmount($tr);
                     }
                 }
                 $price = $item['item']->price *  $item['quantity'];
@@ -355,9 +383,16 @@ class Moo_OnlineOrders_Public {
                 $taxesWithoutDiscounts = 0;
 
                 $tax_rate = $allTaxesRates[$tax_rate_uuid];
-                if($tax_rate == 0) continue;
+                $flat_amount = $allTaxesFlat[$tax_rate_uuid];
+                if($tax_rate == 0 && $flat_amount == 0) continue;
 
                 foreach ($items as $item) {
+                        // Flat (fixed-amount) rate: taxAmount cents per unit, not discounted.
+                        if($flat_amount > 0) {
+                            $flatLine = $flat_amount * intval($item['quantity']) / 100;
+                            $taxes += $flatLine;
+                            $taxesWithoutDiscounts += $flatLine;
+                        }
                         $lineSubtotal = $item['item']->price * $item['quantity'];
                         if(@count($item['modifiers'])>0){
                             foreach ($item['modifiers'] as $m) {
@@ -781,9 +816,12 @@ class Moo_OnlineOrders_Public {
 
     /**
      * a hook to import the full inventory at once
+     * The daily cron fires it without arguments, so it only adds new items and categories when the
+     * soo_sync_new_items setting allows; pass true to import everything (e.g. after the API key changes).
+     * @param bool $fullImport
      * @return void
      */
-   public function moo_ImportInventory() {
+   public function moo_ImportInventory($fullImport = false) {
        $this->api->getApiKey();
        $this->api->getItemGroups();
        $this->api->getModifierGroups();
@@ -792,8 +830,12 @@ class Moo_OnlineOrders_Public {
        $this->api->getOptions();
        $this->api->getOrderTypes();
        $this->api->getTaxRates();
-       $this->api->getAndSaveItems();
-       $this->api->getCategories();
+       $addNew = $fullImport === true || $this->api->addsNewInventoryOnSync();
+       // getAndSaveItems only inserts items the store doesn't have yet
+       if ($addNew) {
+           $this->api->getAndSaveItems();
+       }
+       $this->api->getCategories($addNew);
    }
 
     /**
@@ -1254,8 +1296,12 @@ class Moo_OnlineOrders_Public {
             if(isset($res->message))
                 return;
 
+            $addNew = $this->api->addsNewInventoryOnSync();
             foreach ($res as $item) {
                 try {
+                    if (!$addNew && !$this->api->itemExists($item['id'])) {
+                        continue;
+                    }
                     if($this->api->syncCloverItem($item)) {
                         $compteur++;
                     }
@@ -1406,7 +1452,11 @@ class Moo_OnlineOrders_Public {
         if($res){
             if(isset($res["message"])) return;
 
+            $addNewCategories = $this->api->addsNewInventoryOnSync();
             foreach ($res as $category) {
+                if (!$addNewCategories && !$this->api->categoryExists($category["id"])) {
+                    continue;
+                }
                 
                 // if category contains more than 100 items
                 if(isset($category["items"]) && isset($category["items"]["elements"]) && count($category["items"]["elements"]) >= 100){
@@ -1713,11 +1763,11 @@ class Moo_OnlineOrders_Public {
                 $this->session->set(false,"moo_customer_token");
                 $this->session->set(null,"moo_customer_email");
                 $this->session->set(null,"moo_customer");
-                $res = array("status"=>"failure","message"=>'You must logged first');
+                $res = array("status"=>"failure","message"=>__('You must logged first', 'moo_OnlineOrders'));
             }
 
         } else {
-            $res = array("status"=>"failure","message"=>'You must logged first');
+            $res = array("status"=>"failure","message"=>__('You must logged first', 'moo_OnlineOrders'));
         }
 
         wp_send_json($res);
@@ -1750,7 +1800,7 @@ class Moo_OnlineOrders_Public {
 
         }
         else
-            $res = array("status"=>"failure","message"=>'You must logged first');
+            $res = array("status"=>"failure","message"=>__('You must logged first', 'moo_OnlineOrders'));
         wp_send_json($res);
     }
     public function moo_DeleteAddresses() {
@@ -1772,7 +1822,7 @@ class Moo_OnlineOrders_Public {
 
         }
         else
-            $res = array("status"=>"failure","message"=>'You must logged first');
+            $res = array("status"=>"failure","message"=>__('You must logged first', 'moo_OnlineOrders'));
         wp_send_json($res);
     }
     public function moo_CouponApply(){
@@ -1823,7 +1873,7 @@ class Moo_OnlineOrders_Public {
                    $res = array(
                        "status"=>"failure",
                        "error"=>"empty_cart",
-                       "message"=>'Your session has expired please refresh the page'
+                       "message"=>__('Your session has expired please refresh the page', 'moo_OnlineOrders')
                    );
                    wp_send_json($res);
                }
@@ -1833,7 +1883,7 @@ class Moo_OnlineOrders_Public {
                    $res = array(
                        "status"=>"failure",
                        "error"=>"min_failed",
-                       "message"=>'This coupon requires a minimum purchase amount of $'.number_format($couponMinAmount/100,2)
+                       "message"=>sprintf(__('This coupon requires a minimum purchase amount of $%s', 'moo_OnlineOrders'), number_format($couponMinAmount/100,2))
                    );
                    wp_send_json($res);
                }
@@ -1864,7 +1914,7 @@ class Moo_OnlineOrders_Public {
                             $res = array(
                                 "status"=>"failure",
                                 "error"=>"min_failed",
-                                "message"=>'This coupon requires a minimum purchase amount of $'.number_format($couponMinAmount/100,2)
+                                "message"=>sprintf(__('This coupon requires a minimum purchase amount of $%s', 'moo_OnlineOrders'), number_format($couponMinAmount/100,2))
                             );
                         }
                     } else {
@@ -1873,7 +1923,7 @@ class Moo_OnlineOrders_Public {
                             $res = array(
                                 "status"=>"failure",
                                 "error"=>"not_valid",
-                                "message"=>'Please enter a valid coupon code'
+                                "message"=>__('Please enter a valid coupon code', 'moo_OnlineOrders')
                             );
                         }
                     }
@@ -1883,7 +1933,7 @@ class Moo_OnlineOrders_Public {
                         $res = array(
                             "status"=>"failure",
                             "error"=>"not_valid",
-                            "message"=>'Please enter a valid coupon code'
+                            "message"=>__('Please enter a valid coupon code', 'moo_OnlineOrders')
                         );
                     }
                 }
@@ -1892,7 +1942,7 @@ class Moo_OnlineOrders_Public {
             $res = array(
                 "status"=>"failure",
                 "error"=>"not_valid",
-                "message"=>'Please enter your coupon code'
+                "message"=>__('Please enter your coupon code', 'moo_OnlineOrders')
             );
         }
         wp_send_json($res);
@@ -1983,16 +2033,38 @@ class Moo_OnlineOrders_Public {
             if ( ! wp_verify_nonce( $_POST['form']['_wpnonce'], 'moo-checkout-form' ) ) {
                 $response =  array(
                     'status'	=> 'Error',
-                    'message'=> "Unauthorized or session is expired please refresh the page"
+                    'message'=> __("Unauthorized or session is expired please refresh the page", 'moo_OnlineOrders')
                 );
                 wp_send_json($response);
             }
+            // The nonce only proves the form came from a page on this site, which any
+            // bot can load. This route creates orders and is registered for logged-out
+            // visitors, so it takes the same reCAPTCHA gate as the REST checkout: a
+            // verdict of 'fail' stops the order. 'skipped' (no keys) and 'unavailable'
+            // (verifier unreachable) still pass, matching CheckoutRoutes::checkout().
+            require_once plugin_dir_path(dirname(__FILE__)) . 'includes/restapi/BaseRoute.php';
+            $recaptchaVerdict = BaseRoute::verify(array(
+                'token'         => isset($_POST['form']['reCAPTCHA_token'])
+                    ? sanitize_text_field(wp_unslash($_POST['form']['reCAPTCHA_token']))
+                    : null,
+                'action'        => 'createOrder',
+                'body'          => $_POST['form'],
+                'authenticated' => !$this->session->isEmpty("moo_customer_token"),
+                'surface'       => 'checkout',
+            ));
+            if ($recaptchaVerdict['outcome'] === 'fail') {
+                wp_send_json(array(
+                    'status'  => 'Error',
+                    'message' => __("Oops! It seems there was an issue with the reCAPTCHA. Don't worry, these things happen. Please try submitting the form again. We apologize for any inconvenience caused.", 'moo_OnlineOrders')
+                ));
+            }
+
             if( !$this->session->isEmpty("items") ) {
                 $_POST["form"] =  apply_filters( 'moo_filter_checkout_form', $_POST["form"]);
                 if( $_POST["form"] === false ) {
                     $response =  array(
                         'status'	=> 'Error',
-                        'message'=> "Sorry, please check if you have any additional addons, disable it or contact the developer"
+                        'message'=> __("Sorry, please check if you have any additional addons, disable it or contact the developer", 'moo_OnlineOrders')
                     );
                     wp_send_json($response);
 
@@ -2045,7 +2117,7 @@ class Moo_OnlineOrders_Public {
                 } else {
                     $response = array(
                         'status'	=> 'Error',
-                        'message'	=> "The payment method is required"
+                        'message'	=> __("The payment method is required", 'moo_OnlineOrders')
                     );
                     wp_send_json($response);
                 }
@@ -2071,7 +2143,7 @@ class Moo_OnlineOrders_Public {
                                 $response = array(
                                     'status'	=> 'Error',
                                     'code'	=> 'low_stock',
-                                    'message'	=> 'The item '.stripslashes($cartLine['item']->name).' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
+                                    'message'	=> sprintf(__('The item %1$s is low on stock. Please go back and change the quantity in your cart %2$s', 'moo_OnlineOrders'), stripslashes($cartLine['item']->name), (($itemStock["stockCount"]>0) ? sprintf(__('as we have only %s left', 'moo_OnlineOrders'), $itemStock["stockCount"]) : ""))
                                 );
                                 wp_send_json($response);
                             }
@@ -2082,7 +2154,7 @@ class Moo_OnlineOrders_Public {
                                     $response = array(
                                         'status'	=> 'Error',
                                         'code'	=> 'low_stock',
-                                        'message'	=> 'The item '.stripslashes($cartLine['item']->name).' is low on stock. Please go back and change the quantity in your cart '.(($itemStock["stockCount"]>0)?"as we have only ".$itemStock["stockCount"]." left":"")
+                                        'message'	=> sprintf(__('The item %1$s is low on stock. Please go back and change the quantity in your cart %2$s', 'moo_OnlineOrders'), stripslashes($cartLine['item']->name), (($itemStock["stockCount"]>0) ? sprintf(__('as we have only %s left', 'moo_OnlineOrders'), $itemStock["stockCount"]) : ""))
                                     );
                                     wp_send_json($response);
                                 }
@@ -2183,6 +2255,10 @@ class Moo_OnlineOrders_Public {
                 if($_POST['form']['instructions'] !== "" || $pickup_time !== '')
                     $note .=' | '. sanitize_text_field($_POST['form']['instructions']).' '.$pickup_time;
 
+                //flag the utensils request on the ticket
+                if(isset($_POST['form']['utensils_requested']) && filter_var(wp_unslash($_POST['form']['utensils_requested']), FILTER_VALIDATE_BOOLEAN))
+                    $note .=' | '.__("Utensils requested", "moo_OnlineOrders");
+
                 //show Order number
                 if(isset($MooOptions["show_order_number"]) && $MooOptions["show_order_number"] === "on") {
                     $nextNumber = intval(get_option("moo_next_order_number"));
@@ -2208,10 +2284,10 @@ class Moo_OnlineOrders_Public {
                     $orderTypeFromClover = $this->api->GetOneOrdersTypes($orderType_uuid);
 
                     if(isset($orderTypeFromClover["code"]) && $orderTypeFromClover["code"] == 998)
-                        return array( 'status'	=> 'Error','message'=> "Sorry, but we are having a brief maintenance. Check back in a few minutes");
+                        return array( 'status'	=> 'Error','message'=> __("Sorry, but we are having a brief maintenance. Check back in a few minutes", 'moo_OnlineOrders'));
 
                     if(isset($orderTypeFromClover["message"]) && $orderTypeFromClover["message"] == "401 Unauthorized")
-                        return array( 'status'	=> 'Error','message'=> "Internal Error, please contact us, if you're the site owner verify your API Key");
+                        return array( 'status'	=> 'Error','message'=> __("Internal Error, please contact us, if you're the site owner verify your API Key", 'moo_OnlineOrders'));
 
                     $orderTypeFromLocal  = (array)$this->model->getOneOrderTypes($orderType_uuid);
                     $isDelivery = ( isset($orderTypeFromLocal['show_sa']) && $orderTypeFromLocal['show_sa'] == "1" )?"Delivery":"Pickup";
@@ -2367,7 +2443,7 @@ class Moo_OnlineOrders_Public {
                                 if( ! $paymentResult ){
                                     $response = array(
                                         'status'	=> 'Error',
-                                        'message'	=> "Payment was declined, check card info or try another card."
+                                        'message'	=> __("Payment was declined, check card info or try another card.", 'moo_OnlineOrders')
                                     );
                                     wp_send_json($response);
                                 }
@@ -2399,7 +2475,7 @@ class Moo_OnlineOrders_Public {
                                 } else {
                                     $response = array(
                                         'status'	=> 'Error',
-                                        'message'	=> "Payment card was declined. Check card info or try another card.",
+                                        'message'	=> __("Payment card was declined. Check card info or try another card.", 'moo_OnlineOrders'),
                                         'cloverMessage'	=> $paymentResult,
                                     );
                                     wp_send_json($response);
@@ -2408,7 +2484,7 @@ class Moo_OnlineOrders_Public {
                             } else {
                                 $response = array(
                                     'status'	=> 'Error',
-                                    'message'	=> 'credit card information is required'
+                                    'message'	=> __('credit card information is required', 'moo_OnlineOrders')
                                 );
                                 wp_send_json($response);
                             }
@@ -2421,7 +2497,7 @@ class Moo_OnlineOrders_Public {
                                     $cvv = '';
                                     $response = array(
                                         'status'	=> 'Error',
-                                        'message'	=> 'Card CVV is required'
+                                        'message'	=> __('Card CVV is required', 'moo_OnlineOrders')
                                     );
                                     wp_send_json($response);
                                 }
@@ -2432,7 +2508,7 @@ class Moo_OnlineOrders_Public {
                                     $zip = '';
                                     $response = array(
                                         'status'	=> 'Error',
-                                        'message'	=> 'Zip code is required'
+                                        'message'	=> __('Zip code is required', 'moo_OnlineOrders')
                                     );
                                     wp_send_json($response);
                                 }
@@ -2474,7 +2550,7 @@ class Moo_OnlineOrders_Public {
                                         if(json_decode($paid)->message == null) {
                                             $response = array(
                                                 'status'	=> 'Error',
-                                                'message'	=> "Payment card was declined. Check card info or try another card.",
+                                                'message'	=> __("Payment card was declined. Check card info or try another card.", 'moo_OnlineOrders'),
                                                 'CloverMessage'	=> $paid,
                                             );
                                         } else {
@@ -2487,14 +2563,14 @@ class Moo_OnlineOrders_Public {
                                             */
                                             $response = array(
                                                 'status'	=> 'Error',
-                                                'message'	=> "We were unable to process your payment, please try again, or try a different payment method",
+                                                'message'	=> __("We were unable to process your payment, please try again, or try a different payment method", 'moo_OnlineOrders'),
                                                 'cloverMessage'	=> $paid,
                                             );
                                         }
                                     } else {
                                         $response = array(
                                             'status'	=> json_decode($paid)->result,
-                                            'message'	=> 'Payment card was declined. Check card info or try another card.',
+                                            'message'	=> __('Payment card was declined. Check card info or try another card.', 'moo_OnlineOrders'),
                                             'cloverMessage'	=> json_decode($paid)->failureMessage
                                         );
                                     }
@@ -2504,7 +2580,7 @@ class Moo_OnlineOrders_Public {
                             } else {
                                 $response = array(
                                     'status'	=> 'Error',
-                                    'message'	=> 'credit card information is required'
+                                    'message'	=> __('credit card information is required', 'moo_OnlineOrders')
                                 );
                                 wp_send_json($response);
                             }
@@ -2516,7 +2592,7 @@ class Moo_OnlineOrders_Public {
                     //  var_dump($orderCreated);
                     $response = array(
                         'status'	=> 'Error',
-                        'message'	=> 'Internal Error, please contact us: If you are the site owner please check if this order type still exists on your Clover Dashboard. You can also check your API Key.'
+                        'message'	=> __('Internal Error, please contact us: If you are the site owner please check if this order type still exists on your Clover Dashboard. You can also check your API Key.', 'moo_OnlineOrders')
                     );
                     wp_send_json($response);
                 }
@@ -2524,7 +2600,7 @@ class Moo_OnlineOrders_Public {
             } else {
                 $response = array(
                     'status'	=> 'Error',
-                    'message'	=> 'Your session is expired please update the cart'
+                    'message'	=> __('Your session is expired please update the cart', 'moo_OnlineOrders')
                 );
                 wp_send_json($response);
             }
@@ -2676,7 +2752,7 @@ class Moo_OnlineOrders_Public {
                 if(isset($order->message) && $order->message !=''){
                     $response = array(
                         'status'	=> 'Error',
-                        'message'	=> 'Internal Error, we cannot create the order : '.$order->message.' <br> Please call the store and let them know so it can be resolved'
+                        'message'	=> sprintf(__('Internal Error, we cannot create the order : %s <br> Please call the store and let them know so it can be resolved', 'moo_OnlineOrders'), $order->message)
                     );
                     wp_send_json($response);
                 }

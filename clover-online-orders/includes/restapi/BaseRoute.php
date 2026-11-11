@@ -58,15 +58,27 @@ class BaseRoute
         // The plugin's reCAPTCHA verifier is one provider on the request-verification hook.
         // Registered once for the whole request: every route extends this class, so an
         // unguarded add_filter here would stack a duplicate per route instance.
-        if (!self::$verificationProviderRegistered) {
-            self::$verificationProviderRegistered = true;
-            add_filter('soo_request_verification', array(__CLASS__, 'recaptchaVerificationProvider'), 20, 2);
-        }
+        self::ensureVerificationProvider();
     }
 
     /** @var bool Guards one-time registration of the reCAPTCHA provider. */
     private static $verificationProviderRegistered = false;
 
+    /**
+     * Register the reCAPTCHA provider on the verification hook, once per request.
+     *
+     * Separate from the constructor because the legacy checkout verifies from
+     * admin-ajax, where no route is ever instantiated.
+     *
+     * @return void
+     */
+    public static function ensureVerificationProvider() {
+        if (self::$verificationProviderRegistered) {
+            return;
+        }
+        self::$verificationProviderRegistered = true;
+        add_filter('soo_request_verification', array(__CLASS__, 'recaptchaVerificationProvider'), 20, 2);
+    }
 
     /**
      * Verify a request through the reCAPTCHA providers and return the verdict.
@@ -87,6 +99,20 @@ class BaseRoute
      * @return array Verdict; always carries an 'outcome' key.
      */
     protected function verifyRequest($args) {
+        return self::verify($args);
+    }
+
+    /**
+     * verifyRequest() for callers that are not a route — the legacy checkout runs through
+     * admin-ajax, which instantiates nothing, so it cannot rely on the constructor having
+     * registered the provider.
+     *
+     * @param array $args See verifyRequest().
+     * @return array Verdict; always carries an 'outcome' key.
+     */
+    public static function verify($args) {
+        self::ensureVerificationProvider();
+
         $seed = array(
             'outcome'  => 'skipped',
             'score'    => null,

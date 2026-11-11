@@ -152,6 +152,11 @@ class moo_OnlineOrders {
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooClosureBanner.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooDashboardSummary.php';
         require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooStoreStatusChecker.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/settings/SooRecaptchaKeyCheck.php';
+
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/cart/SooCartPricer.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/cart/SooCartDocument.php';
+        require_once plugin_dir_path(dirname(__FILE__)) . 'includes/cart/SooCartResolver.php';
 
         /**
          * The class responsible for defining all actions that occur in the databse
@@ -238,6 +243,7 @@ class moo_OnlineOrders {
 
         $this->loader->add_action( 'delete_blog', $plugin_admin, 'delete_plugin_in_network',10,1 );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'displayUpdateNotice' );
+		$this->loader->add_action( 'admin_notices', $plugin_admin, 'displayRecaptchaKeyNotice' );
 
 	}
 

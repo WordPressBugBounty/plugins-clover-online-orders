@@ -217,6 +217,10 @@ class Products_List_Moo extends WP_List_Table_MOO {
         $title = '<div class="mooItemNameSection" id="item-name-section-for-'.$item['uuid'].'">';
         $title .= '<div class="moo-item-name"><strong>' . stripslashes((string)$itemName) . '</strong></div><img onclick="moo_editItemName(event,\''.$item['uuid'].'\')" style="margin-left: 10px;cursor: pointer" src="'.$this->editIcon.'" alt="placeholder" sizes="(max-width: 150px) 100vw, 150px" id="moo-edit-item-name-'.esc_attr($item['uuid']).'">';
         $title .= '</div>';
+        $customName = trim((string)$item['soo_name']);
+        if ($customName !== '' && $customName !== trim((string)$item['name'])) {
+            $title .= '<a href="#" class="moo-revert-item-name" style="font-size:11px" id="moo-revert-item-name-'.esc_attr($item['uuid']).'" onclick="mooRevertItemName(event,\''.esc_attr($item['uuid']).'\')">Revert to Clover Name</a>';
+        }
 
         if(!empty($itemDescription) && strlen($itemDescription)>255){
             $shortItemDesc  = substr($itemDescription,0,255);
@@ -618,6 +622,14 @@ class Products_List_Moo extends WP_List_Table_MOO {
                     <?php
                 }
                 ?>
+            </div>
+            <?php
+        }
+        if ( $which == "top" ){
+            $customNamesCount = intval($wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}moo_item` WHERE " . Moo_OnlineOrders_Model::customItemNameCondition()));
+            ?>
+            <div class="alignright actions">
+                <button type="button" class="button" id="mooRevertAllItemNames" data-count="<?php echo $customNamesCount; ?>" onclick="mooRevertAllItemNames(event)">Revert All to Clover Names</button>
             </div>
             <?php
         }
