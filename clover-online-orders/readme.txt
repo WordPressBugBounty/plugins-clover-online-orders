@@ -5,7 +5,7 @@ Tags: clover,online orders for clover, Online orders for Clover, Wordpress and C
 Requires at least: 4.7.1
 Tested up to: 7.1
 Requires PHP: 7.1
-Stable tag: 1.6.7
+Stable tag: 1.6.8
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -148,6 +148,9 @@ Please let us know so we can implement additional features.support@zaytech.com
 You can report security bugs through the Patchstack Vulnerability Disclosure Program. The Patchstack team help validate, triage and handle any security vulnerabilities. [Report a security vulnerability.](https://patchstack.com/database/vdp/clover-online-orders)
 
 == Changelog ==
+= 1.6.8 =
+* Fixed the "Revert All to Clover Names" button on Items / Images / Description, which did nothing when clicked.
+
 = 1.6.7 =
 * New modern cart (beta, off by default): a slide-out cart drawer, a two-column cart page, and the ability to edit an item's modifiers from the cart or checkout without removing it. Enable it under Checkout settings > Modern Cart (Beta).
 * Modern cart improvements: "item added" toast, remove confirmation, special instructions per item, a restyled sign-in area on checkout and My Orders with password reset and phone verification inline, a compact order summary at checkout, and the cart shown next to the menu in store interface 3.

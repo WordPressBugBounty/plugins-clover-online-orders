@@ -629,7 +629,9 @@ class Products_List_Moo extends WP_List_Table_MOO {
             $customNamesCount = intval($wpdb->get_var("SELECT COUNT(*) FROM `{$wpdb->prefix}moo_item` WHERE " . Moo_OnlineOrders_Model::customItemNameCondition()));
             ?>
             <div class="alignright actions">
-                <button type="button" class="button" id="mooRevertAllItemNames" data-count="<?php echo $customNamesCount; ?>" onclick="mooRevertAllItemNames(event)">Revert All to Clover Names</button>
+                <?php /* The id must not be the handler's name: this sits inside the list's <form>, and an
+                         inline onclick resolves form.<id> before the global function ("is not a function"). */ ?>
+                <button type="button" class="button" style="margin-left: 8px" id="moo-revert-all-item-names" data-count="<?php echo $customNamesCount; ?>" onclick="mooRevertAllItemNames(event)">Revert All to Clover Names</button>
             </div>
             <?php
         }

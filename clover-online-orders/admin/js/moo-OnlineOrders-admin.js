@@ -2740,13 +2740,13 @@ function mooRevertItemName(event, item_uuid) {
 }
 //Keep the "Revert All to Clover Names" count in step with per-item renames and reverts
 function mooAdjustCustomNamesCount(delta) {
-    var button = jQuery("#mooRevertAllItemNames");
+    var button = jQuery("#moo-revert-all-item-names");
     var count = (parseInt(button.attr("data-count"), 10) || 0) + delta;
     button.attr("data-count", Math.max(count, 0));
 }
 function mooRevertAllItemNames(event) {
     event.preventDefault();
-    var count = parseInt(jQuery("#mooRevertAllItemNames").attr("data-count"), 10) || 0;
+    var count = parseInt(jQuery("#moo-revert-all-item-names").attr("data-count"), 10) || 0;
     if (count === 0) {
         swal({
             title: 'Nothing to revert',
